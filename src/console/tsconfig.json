@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "ES2022",
+    "lib": ["ES2022"],
+    "outDir": "../../dist/console",
+    "rootDir": ".",
+    "composite": true,
+    "declarationDir": "../../dist/console/types"
+  },
+  "include": ["./**/*"],
+  "exclude": ["node_modules", "**/*.spec.ts", "**/*.test.ts"]
+}
