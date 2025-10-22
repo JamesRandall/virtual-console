@@ -11,59 +11,59 @@
 import { MemoryBus } from './memoryBus.js';
 
 // Opcode constants
-const OP_NOP = 0x0;
-const OP_LD = 0x1;
-const OP_ST = 0x2;
-const OP_MOV = 0x3;
-const OP_ADD = 0x4;
-const OP_SUB = 0x5;
-const OP_AND = 0x6;
-const OP_OR = 0x7;
-const OP_XOR = 0x8;
-const OP_SHL = 0x9;
-const OP_SHR = 0xA;
-const OP_CMP = 0xB;
-const OP_JMP = 0xC;
-const OP_BR = 0xD;
-const OP_CALL = 0xE;
-const OP_EXT = 0xF;
+export const OP_NOP = 0x0;
+export const OP_LD = 0x1;
+export const OP_ST = 0x2;
+export const OP_MOV = 0x3;
+export const OP_ADD = 0x4;
+export const OP_SUB = 0x5;
+export const OP_AND = 0x6;
+export const OP_OR = 0x7;
+export const OP_XOR = 0x8;
+export const OP_SHL = 0x9;
+export const OP_SHR = 0xA;
+export const OP_CMP = 0xB;
+export const OP_JMP = 0xC;
+export const OP_BR = 0xD;
+export const OP_CALL = 0xE;
+export const OP_EXT = 0xF;
 
 // Extended instruction sub-opcodes
-const EXT_RET = 0xF0;
-const EXT_RTI = 0xF1;
-const EXT_PUSH = 0xF2;
-const EXT_POP = 0xF3;
-const EXT_INC = 0xF4;
-const EXT_DEC = 0xF5;
-const EXT_ROL = 0xF6;
-const EXT_ROR = 0xF7;
-const EXT_SEI = 0xF8;
-const EXT_CLI = 0xF9;
-const EXT_NOP = 0xFA;
+export const EXT_RET = 0xF0;
+export const EXT_RTI = 0xF1;
+export const EXT_PUSH = 0xF2;
+export const EXT_POP = 0xF3;
+export const EXT_INC = 0xF4;
+export const EXT_DEC = 0xF5;
+export const EXT_ROL = 0xF6;
+export const EXT_ROR = 0xF7;
+export const EXT_SEI = 0xF8;
+export const EXT_CLI = 0xF9;
+export const EXT_NOP = 0xFA;
 
 // Addressing mode constants
-const MODE_IMMEDIATE = 0x0;
-const MODE_REGISTER = 0x1;
-const MODE_ABSOLUTE = 0x2;
-const MODE_ZERO_PAGE = 0x3;
-const MODE_ZERO_PAGE_INDEXED = 0x4;
-const MODE_REGISTER_PAIR = 0x5;
+export const MODE_IMMEDIATE = 0x0;
+export const MODE_REGISTER = 0x1;
+export const MODE_ABSOLUTE = 0x2;
+export const MODE_ZERO_PAGE = 0x3;
+export const MODE_ZERO_PAGE_INDEXED = 0x4;
+export const MODE_REGISTER_PAIR = 0x5;
 
 // Branch condition constants
-const BR_Z = 0x0;   // Branch if zero
-const BR_NZ = 0x1;  // Branch if not zero
-const BR_C = 0x2;   // Branch if carry
-const BR_NC = 0x3;  // Branch if not carry
-const BR_N = 0x4;   // Branch if negative
-const BR_NN = 0x5;  // Branch if not negative
-const BR_V = 0x6;   // Branch if overflow
-const BR_NV = 0x7;  // Branch if not overflow
+export const BR_Z = 0x0;   // Branch if zero
+export const BR_NZ = 0x1;  // Branch if not zero
+export const BR_C = 0x2;   // Branch if carry
+export const BR_NC = 0x3;  // Branch if not carry
+export const BR_N = 0x4;   // Branch if negative
+export const BR_NN = 0x5;  // Branch if not negative
+export const BR_V = 0x6;   // Branch if overflow
+export const BR_NV = 0x7;  // Branch if not overflow
 
 // Status flag bit positions
-const FLAG_C = 0; // Carry
-const FLAG_Z = 1; // Zero
-const FLAG_N = 7; // Negative
-const FLAG_V = 6; // Overflow
+export const FLAG_C = 0; // Carry
+export const FLAG_Z = 1; // Zero
+export const FLAG_N = 7; // Negative
+export const FLAG_V = 6; // Overflow
 
 /**
  * CPU class representing the virtual console's processor
