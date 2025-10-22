@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { Box, Text } from 'ink';
-import { MemoryBus } from './memoryBus.js';
+import { MemoryBus } from '../../console/memoryBus.js';
 
 interface HexViewerProps {
   bus: MemoryBus;

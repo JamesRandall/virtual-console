@@ -3,7 +3,7 @@
  * Converts machine code bytes to assembly mnemonics
  */
 
-import { MemoryBus } from './memoryBus.js';
+import { MemoryBus } from '../../console/memoryBus.js';
 
 // Opcode constants
 const OP_NOP = 0x0;
