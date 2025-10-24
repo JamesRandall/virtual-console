@@ -57,8 +57,8 @@ import {
   FLAG_Z,
   FLAG_N,
   FLAG_V,
-} from './cpu.js';
-import { MemoryBus } from './memoryBus.js';
+} from './cpu';
+import { MemoryBus } from './memoryBus';
 
 // Helper function to encode instructions
 function encodeInstruction(

@@ -8,7 +8,7 @@
  * - Status flags: Carry, Zero, Negative, Overflow
  */
 
-import { MemoryBus } from './memoryBus.js';
+import { MemoryBus } from './memoryBus';
 
 // Opcode constants
 export const OP_NOP = 0x0;

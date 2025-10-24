@@ -5,8 +5,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { CPU } from '../../console/cpu.js';
-import { MemoryBus } from '../../console/memoryBus.js';
+import { CPU } from '../../../console/src/cpu';
+import { MemoryBus } from '../../../console/src/memoryBus';
 import { HexViewer } from './HexViewer';
 import { RegisterDisplay } from './RegisterDisplay';
 import { disassemble } from './disassembler';

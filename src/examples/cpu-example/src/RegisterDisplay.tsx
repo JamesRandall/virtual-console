@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { Box, Text } from 'ink';
-import { CPU } from '../../console/cpu.js';
+import { CPU } from '../../../console/src/cpu';
 
 interface RegisterDisplayProps {
   cpu: CPU;
