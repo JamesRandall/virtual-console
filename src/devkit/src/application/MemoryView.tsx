@@ -1,7 +1,18 @@
-import {useState} from "react";
+import {useState, useCallback, useMemo} from "react";
+
 import {useDevkitStore} from "../stores/devkitStore.ts";
 
+const BYTES_PER_ROW = 8;
+
+/**
+ * Helper function to check if a character is printable ASCII
+ */
+const isPrintable = (byte: number): boolean => {
+    return byte >= 0x20 && byte <= 0x7E;
+};
+
 export function MemoryView() {
+    // Zustand store hooks
     const firstRowAddress = useDevkitStore((state) => state.firstRowAddress);
     const viewSize = useDevkitStore((state) => state.viewSize);
     const memorySnapshot = useDevkitStore((state) => state.memorySnapshot);
@@ -9,19 +20,15 @@ export function MemoryView() {
     const setFirstRowAddress = useDevkitStore((state) => state.setFirstRowAddress);
     const setViewSize = useDevkitStore((state) => state.setViewSize);
 
+    // Local state
     const [addressInput, setAddressInput] = useState('0000');
     const [sizeInput, setSizeInput] = useState('0214');
 
-    const BYTES_PER_ROW = 8;
+    // Computed values
     const programCounter = cpuSnapshot.programCounter;
 
-    // Helper function to check if a character is printable ASCII
-    const isPrintable = (byte: number): boolean => {
-        return byte >= 0x20 && byte <= 0x7E;
-    };
-
-    // Generate hex dump rows
-    const generateHexDump = () => {
+    // Render helpers
+    const generateHexDump = useCallback(() => {
         if (!memorySnapshot) return [];
 
         const rows = [];
@@ -59,11 +66,16 @@ export function MemoryView() {
         }
 
         return rows;
-    };
+    }, [memorySnapshot, viewSize, firstRowAddress, programCounter]);
 
-    const rows = generateHexDump();
+    const rows = useMemo(() => generateHexDump(), [generateHexDump]);
 
-    const handleAddressBlur = () => {
+    // Event handlers
+    const handleAddressChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        setAddressInput(e.target.value.toUpperCase());
+    }, []);
+
+    const handleAddressBlur = useCallback(() => {
         const parsed = parseInt(addressInput, 16);
         if (!isNaN(parsed) && parsed >= 0) {
             // Align to 8 bytes
@@ -73,9 +85,13 @@ export function MemoryView() {
         } else {
             setAddressInput(firstRowAddress.toString(16).padStart(4, '0').toUpperCase());
         }
-    };
+    }, [addressInput, firstRowAddress, setFirstRowAddress]);
 
-    const handleViewSizeBlur = () => {
+    const handleViewSizeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        setSizeInput(e.target.value.toUpperCase());
+    }, []);
+
+    const handleViewSizeBlur = useCallback(() => {
         const parsed = parseInt(sizeInput, 16);
         if (!isNaN(parsed) && parsed > 0) {
             // Align to 8 bytes
@@ -85,18 +101,19 @@ export function MemoryView() {
         } else {
             setSizeInput(viewSize.toString(16).padStart(4, '0').toUpperCase());
         }
-    };
+    }, [sizeInput, viewSize, setViewSize]);
 
+    // Render
     return <div className="flex flex-col min-h-0 overflow-hidden">
-        <div className="flex gap-4 p-2 border-b border-gray-300 items-center text-zinc-200">
+        <div className="flex gap-4 p-2 border-b border-zinc-300 items-center text-zinc-200">
             <label className="flex items-center gap-2">
                 <span>Start Address:</span>
                 <input
                     type="text"
                     value={addressInput}
-                    onChange={(e) => setAddressInput(e.target.value.toUpperCase())}
+                    onChange={handleAddressChange}
                     onBlur={handleAddressBlur}
-                    className="font-mono w-20 px-2 py-1 border border-gray-300 rounded"
+                    className="font-mono w-20 px-2 py-1 border border-zinc-300 rounded"
                 />
             </label>
             <label className="flex items-center gap-2">
@@ -104,9 +121,9 @@ export function MemoryView() {
                 <input
                     type="text"
                     value={sizeInput}
-                    onChange={(e) => setSizeInput(e.target.value.toUpperCase())}
+                    onChange={handleViewSizeChange}
                     onBlur={handleViewSizeBlur}
-                    className="font-mono w-20 px-2 py-1 border border-gray-300 rounded"
+                    className="font-mono w-20 px-2 py-1 border border-zinc-300 rounded"
                 />
             </label>
         </div>

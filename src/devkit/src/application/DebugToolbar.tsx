@@ -1,12 +1,19 @@
-import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
+import {useCallback} from "react";
+
 import {useDevkitStore} from "../stores/devkitStore.ts";
 
+import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
+
 export function DebugToolbar() {
-    const virtualConsole = useVirtualConsole();
+    // Zustand store hooks
     const updateMemorySnapshot = useDevkitStore((state) => state.updateMemorySnapshot);
     const updateCpuSnapshot = useDevkitStore((state) => state.updateCpuSnapshot);
 
-    const handleStep = () => {
+    // Virtual console hook
+    const virtualConsole = useVirtualConsole();
+
+    // Event handlers
+    const handleStep = useCallback(() => {
         try {
             // Execute one instruction
             virtualConsole.cpu.step();
@@ -33,9 +40,10 @@ export function DebugToolbar() {
         } catch (error) {
             console.error("Error stepping through program:", error);
         }
-    };
+    }, [virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
 
-    return <div className="p-4 border-t border-gray-300">
+    // Render
+    return <div className="p-4 border-t border-zinc-300">
         <div className="flex gap-4 items-center">
             <button
                 onClick={handleStep}

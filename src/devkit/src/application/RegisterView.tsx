@@ -1,26 +1,45 @@
+import {useMemo} from "react";
+
 import {useDevkitStore} from "../stores/devkitStore.ts";
 
+/**
+ * Format a number as an 8-bit hex value
+ */
+const toHex8 = (value: number): string => value.toString(16).padStart(2, '0').toUpperCase();
+
+/**
+ * Format a number as a 16-bit hex value
+ */
+const toHex16 = (value: number): string => value.toString(16).padStart(4, '0').toUpperCase();
+
+interface CpuFlags {
+    C: boolean; // Carry
+    Z: boolean; // Zero
+    V: boolean; // Overflow
+    N: boolean; // Negative
+}
+
+/**
+ * Extract individual flags from status register
+ */
+const extractFlags = (statusRegister: number): CpuFlags => {
+    return {
+        C: (statusRegister & (1 << 0)) !== 0,
+        Z: (statusRegister & (1 << 1)) !== 0,
+        V: (statusRegister & (1 << 6)) !== 0,
+        N: (statusRegister & (1 << 7)) !== 0,
+    };
+};
+
 export function RegisterView() {
+    // Zustand store hooks
     const cpuSnapshot = useDevkitStore((state) => state.cpuSnapshot);
 
-    // Helper function to format hex values
-    const toHex8 = (value: number) => value.toString(16).padStart(2, '0').toUpperCase();
-    const toHex16 = (value: number) => value.toString(16).padStart(4, '0').toUpperCase();
+    // Computed values
+    const flags = useMemo(() => extractFlags(cpuSnapshot.statusRegister), [cpuSnapshot.statusRegister]);
 
-    // Helper function to extract individual flags from status register
-    const getFlags = () => {
-        const status = cpuSnapshot.statusRegister;
-        return {
-            C: (status & (1 << 0)) !== 0, // Carry
-            Z: (status & (1 << 1)) !== 0, // Zero
-            V: (status & (1 << 6)) !== 0, // Overflow
-            N: (status & (1 << 7)) !== 0, // Negative
-        };
-    };
-
-    const flags = getFlags();
-
-    return <div className="p-4 border-t border-gray-300 text-zinc-200">
+    // Render
+    return <div className="p-4 border-t border-zinc-300 text-zinc-200">
         <div className="font-mono text-sm">
             {/* Registers Row */}
             <div className="flex gap-6 mb-3">

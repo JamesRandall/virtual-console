@@ -1,10 +1,12 @@
+import {useState, useCallback} from "react";
 import {Editor} from "@monaco-editor/react";
-import {useState} from "react";
-import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
-import {assemble} from "../../../console/src/assembler.ts";
+
 import {useDevkitStore} from "../stores/devkitStore.ts";
 
-const defaultProgram = `
+import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
+import {assemble} from "../../../console/src/assembler.ts";
+
+const DEFAULT_PROGRAM = `
   .org $20
   LD R0, #$AA      ; Load pattern
   LD R1, #0        ; Counter
@@ -20,13 +22,23 @@ loop:
 `;
 
 export function EditorContainer() {
-    const [editorContent, setEditorContent] = useState(defaultProgram);
-    const [assemblyError, setAssemblyError] = useState<string | null>(null);
-    const virtualConsole = useVirtualConsole();
+    // Zustand store hooks
     const updateMemorySnapshot = useDevkitStore((state) => state.updateMemorySnapshot);
     const updateCpuSnapshot = useDevkitStore((state) => state.updateCpuSnapshot);
 
-    const handleAssemble = () => {
+    // Virtual console hook
+    const virtualConsole = useVirtualConsole();
+
+    // Local state
+    const [editorContent, setEditorContent] = useState(DEFAULT_PROGRAM);
+    const [assemblyError, setAssemblyError] = useState<string | null>(null);
+
+    // Event handlers
+    const handleEditorChange = useCallback((value: string | undefined) => {
+        setEditorContent(value || "");
+    }, []);
+
+    const handleAssemble = useCallback(() => {
         if (!editorContent) {
             setAssemblyError("No code to assemble");
             return;
@@ -80,10 +92,11 @@ export function EditorContainer() {
             console.error("Unexpected error assembling code:", error);
             setAssemblyError("assembly error");
         }
-    };
+    }, [editorContent, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
 
+    // Render
     return <div className="flex flex-col h-full w-full bg-zinc-800">
-        <div className="flex gap-4 p-2 border-b border-gray-300 items-center text-zinc-200">
+        <div className="flex gap-4 p-2 border-b border-zinc-300 items-center text-zinc-200">
             <button
                 onClick={handleAssemble}
                 className="px-4 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded"
@@ -91,16 +104,16 @@ export function EditorContainer() {
                 Assemble
             </button>
             {assemblyError && (
-                <span className="text-red-500">{assemblyError}</span>
+                <span className="text-red-600">{assemblyError}</span>
             )}
         </div>
         <div className="flex-1">
             <Editor
                 height="100%"
                 defaultLanguage="typescript"
-                defaultValue={defaultProgram}
+                defaultValue={DEFAULT_PROGRAM}
                 theme="vs-dark"
-                onChange={(value) => setEditorContent(value || "")}
+                onChange={handleEditorChange}
             />
         </div>
     </div>
