@@ -81,7 +81,7 @@ export function MemoryView() {
         }
     };
 
-    return <div className="flex flex-col h-full">
+    return <div className="flex flex-col min-h-0 overflow-hidden">
         <div className="flex gap-4 p-2 border-b border-gray-300 items-center text-zinc-200">
             <label className="flex items-center gap-2">
                 <span>Start Address:</span>
