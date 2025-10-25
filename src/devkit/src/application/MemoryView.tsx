@@ -5,6 +5,7 @@ export function MemoryView() {
     const firstRowAddress = useDevkitStore((state) => state.firstRowAddress);
     const viewSize = useDevkitStore((state) => state.viewSize);
     const memorySnapshot = useDevkitStore((state) => state.memorySnapshot);
+    const cpuSnapshot = useDevkitStore((state) => state.cpuSnapshot);
     const setFirstRowAddress = useDevkitStore((state) => state.setFirstRowAddress);
     const setViewSize = useDevkitStore((state) => state.setViewSize);
 
@@ -12,6 +13,7 @@ export function MemoryView() {
     const [sizeInput, setSizeInput] = useState('0214');
 
     const BYTES_PER_ROW = 8;
+    const programCounter = cpuSnapshot.programCounter;
 
     // Helper function to check if a character is printable ASCII
     const isPrintable = (byte: number): boolean => {
@@ -34,20 +36,24 @@ export function MemoryView() {
                 const address = rowAddress + col;
                 if (address < memorySnapshot.length && (row * BYTES_PER_ROW + col) < viewSize) {
                     const byte = memorySnapshot[address];
-                    bytes.push(byte.toString(16).padStart(2, '0').toUpperCase());
+                    bytes.push({
+                        hex: byte.toString(16).padStart(2, '0').toUpperCase(),
+                        address: address,
+                        isPC: address === programCounter
+                    });
                     ascii.push({
                         char: isPrintable(byte) ? String.fromCharCode(byte) : '.',
                         isPrintable: isPrintable(byte)
                     });
                 } else {
-                    bytes.push('  ');
+                    bytes.push({ hex: '  ', address: address, isPC: false });
                     ascii.push({ char: ' ', isPrintable: true });
                 }
             }
 
             rows.push({
                 address: rowAddress.toString(16).padStart(4, '0').toUpperCase(),
-                hex: bytes.join(' '),
+                bytes: bytes,
                 ascii: ascii
             });
         }
@@ -108,7 +114,16 @@ export function MemoryView() {
             {rows.map((row, idx) => (
                 <div key={idx} className="flex gap-8 mb-1">
                     <span>{row.address}</span>
-                    <span className="text-gray-300">{row.hex}</span>
+                    <span className="text-gray-300 flex gap-1">
+                        {row.bytes.map((byte, byteIdx) => (
+                            <span
+                                key={byteIdx}
+                                className={byte.isPC ? 'text-red-600' : ''}
+                            >
+                                {byte.hex}
+                            </span>
+                        ))}
+                    </span>
                     <span>
                         {row.ascii.map((char, charIdx) => (
                             <span

@@ -49,6 +49,11 @@ export function EditorContainer() {
                 }
             }
 
+            // Set program counter to the start of the first segment
+            if (result.segments.length > 0) {
+                virtualConsole.cpu.setProgramCounter(result.segments[0].startAddress);
+            }
+
             // Create a snapshot of the current memory
             const memorySnapshot = new Uint8Array(65536);
             for (let i = 0; i < 65536; i++) {
