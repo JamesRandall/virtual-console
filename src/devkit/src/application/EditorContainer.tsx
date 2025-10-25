@@ -77,6 +77,7 @@ export function EditorContainer() {
             // Clear error on success
             setAssemblyError(null);
         } catch (error) {
+            console.error("Unexpected error assembling code:", error);
             setAssemblyError("assembly error");
         }
     };
