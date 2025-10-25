@@ -10,7 +10,7 @@ import {
   OP_NOP, OP_LD, OP_ST, OP_MOV, OP_ADD, OP_SUB, OP_AND, OP_OR, OP_XOR,
   OP_SHL, OP_SHR, OP_CMP, OP_JMP, OP_BR, OP_CALL, OP_EXT,
   EXT_RET, EXT_RTI, EXT_PUSH, EXT_POP, EXT_INC, EXT_DEC,
-  EXT_ROL, EXT_ROR, EXT_SEI, EXT_CLI, EXT_NOP,
+  EXT_ROL, EXT_ROR, EXT_SEI, EXT_CLI,
   MODE_IMMEDIATE, MODE_REGISTER, MODE_ABSOLUTE, MODE_ZERO_PAGE,
   MODE_ZERO_PAGE_INDEXED, MODE_REGISTER_PAIR,
   BR_Z, BR_NZ, BR_C, BR_NC, BR_N, BR_NN, BR_V, BR_NV
@@ -45,31 +45,6 @@ export interface AssembledArtifacts {
   errors: AssemblerError[];
 }
 
-// Token types
-type TokenType =
-  | 'LABEL'
-  | 'OPCODE'
-  | 'REGISTER'
-  | 'IMMEDIATE'
-  | 'ABSOLUTE'
-  | 'ZERO_PAGE'
-  | 'ZERO_PAGE_INDEXED'
-  | 'REGISTER_PAIR'
-  | 'DIRECTIVE'
-  | 'NUMBER'
-  | 'STRING'
-  | 'IDENTIFIER'
-  | 'COMMA'
-  | 'COLON'
-  | 'NEWLINE'
-  | 'COMMENT';
-
-interface Token {
-  type: TokenType;
-  value: string;
-  line: number;
-  column: number;
-}
 
 // Parsed instruction/directive
 interface ParsedLine {
@@ -138,48 +113,6 @@ const BRANCH_CONDITIONS: Record<string, number> = {
 };
 
 // Helper Functions
-
-/**
- * Check if a character is whitespace
- */
-function isWhitespace(ch: string): boolean {
-  return ch === ' ' || ch === '\t' || ch === '\r';
-}
-
-/**
- * Check if a character can start an identifier
- */
-function isIdentifierStart(ch: string): boolean {
-  return /[a-zA-Z_.]/.test(ch);
-}
-
-/**
- * Check if a character can continue an identifier
- */
-function isIdentifierChar(ch: string): boolean {
-  return /[a-zA-Z0-9_.]/.test(ch);
-}
-
-/**
- * Check if a character is a digit
- */
-function isDigit(ch: string): boolean {
-  return /[0-9]/.test(ch);
-}
-
-/**
- * Check if a character is a hex digit
- */
-function isHexDigit(ch: string): boolean {
-  return /[0-9a-fA-F]/.test(ch);
-}
-
-/**
- * Check if a character is a binary digit
- */
-function isBinaryDigit(ch: string): boolean {
-  return ch === '0' || ch === '1';
-}
 
 /**
  * Parse a number from a string
