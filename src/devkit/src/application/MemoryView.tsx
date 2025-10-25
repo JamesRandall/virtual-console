@@ -1,13 +1,15 @@
-import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
 import {useState} from "react";
+import {useDevkitStore} from "../stores/devkitStore.ts";
 
 export function MemoryView() {
-    const [firstRowAddress, setFirstRowAddress] = useState(0x0000);
-    const [viewSize, setViewSize] = useState(0x0214); // 1024 bytes default
+    const firstRowAddress = useDevkitStore((state) => state.firstRowAddress);
+    const viewSize = useDevkitStore((state) => state.viewSize);
+    const memorySnapshot = useDevkitStore((state) => state.memorySnapshot);
+    const setFirstRowAddress = useDevkitStore((state) => state.setFirstRowAddress);
+    const setViewSize = useDevkitStore((state) => state.setViewSize);
+
     const [addressInput, setAddressInput] = useState('0000');
     const [sizeInput, setSizeInput] = useState('0214');
-
-    const virtualConsole = useVirtualConsole();
 
     const BYTES_PER_ROW = 8;
 
@@ -18,7 +20,7 @@ export function MemoryView() {
 
     // Generate hex dump rows
     const generateHexDump = () => {
-        if (!virtualConsole?.memory) return [];
+        if (!memorySnapshot) return [];
 
         const rows = [];
         const numRows = Math.ceil(viewSize / BYTES_PER_ROW);
@@ -30,8 +32,8 @@ export function MemoryView() {
 
             for (let col = 0; col < BYTES_PER_ROW; col++) {
                 const address = rowAddress + col;
-                if (address < virtualConsole.memory.size && (row * BYTES_PER_ROW + col) < viewSize) {
-                    const byte = virtualConsole.memory.read8(address);
+                if (address < memorySnapshot.length && (row * BYTES_PER_ROW + col) < viewSize) {
+                    const byte = memorySnapshot[address];
                     bytes.push(byte.toString(16).padStart(2, '0').toUpperCase());
                     ascii.push({
                         char: isPrintable(byte) ? String.fromCharCode(byte) : '.',
@@ -102,11 +104,11 @@ export function MemoryView() {
                 />
             </label>
         </div>
-        <div className="font-mono p-4 flex-1 overflow-y-auto">
+        <div className="font-mono p-4 flex-1 overflow-y-auto text-gray-500">
             {rows.map((row, idx) => (
                 <div key={idx} className="flex gap-8 mb-1">
-                    <span className="text-gray-500">{row.address}</span>
-                    <span>{row.hex}</span>
+                    <span>{row.address}</span>
+                    <span className="text-gray-300">{row.hex}</span>
                     <span>
                         {row.ascii.map((char, charIdx) => (
                             <span
