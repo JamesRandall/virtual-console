@@ -1,6 +1,9 @@
-import {useState, useCallback, useMemo} from "react";
+import {useCallback, useMemo} from "react";
 
 import {useDevkitStore} from "../stores/devkitStore.ts";
+
+import {Panel} from "../components/Panel.tsx";
+import {HexAddressInput} from "../components/HexAddressInput.tsx";
 
 const BYTES_PER_ROW = 8;
 
@@ -19,10 +22,6 @@ export function MemoryView() {
     const cpuSnapshot = useDevkitStore((state) => state.cpuSnapshot);
     const setFirstRowAddress = useDevkitStore((state) => state.setFirstRowAddress);
     const setViewSize = useDevkitStore((state) => state.setViewSize);
-
-    // Local state
-    const [addressInput, setAddressInput] = useState('0000');
-    const [sizeInput, setSizeInput] = useState('0214');
 
     // Computed values
     const programCounter = cpuSnapshot.programCounter;
@@ -70,64 +69,24 @@ export function MemoryView() {
 
     const rows = useMemo(() => generateHexDump(), [generateHexDump]);
 
-    // Event handlers
-    const handleAddressChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        setAddressInput(e.target.value.toUpperCase());
-    }, []);
-
-    const handleAddressBlur = useCallback(() => {
-        const parsed = parseInt(addressInput, 16);
-        if (!isNaN(parsed) && parsed >= 0) {
-            // Align to 8 bytes
-            const aligned = Math.floor(parsed / 8) * 8;
-            setFirstRowAddress(aligned);
-            setAddressInput(aligned.toString(16).padStart(4, '0').toUpperCase());
-        } else {
-            setAddressInput(firstRowAddress.toString(16).padStart(4, '0').toUpperCase());
-        }
-    }, [addressInput, firstRowAddress, setFirstRowAddress]);
-
-    const handleViewSizeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        setSizeInput(e.target.value.toUpperCase());
-    }, []);
-
-    const handleViewSizeBlur = useCallback(() => {
-        const parsed = parseInt(sizeInput, 16);
-        if (!isNaN(parsed) && parsed > 0) {
-            // Align to 8 bytes
-            const aligned = Math.ceil(parsed / 8) * 8;
-            setViewSize(aligned);
-            setSizeInput(aligned.toString(16).padStart(4, '0').toUpperCase());
-        } else {
-            setSizeInput(viewSize.toString(16).padStart(4, '0').toUpperCase());
-        }
-    }, [sizeInput, viewSize, setViewSize]);
-
     // Render
     return <div className="flex flex-col min-h-0 overflow-hidden">
-        <div className="flex gap-4 p-2 border-b border-zinc-300 items-center text-zinc-200">
-            <label className="flex items-center gap-2">
-                <span>Start Address:</span>
-                <input
-                    type="text"
-                    value={addressInput}
-                    onChange={handleAddressChange}
-                    onBlur={handleAddressBlur}
-                    className="font-mono w-20 px-2 py-1 border border-zinc-300 rounded"
-                />
-            </label>
-            <label className="flex items-center gap-2">
-                <span>View Size:</span>
-                <input
-                    type="text"
-                    value={sizeInput}
-                    onChange={handleViewSizeChange}
-                    onBlur={handleViewSizeBlur}
-                    className="font-mono w-20 px-2 py-1 border border-zinc-300 rounded"
-                />
-            </label>
-        </div>
-        <div className="font-mono p-4 flex-1 overflow-y-auto text-gray-500">
+        <Panel padding="p-2" border="bottom" className="flex gap-4 items-center">
+            <HexAddressInput
+                label="Start Address:"
+                value={firstRowAddress}
+                onChange={setFirstRowAddress}
+                alignment={BYTES_PER_ROW}
+            />
+            <HexAddressInput
+                label="View Size:"
+                value={viewSize}
+                onChange={setViewSize}
+                alignment={BYTES_PER_ROW}
+                minValue={1}
+            />
+        </Panel>
+        <Panel className="font-mono flex-1 overflow-y-auto text-gray-500">
             {rows.map((row, idx) => (
                 <div key={idx} className="flex gap-8 mb-1">
                     <span>{row.address}</span>
@@ -153,6 +112,6 @@ export function MemoryView() {
                     </span>
                 </div>
             ))}
-        </div>
+        </Panel>
     </div>
 }

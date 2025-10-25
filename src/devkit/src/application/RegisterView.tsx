@@ -2,6 +2,8 @@ import {useMemo} from "react";
 
 import {useDevkitStore} from "../stores/devkitStore.ts";
 
+import {Panel} from "../components/Panel.tsx";
+
 /**
  * Format a number as an 8-bit hex value
  */
@@ -39,7 +41,7 @@ export function RegisterView() {
     const flags = useMemo(() => extractFlags(cpuSnapshot.statusRegister), [cpuSnapshot.statusRegister]);
 
     // Render
-    return <div className="p-4 border-t border-zinc-300 text-zinc-200">
+    return <Panel border="top">
         <div className="font-mono text-sm">
             {/* Registers Row */}
             <div className="flex gap-6 mb-3">
@@ -92,5 +94,5 @@ export function RegisterView() {
                 </div>
             </div>
         </div>
-    </div>
+    </Panel>
 }

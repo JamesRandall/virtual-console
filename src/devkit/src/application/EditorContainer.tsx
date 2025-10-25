@@ -2,6 +2,7 @@ import {useState, useCallback} from "react";
 import {Editor} from "@monaco-editor/react";
 
 import {useDevkitStore} from "../stores/devkitStore.ts";
+import {updateVirtualConsoleSnapshot} from "../stores/utilities.ts";
 
 import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
 import {assemble} from "../../../console/src/assembler.ts";
@@ -66,25 +67,8 @@ export function EditorContainer() {
                 virtualConsole.cpu.setProgramCounter(result.segments[0].startAddress);
             }
 
-            // Create a snapshot of the current memory
-            const memorySnapshot = new Uint8Array(65536);
-            for (let i = 0; i < 65536; i++) {
-                memorySnapshot[i] = virtualConsole.memory.read8(i);
-            }
-            updateMemorySnapshot(memorySnapshot);
-
-            // Create a snapshot of the CPU state
-            const registers = new Uint8Array(6);
-            for (let i = 0; i < 6; i++) {
-                registers[i] = virtualConsole.cpu.getRegister(i);
-            }
-            updateCpuSnapshot({
-                registers,
-                stackPointer: virtualConsole.cpu.getStackPointer(),
-                programCounter: virtualConsole.cpu.getProgramCounter(),
-                statusRegister: virtualConsole.cpu.getStatus(),
-                cycleCount: virtualConsole.cpu.getCycles(),
-            });
+            // Update snapshots
+            updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot);
 
             // Clear error on success
             setAssemblyError(null);

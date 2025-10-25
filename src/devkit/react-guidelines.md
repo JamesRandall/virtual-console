@@ -37,6 +37,7 @@ Key source and specifications for the virtual console "hardware" can be found in
     9. Return/JSX
 * Extract complex JSX into separate render functions or sub-components.
 * Keep components focused on a single responsibility.
+* Introduce layout components to handle, and componentize, common Tailwind CSS patterns
 
 ## File Organization
 
