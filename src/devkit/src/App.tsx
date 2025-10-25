@@ -1,6 +1,6 @@
 import {Allotment} from "allotment";
 import {DebugView} from "./application/DebugView.tsx";
-import {Editor} from "./application/Editor.tsx";
+import {EditorContainer} from "./application/EditorContainer.tsx";
 import "allotment/dist/style.css";
 
 function App() {
@@ -8,7 +8,7 @@ function App() {
       <div className="h-full overflow-none">
           <Allotment>
               <DebugView />
-              <Editor />
+              <EditorContainer />
           </Allotment>
       </div>
   )
