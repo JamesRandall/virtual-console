@@ -21,6 +21,7 @@ interface DevkitState {
   cpuSnapshot: CpuSnapshot;
 
   // Actions
+  setIsConsoleRunning: (isRunning: boolean) => void;
   setFirstRowAddress: (address: number) => void;
   setViewSize: (size: number) => void;
   updateMemorySnapshot: (snapshot: Uint8Array) => void;
@@ -42,6 +43,7 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   },
 
   // Actions
+  setIsConsoleRunning: (isRunning: boolean) => set({ isConsoleRunning: isRunning }),
   setFirstRowAddress: (address: number) => set({ firstRowAddress: address }),
   setViewSize: (size: number) => set({ viewSize: size }),
   updateMemorySnapshot: (snapshot: Uint8Array) => set({ memorySnapshot: snapshot }),
