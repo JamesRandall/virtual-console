@@ -1,0 +1,6 @@
+# Headers for enabling SharedArrayBuffer
+# Required for running CPU in a Web Worker with shared memory
+
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp

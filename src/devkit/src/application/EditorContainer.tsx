@@ -134,11 +134,13 @@ export function EditorContainer() {
 
             // Set program counter to the start of the first segment
             if (result.segments.length > 0) {
-                virtualConsole.cpu.setProgramCounter(result.segments[0].startAddress);
+                virtualConsole.setProgramCounter(result.segments[0].startAddress);
             }
 
             // Update snapshots
-            updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot);
+            updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
+                console.error("Error updating snapshots:", error);
+            });
 
             // Clear error on success
             setAssemblyError(null);

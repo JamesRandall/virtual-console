@@ -13,8 +13,20 @@ const MEMORY_SIZE = 65536; // 64KB address space
 export class MemoryBus {
   private readonly memory: Uint8Array;
 
-  constructor() {
-    this.memory = new Uint8Array(MEMORY_SIZE);
+  /**
+   * @param memory - Optional Uint8Array to use as backing memory.
+   *                 Can be backed by a SharedArrayBuffer for multi-threaded access.
+   *                 If not provided, creates a new Uint8Array.
+   */
+  constructor(memory?: Uint8Array) {
+    if (memory) {
+      if (memory.length !== MEMORY_SIZE) {
+        throw new Error(`Memory buffer must be exactly ${MEMORY_SIZE} bytes`);
+      }
+      this.memory = memory;
+    } else {
+      this.memory = new Uint8Array(MEMORY_SIZE);
+    }
   }
 
   /**

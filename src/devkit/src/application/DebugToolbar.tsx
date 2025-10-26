@@ -17,9 +17,11 @@ export function DebugToolbar() {
     const handleStep = useCallback(() => {
         try {
             // Execute one instruction
-            virtualConsole.cpu.step();
-            // Update snapshots
-            updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot);
+            virtualConsole.step();
+            // Update snapshots (async but we don't need to wait)
+            updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
+                console.error("Error updating snapshots:", error);
+            });
         } catch (error) {
             console.error("Error stepping through program:", error);
         }
