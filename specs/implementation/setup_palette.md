@@ -13,7 +13,7 @@ Create a new file called palette.ts in the src/console/src directory and impleme
 
 Our default screen mode is mode 0 and should be set in the VIDEO_MODE register as described in the memory map.
 
-When screen mode 0 or 3 is set the palette memory space is loaded with the default palette for 4bpp mode as described in video.md. This should be 16 instances the same default palette.
+When screen mode 0 or 3 is set the palette memory space is loaded with the default palette for 4bpp mode as described in video.md. This should be 64 instances (as per the spec) of the same default palette.
 
 When screen mode 1 or 2 is set the palette memory space is loaded with the default palette for 8bpp mode. This is a linear index from 0 to 255 (i.e. first index is 0, next index is 1, etc.)
 

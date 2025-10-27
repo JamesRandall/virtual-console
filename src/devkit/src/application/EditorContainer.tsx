@@ -13,7 +13,7 @@ import {
 } from "./assemblerLanguageSpecification.ts";
 
 const DEFAULT_PROGRAM = `
-  .org $20
+  .org $B80
   LD R0, #$AA      ; Load pattern
   LD R1, #0        ; Counter
   LD R2, #0        ; Address high byte

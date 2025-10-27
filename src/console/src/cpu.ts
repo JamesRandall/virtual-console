@@ -9,6 +9,7 @@
  */
 
 import { MemoryBus } from './memoryBus';
+import { setVideoMode } from './palette';
 
 // Opcode constants
 export const OP_NOP = 0x0;
@@ -99,6 +100,9 @@ export class CPU {
     this.pc = 0x0000;
     this.status = 0;
     this.cycles = 0;
+
+    // Set default video mode (Mode 0: 256×160 @ 4bpp)
+    setVideoMode(this.bus, 0);
   }
 
   /**
