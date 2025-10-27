@@ -17,7 +17,7 @@ And our canvas is in this component:
 
 /Users/jamesrandall/code/virtual-console/src/devkit/src/application/ConsoleView.tsx
 
-We want our rendering to run at 60fps and be based around the requestAnimationFrame capability of the browser. On each frame it should capture the appropriate section of memory (see specification) and send that byte array to WebGPU.
+We want our rendering to run at 60fps and be based around the requestAnimationFrame capability of the browser. Rendering should run at 60fps regardless of the frame deltas - i.e. on a 120fps display we should still only update the display at 60fps. On each frame it should capture the appropriate section of memory (see specification) and send that byte array to WebGPU.
 
 You can focus solely on mode 0 (256×160 @ 4bpp) for this implementation.
 
@@ -27,7 +27,7 @@ We want the output to fill the canvas and if any scaling takes place it should m
 
 You should split the rendering code into two parts:
 
-* React code: this code should be placed inside the devkit at /src/devkit/src/consoleIntegration/Rendering.tsx
+* React code: this code should be placed inside the devkit at /src/devkit/src/consoleIntegration/FrameBufferRendering.tsx
 * WebGPU code: this code should be placed inside the devkit at /src/devkit/src/consoleIntegration/webgpuRendering.ts
 
 Ask me any questions you have before proceeding with implementation.
