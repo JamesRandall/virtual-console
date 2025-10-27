@@ -505,23 +505,27 @@ Available for:
 
 ### Framebuffer Layout (Top-aligned)
 
-The framebuffer starts at **0xFFFF and grows downward** based on video mode:
+The framebuffer is positioned at the end of memory space ending at **0xFFFF** with its start in memory based on video mode:
 
 #### Mode 0: 256×160 @ 4bpp
-- **Framebuffer:** 0xFFFF → 0xAFFF (20,480 bytes / 0x5000)
-- **User space:** 0xAFFE → 0x8000 (11,518 bytes / ~11.2 KB)
+- **Framebuffer:** 0xB000 → 0xFFFF (20,480 bytes / 0x5000)
+- X: 0, Y: 0 (top-left corner) → 0xB000
+- X: 255, Y: 159 (bottom-right corner) → 0xFFFF
 
 #### Mode 1: 160×96 @ 8bpp
-- **Framebuffer:** 0xFFFF → 0xC3FF (15,360 bytes / 0x3C00)
-- **User space:** 0xC3FE → 0x8000 (16,382 bytes / ~16 KB)
+- **Framebuffer:** 0xC400 → 0xFFFF (15,360 bytes / 0x3C00)
+- X: 0, Y: 0 (top-left corner) → 0xC400
+- X: 159, Y: 95 (bottom-right corner) → 0xFFFF
 
 #### Mode 2: 128×128 @ 8bpp
-- **Framebuffer:** 0xFFFF → 0xBFFF (16,384 bytes / 0x4000)
-- **User space:** 0xBFFE → 0x8000 (16,383 bytes / ~16 KB)
+- **Framebuffer:** 0xC000 → 0xFFFF (16,384 bytes / 0x4000)
+- X: 0, Y: 0 (top-left corner) → 0xC000
+- X: 127, Y: 127 (bottom-right corner) → 0xFFFF
 
 #### Mode 3: 176×176 @ 4bpp
-- **Framebuffer:** 0xFFFF → 0xC380 (15,488 bytes / 0x3C80)
-- **User space:** 0xC37F → 0x8000 (17,023 bytes / ~16.6 KB)
+- **Framebuffer:** 0xC380 → 0xFFF (15,488 bytes / 0x3C80)
+- X: 0, Y: 0 (top-left corner) → 0xC000
+- X: 175, Y: 175 (bottom-right corner) → 0xFFFF
 
 ### Bank Usage Conventions
 
