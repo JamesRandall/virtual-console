@@ -23,10 +23,8 @@ export function DebugView() {
     const virtualConsole = useVirtualConsole();
 
     useEffect(() => {
-        console.log('[DebugView] useEffect running, waiting for virtualConsole.ready');
         // Wait for CPU to be initialized before taking snapshot
         virtualConsole.ready.then(() => {
-            console.log('[DebugView] virtualConsole.ready resolved, taking snapshot');
             updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
                 console.error("Error updating snapshots:", error);
             });

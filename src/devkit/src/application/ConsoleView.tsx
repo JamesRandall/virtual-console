@@ -1,17 +1,10 @@
 import { useRef, useEffect, useState } from 'react';
 import { useVirtualConsole } from '../consoleIntegration/virtualConsole';
 import { createWebGPURenderer, type WebGPURenderer } from '../consoleIntegration/webgpuRendering';
-import { writeTestPattern } from '../consoleIntegration/testPattern';
 
 export function ConsoleView() {
   // Virtual console
   const { sharedMemory } = useVirtualConsole();
-
-  // Initialize test pattern on mount
-  useEffect(() => {
-    const memoryArray = new Uint8Array(sharedMemory);
-    writeTestPattern(memoryArray);
-  }, [sharedMemory]);
 
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);

@@ -90,7 +90,6 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
 
     // Create initialization promise only once and store in ref
     if (!readyPromiseRef.current) {
-      console.log('[VirtualConsole] Creating ready promise, storing resolver');
       readyPromiseRef.current = new Promise<void>((resolve) => {
         initResolverRef.current = resolve;
       });
@@ -107,17 +106,12 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
     // Handle worker messages
     worker.onmessage = (event: MessageEvent) => {
       const { type, snapshot, error } = event.data;
-      console.log('[VirtualConsole] Received worker message:', type);
 
       if (type === 'initialized') {
-        console.log('[VirtualConsole] Worker initialized, resolving ready promise');
         // Resolve initialization promise
         if (initResolverRef.current) {
-          console.log('[VirtualConsole] Calling resolver');
           initResolverRef.current();
           initResolverRef.current = null;
-        } else {
-          console.warn('[VirtualConsole] No resolver found!');
         }
       } else if (type === 'snapshot' || type === 'stepped') {
         // Resolve pending snapshot promise
@@ -137,7 +131,6 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
     };
 
     // Initialize worker with shared memory
-    console.log('[VirtualConsole] Posting init message to worker');
     worker.postMessage({
       type: 'init',
       payload: { sharedMemory },

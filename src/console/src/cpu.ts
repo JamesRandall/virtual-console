@@ -9,7 +9,7 @@
  */
 
 import { MemoryBus } from './memoryBus';
-import { setVideoMode } from './palette';
+import { setVideoMode, writeTestPattern } from './palette';
 
 // Opcode constants
 export const OP_NOP = 0x0;
@@ -103,6 +103,9 @@ export class CPU {
 
     // Set default video mode (Mode 0: 256×160 @ 4bpp)
     setVideoMode(this.bus, 0);
+
+    // Write test pattern to framebuffer
+    writeTestPattern(this.bus);
   }
 
   /**

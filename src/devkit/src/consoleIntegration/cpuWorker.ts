@@ -88,17 +88,13 @@ self.onmessage = (event: MessageEvent) => {
 
   switch (type) {
     case 'init': {
-      console.log('[CPUWorker] Received init message');
       // Initialize CPU with shared memory
       const { sharedMemory } = payload;
       const memoryArray = new Uint8Array(sharedMemory);
       const memory = new MemoryBus(memoryArray);
-      console.log('[CPUWorker] Creating CPU');
       cpu = new CPU(memory);
-      console.log('[CPUWorker] CPU created, posting initialized message');
 
       self.postMessage({ type: 'initialized' });
-      console.log('[CPUWorker] initialized message posted');
       break;
     }
 

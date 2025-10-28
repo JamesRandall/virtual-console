@@ -116,3 +116,51 @@ function initializeScanlinePaletteMap(bus: MemoryBus): void {
     bus.write8(address, 0);
   }
 }
+
+/**
+ * Write a test pattern to the framebuffer
+ * Creates a colorful test pattern to verify rendering
+ */
+export function writeTestPattern(bus: MemoryBus): void {
+  const FRAMEBUFFER_START = 0xB000;
+  const WIDTH = 256;
+  const HEIGHT = 160;
+
+  // Draw test pattern
+  for (let y = 0; y < HEIGHT; y++) {
+    for (let x = 0; x < WIDTH; x++) {
+      let colorIndex = 0;
+
+      if (y < 40) {
+        // Color bars (top section)
+        colorIndex = Math.floor((x / WIDTH) * 16);
+      } else if (y < 80) {
+        // Horizontal gradient (upper middle)
+        colorIndex = Math.floor((x / WIDTH) * 16);
+      } else if (y < 120) {
+        // Vertical gradient (lower middle)
+        colorIndex = Math.floor(((y - 80) / 40) * 16);
+      } else {
+        // Checkerboard pattern (bottom section)
+        const checkerSize = 8;
+        const checkerX = Math.floor(x / checkerSize);
+        const checkerY = Math.floor(y / checkerSize);
+        colorIndex = ((checkerX + checkerY) % 2 === 0) ? 1 : 0; // White or black
+      }
+
+      // Write pixel (4bpp = 2 pixels per byte)
+      const pixelIndex = y * WIDTH + x;
+      const byteIndex = FRAMEBUFFER_START + Math.floor(pixelIndex / 2);
+      const isEvenPixel = (pixelIndex % 2) === 0;
+
+      const currentByte = bus.read8(byteIndex);
+      if (isEvenPixel) {
+        // Low nibble
+        bus.write8(byteIndex, (currentByte & 0xF0) | (colorIndex & 0x0F));
+      } else {
+        // High nibble
+        bus.write8(byteIndex, (currentByte & 0x0F) | ((colorIndex & 0x0F) << 4));
+      }
+    }
+  }
+}
