@@ -25,6 +25,9 @@ export interface VirtualConsoleController {
   /** Shared memory buffer accessible by both threads */
   sharedMemory: SharedArrayBuffer;
 
+  /** Promise that resolves when the CPU worker is initialized */
+  ready: Promise<void>;
+
   /** Start CPU execution in the worker */
   run(): void;
 
@@ -65,6 +68,10 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
   );
   const snapshotIdRef = useRef(0);
 
+  // Store the ready promise and resolver in refs so they persist across re-renders
+  const readyPromiseRef = useRef<Promise<void> | null>(null);
+  const initResolverRef = useRef<(() => void) | null>(null);
+
   const controller = useMemo<VirtualConsoleController>(() => {
     // Check if SharedArrayBuffer is available
     if (typeof SharedArrayBuffer === 'undefined') {
@@ -81,6 +88,14 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
     const memoryArray = new Uint8Array(sharedMemory);
     const memory = new MemoryBus(memoryArray);
 
+    // Create initialization promise only once and store in ref
+    if (!readyPromiseRef.current) {
+      console.log('[VirtualConsole] Creating ready promise, storing resolver');
+      readyPromiseRef.current = new Promise<void>((resolve) => {
+        initResolverRef.current = resolve;
+      });
+    }
+
     // Create worker
     const worker = new Worker(
       new URL('./cpuWorker.ts', import.meta.url),
@@ -92,8 +107,19 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
     // Handle worker messages
     worker.onmessage = (event: MessageEvent) => {
       const { type, snapshot, error } = event.data;
+      console.log('[VirtualConsole] Received worker message:', type);
 
-      if (type === 'snapshot' || type === 'stepped') {
+      if (type === 'initialized') {
+        console.log('[VirtualConsole] Worker initialized, resolving ready promise');
+        // Resolve initialization promise
+        if (initResolverRef.current) {
+          console.log('[VirtualConsole] Calling resolver');
+          initResolverRef.current();
+          initResolverRef.current = null;
+        } else {
+          console.warn('[VirtualConsole] No resolver found!');
+        }
+      } else if (type === 'snapshot' || type === 'stepped') {
         // Resolve pending snapshot promise
         const resolvers = snapshotResolversRef.current;
         const resolve = resolvers.values().next().value;
@@ -111,6 +137,7 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
     };
 
     // Initialize worker with shared memory
+    console.log('[VirtualConsole] Posting init message to worker');
     worker.postMessage({
       type: 'init',
       payload: { sharedMemory },
@@ -119,6 +146,7 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
     return {
       memory,
       sharedMemory,
+      ready: readyPromiseRef.current,
 
       run() {
         worker.postMessage({ type: 'run' });

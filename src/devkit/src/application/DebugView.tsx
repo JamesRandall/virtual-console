@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import {useEffect, useState} from 'react';
 import { DebugToolbar } from "./DebugToolbar.tsx";
 import { MemoryView } from "./MemoryView.tsx";
 import { RegisterView } from "./RegisterView.tsx";
 import { ConsoleView } from "./ConsoleView.tsx";
 import { TabStrip, type Tab } from "../components/TabStrip.tsx";
+import {useDevkitStore} from "../stores/devkitStore.ts";
+import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
+import {updateVirtualConsoleSnapshot} from "../stores/utilities.ts";
 
 type TabId = 'debug' | 'console';
 
@@ -15,6 +18,20 @@ const TABS: Tab[] = [
 export function DebugView() {
     // Local state
     const [activeTab, setActiveTab] = useState<TabId>('debug');
+    const updateMemorySnapshot = useDevkitStore((state) => state.updateMemorySnapshot);
+    const updateCpuSnapshot = useDevkitStore((state) => state.updateCpuSnapshot);
+    const virtualConsole = useVirtualConsole();
+
+    useEffect(() => {
+        console.log('[DebugView] useEffect running, waiting for virtualConsole.ready');
+        // Wait for CPU to be initialized before taking snapshot
+        virtualConsole.ready.then(() => {
+            console.log('[DebugView] virtualConsole.ready resolved, taking snapshot');
+            updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
+                console.error("Error updating snapshots:", error);
+            });
+        });
+    }, [updateCpuSnapshot, updateMemorySnapshot, virtualConsole]);
 
     // Event handlers
     const handleTabChange = (tabId: string) => {
