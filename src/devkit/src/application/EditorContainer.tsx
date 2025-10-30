@@ -11,6 +11,8 @@ import {
     registerAssemblerLanguage,
     ASSEMBLER_LANGUAGE_ID,
 } from "./assemblerLanguageSpecification.ts";
+import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
+import {faHammer} from "@fortawesome/free-solid-svg-icons";
 
 const DEFAULT_PROGRAM = `
   .org $B80
@@ -152,18 +154,7 @@ export function EditorContainer() {
 
     // Render
     return <div className="flex flex-col h-full w-full bg-zinc-800">
-        <div className="flex gap-4 p-2 border-b border-zinc-300 items-center text-zinc-200">
-            <button
-                onClick={handleAssemble}
-                className="px-4 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded"
-            >
-                Assemble
-            </button>
-            {assemblyError && (
-                <span className="text-red-600">{assemblyError}</span>
-            )}
-        </div>
-        <div className="flex-1">
+        <div className="flex-1 min-h-0 overflow-hidden">
             <Editor
                 height="100%"
                 defaultLanguage={ASSEMBLER_LANGUAGE_ID}
@@ -173,6 +164,17 @@ export function EditorContainer() {
                 onMount={handleEditorMount}
                 onChange={handleEditorChange}
             />
+        </div>
+        <div className="flex justify-end gap-4 p-4 border-t border-zinc-300 items-center text-zinc-200 flex-shrink-0">
+            <button
+                onClick={handleAssemble}
+                className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded"
+            >
+                <FontAwesomeIcon icon={faHammer} />
+            </button>
+            {assemblyError && (
+                <span className="text-red-600">{assemblyError}</span>
+            )}
         </div>
     </div>
 }

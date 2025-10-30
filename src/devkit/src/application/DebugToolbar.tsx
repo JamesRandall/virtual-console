@@ -4,6 +4,8 @@ import {useDevkitStore} from "../stores/devkitStore.ts";
 import {updateVirtualConsoleSnapshot} from "../stores/utilities.ts";
 
 import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
+import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
+import {faPlay, faPause, faForward} from "@fortawesome/free-solid-svg-icons";
 
 export function DebugToolbar() {
     // Zustand store hooks
@@ -57,24 +59,24 @@ export function DebugToolbar() {
             {!isConsoleRunning ? (
                 <button
                     onClick={handleRun}
-                    className="px-4 py-1 bg-green-600 hover:bg-green-700 text-white rounded"
+                    className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded"
                 >
-                    Run
+                    <FontAwesomeIcon icon={faPlay} />
                 </button>
             ) : (
                 <button
                     onClick={handlePause}
-                    className="px-4 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded"
+                    className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded"
                 >
-                    Pause
+                    <FontAwesomeIcon icon={faPause} />
                 </button>
             )}
             <button
                 onClick={handleStep}
                 disabled={isConsoleRunning}
-                className="px-4 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:bg-zinc-600 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded disabled:bg-zinc-400 disabled:cursor-not-allowed"
             >
-                Step
+                <FontAwesomeIcon icon={faForward} />
             </button>
         </div>
     </div>
