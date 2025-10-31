@@ -28,6 +28,7 @@ interface DevkitState {
   // Breakpoint state
   breakpointLines: Set<number>;      // Line numbers where breakpoints are set
   breakpointAddresses: Set<number>;  // Memory addresses where breakpoints are set
+  codeChangedSinceAssembly: boolean; // Track if code changed since last assembly
 
   // Actions
   setIsConsoleRunning: (isRunning: boolean) => void;
@@ -40,6 +41,7 @@ interface DevkitState {
   toggleBreakpoint: (line: number) => void;
   updateBreakpointAddresses: (sourceMap: SourceMapEntry[]) => void;
   clearAllBreakpoints: () => void;
+  setCodeChangedSinceAssembly: (changed: boolean) => void;
 }
 
 export const useDevkitStore = create<DevkitState>((set) => ({
@@ -59,6 +61,7 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   symbolTable: {},
   breakpointLines: new Set<number>(),
   breakpointAddresses: new Set<number>(),
+  codeChangedSinceAssembly: false,
 
   // Actions
   setIsConsoleRunning: (isRunning: boolean) => set({ isConsoleRunning: isRunning }),
@@ -76,7 +79,22 @@ export const useDevkitStore = create<DevkitState>((set) => ({
     } else {
       newBreakpointLines.add(line);
     }
-    return { breakpointLines: newBreakpointLines };
+
+    // If we have a source map, immediately update breakpoint addresses
+    const newBreakpointAddresses = new Set<number>();
+    if (state.sourceMap.length > 0) {
+      newBreakpointLines.forEach((line) => {
+        const entry = state.sourceMap.find(entry => entry.line === line);
+        if (entry) {
+          newBreakpointAddresses.add(entry.address);
+        }
+      });
+    }
+
+    return {
+      breakpointLines: newBreakpointLines,
+      breakpointAddresses: newBreakpointAddresses
+    };
   }),
 
   updateBreakpointAddresses: (sourceMap: SourceMapEntry[]) => set((state) => {
@@ -97,4 +115,6 @@ export const useDevkitStore = create<DevkitState>((set) => ({
     breakpointLines: new Set<number>(),
     breakpointAddresses: new Set<number>()
   }),
+
+  setCodeChangedSinceAssembly: (changed: boolean) => set({ codeChangedSinceAssembly: changed }),
 }));

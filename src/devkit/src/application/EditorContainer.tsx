@@ -43,6 +43,8 @@ export function EditorContainer() {
     const breakpointLines = useDevkitStore((state) => state.breakpointLines);
     const toggleBreakpoint = useDevkitStore((state) => state.toggleBreakpoint);
     const updateBreakpointAddresses = useDevkitStore((state) => state.updateBreakpointAddresses);
+    const codeChangedSinceAssembly = useDevkitStore((state) => state.codeChangedSinceAssembly);
+    const setCodeChangedSinceAssembly = useDevkitStore((state) => state.setCodeChangedSinceAssembly);
 
     // Virtual console hook
     const virtualConsole = useVirtualConsole();
@@ -202,9 +204,14 @@ export function EditorContainer() {
         const code = value || "";
         setEditorContent(code);
 
+        // Mark code as changed if we have an existing source map (assembly has occurred)
+        if (sourceMap.length > 0) {
+            setCodeChangedSinceAssembly(true);
+        }
+
         // Validate code on change
         validateCode(code);
-    }, [validateCode]);
+    }, [validateCode, sourceMap.length, setCodeChangedSinceAssembly]);
 
     const handleAssemble = useCallback(() => {
         if (!editorContent) {
@@ -241,6 +248,9 @@ export function EditorContainer() {
             // Update breakpoint addresses based on new source map
             updateBreakpointAddresses(result.sourceMap);
 
+            // Clear the code changed flag since we just assembled
+            setCodeChangedSinceAssembly(false);
+
             // Update snapshots
             updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
                 console.error("Error updating snapshots:", error);
@@ -252,11 +262,26 @@ export function EditorContainer() {
             console.error("Unexpected error assembling code:", error);
             setAssemblyError("assembly error");
         }
-    }, [editorContent, setSourceMap, setSymbolTable, updateBreakpointAddresses, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
+    }, [editorContent, setSourceMap, setSymbolTable, updateBreakpointAddresses, setCodeChangedSinceAssembly, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
+
+    // Determine if we should show the warning banner
+    const showWarningBanner = codeChangedSinceAssembly && breakpointLines.size > 0 && sourceMap.length > 0;
 
     // Render
     return <div className="flex flex-col h-full w-full bg-zinc-800">
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden relative">
+            {/* Warning banner for out-of-sync breakpoints */}
+            {showWarningBanner && (
+                <div className="absolute top-0 left-0 right-0 z-10 bg-amber-600 text-white px-4 py-2 text-sm flex items-center justify-between shadow-lg">
+                    <div className="flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        <span className="font-medium">Code changed since last assembly</span>
+                        <span>- Breakpoint addresses may be out of sync. Reassemble to update.</span>
+                    </div>
+                </div>
+            )}
             <Editor
                 height="100%"
                 defaultLanguage={ASSEMBLER_LANGUAGE_ID}
