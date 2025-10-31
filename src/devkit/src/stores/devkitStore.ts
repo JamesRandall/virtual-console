@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { SourceMapEntry, SymbolTable } from '../../../console/src/assembler.ts';
 
 export interface CpuSnapshot {
   registers: Uint8Array;  // R0-R5 (6 registers)
@@ -20,12 +21,18 @@ interface DevkitState {
   // CPU snapshot state
   cpuSnapshot: CpuSnapshot;
 
+  // Debug state
+  sourceMap: SourceMapEntry[];
+  symbolTable: SymbolTable;
+
   // Actions
   setIsConsoleRunning: (isRunning: boolean) => void;
   setFirstRowAddress: (address: number) => void;
   setViewSize: (size: number) => void;
   updateMemorySnapshot: (snapshot: Uint8Array) => void;
   updateCpuSnapshot: (snapshot: CpuSnapshot) => void;
+  setSourceMap: (sourceMap: SourceMapEntry[]) => void;
+  setSymbolTable: (symbolTable: SymbolTable) => void;
 }
 
 export const useDevkitStore = create<DevkitState>((set) => ({
@@ -41,6 +48,8 @@ export const useDevkitStore = create<DevkitState>((set) => ({
     statusRegister: 0,
     cycleCount: 0,
   },
+  sourceMap: [],
+  symbolTable: {},
 
   // Actions
   setIsConsoleRunning: (isRunning: boolean) => set({ isConsoleRunning: isRunning }),
@@ -48,4 +57,6 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   setViewSize: (size: number) => set({ viewSize: size }),
   updateMemorySnapshot: (snapshot: Uint8Array) => set({ memorySnapshot: snapshot }),
   updateCpuSnapshot: (snapshot: CpuSnapshot) => set({ cpuSnapshot: snapshot }),
+  setSourceMap: (sourceMap: SourceMapEntry[]) => set({ sourceMap }),
+  setSymbolTable: (symbolTable: SymbolTable) => set({ symbolTable }),
 }));

@@ -1,9 +1,10 @@
-import {useState, useCallback, useRef} from "react";
+import {useState, useCallback, useRef, useEffect} from "react";
 import {Editor, type Monaco, type OnMount} from "@monaco-editor/react";
 import type * as MonacoEditor from "monaco-editor";
 
 import {useDevkitStore} from "../stores/devkitStore.ts";
 import {updateVirtualConsoleSnapshot} from "../stores/utilities.ts";
+import "./EditorContainer.css";
 
 import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
 import {assemble, type AssemblerError} from "../../../console/src/assembler.ts";
@@ -33,6 +34,11 @@ export function EditorContainer() {
     // Zustand store hooks
     const updateMemorySnapshot = useDevkitStore((state) => state.updateMemorySnapshot);
     const updateCpuSnapshot = useDevkitStore((state) => state.updateCpuSnapshot);
+    const setSourceMap = useDevkitStore((state) => state.setSourceMap);
+    const setSymbolTable = useDevkitStore((state) => state.setSymbolTable);
+    const sourceMap = useDevkitStore((state) => state.sourceMap);
+    const cpuSnapshot = useDevkitStore((state) => state.cpuSnapshot);
+    const isConsoleRunning = useDevkitStore((state) => state.isConsoleRunning);
 
     // Virtual console hook
     const virtualConsole = useVirtualConsole();
@@ -44,6 +50,70 @@ export function EditorContainer() {
     // Refs
     const monacoRef = useRef<Monaco | null>(null);
     const editorRef = useRef<MonacoEditor.editor.IStandaloneCodeEditor | null>(null);
+    const decorationsCollectionRef = useRef<MonacoEditor.editor.IEditorDecorationsCollection | null>(null);
+
+    // Find the line number for a given program counter address
+    const findLineForPC = useCallback((pc: number): number | null => {
+        if (sourceMap.length === 0) {
+            return null;
+        }
+
+        // Find the source map entry for the current PC
+        // Source map is sorted by address, so we find the last entry with address <= PC
+        let line: number | null = null;
+        for (const entry of sourceMap) {
+            if (entry.address <= pc) {
+                line = entry.line;
+            } else {
+                break;
+            }
+        }
+        return line;
+    }, [sourceMap]);
+
+    // Update gutter decorations based on current PC
+    const updateDecorations = useCallback(() => {
+        if (!editorRef.current || !monacoRef.current || !decorationsCollectionRef.current) {
+            return;
+        }
+
+        const monaco = monacoRef.current;
+        const decorationsCollection = decorationsCollectionRef.current;
+
+        // If CPU is running, clear decorations
+        if (isConsoleRunning) {
+            decorationsCollection.set([]);
+            return;
+        }
+
+        // Find the line for the current PC
+        const currentLine = findLineForPC(cpuSnapshot.programCounter);
+
+        if (currentLine === null) {
+            // Clear decorations if no line found
+            decorationsCollection.set([]);
+            return;
+        }
+
+        // Create decoration for current line
+        const newDecorations: MonacoEditor.editor.IModelDeltaDecoration[] = [
+            {
+                range: new monaco.Range(currentLine, 1, currentLine, 1),
+                options: {
+                    isWholeLine: false,
+                    glyphMarginClassName: 'current-line-glyph',
+                    glyphMarginHoverMessage: { value: `PC: 0x${cpuSnapshot.programCounter.toString(16).toUpperCase().padStart(4, '0')}` },
+                }
+            }
+        ];
+
+        decorationsCollection.set(newDecorations);
+    }, [isConsoleRunning, cpuSnapshot.programCounter, findLineForPC]);
+
+    // Update decorations when CPU state changes
+    useEffect(() => {
+        updateDecorations();
+    }, [updateDecorations]);
 
     // Validation function
     const validateCode = useCallback((code: string) => {
@@ -99,6 +169,9 @@ export function EditorContainer() {
         // Store editor instance
         editorRef.current = editor;
 
+        // Create decorations collection
+        decorationsCollectionRef.current = editor.createDecorationsCollection();
+
         // Validate initial content
         validateCode(DEFAULT_PROGRAM);
     }, [validateCode]);
@@ -139,6 +212,10 @@ export function EditorContainer() {
                 virtualConsole.setProgramCounter(result.segments[0].startAddress);
             }
 
+            // Store source map and symbol table
+            setSourceMap(result.sourceMap);
+            setSymbolTable(result.symbolTable);
+
             // Update snapshots
             updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
                 console.error("Error updating snapshots:", error);
@@ -150,7 +227,7 @@ export function EditorContainer() {
             console.error("Unexpected error assembling code:", error);
             setAssemblyError("assembly error");
         }
-    }, [editorContent, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
+    }, [editorContent, setSourceMap, setSymbolTable, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
 
     // Render
     return <div className="flex flex-col h-full w-full bg-zinc-800">
@@ -163,6 +240,9 @@ export function EditorContainer() {
                 beforeMount={handleEditorBeforeMount}
                 onMount={handleEditorMount}
                 onChange={handleEditorChange}
+                options={{
+                    glyphMargin: true,
+                }}
             />
         </div>
         <div className="flex justify-end gap-4 p-4 border-t border-zinc-300 items-center text-zinc-200 flex-shrink-0">
