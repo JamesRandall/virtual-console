@@ -1,4 +1,4 @@
-import {type ReactNode} from "react";
+import {type ReactNode, type RefObject} from "react";
 
 interface PanelProps {
     /** Content to render inside the panel */
@@ -9,6 +9,8 @@ interface PanelProps {
     border?: 'top' | 'bottom' | 'all' | 'none';
     /** Custom padding override (defaults to p-4) */
     padding?: string;
+    /** Optional ref to the underlying div element */
+    innerRef?: RefObject<HTMLDivElement | null>;
 }
 
 /**
@@ -19,7 +21,8 @@ export function Panel({
     children,
     className = '',
     border = 'none',
-    padding = 'p-4'
+    padding = 'p-4',
+    innerRef
 }: PanelProps) {
     const borderClasses = {
         top: 'border-t border-zinc-300',
@@ -29,7 +32,7 @@ export function Panel({
     };
 
     return (
-        <div className={`${padding} ${borderClasses[border]} text-zinc-200 ${className}`.trim()}>
+        <div ref={innerRef} className={`${padding} ${borderClasses[border]} text-zinc-200 ${className}`.trim()}>
             {children}
         </div>
     );

@@ -1,4 +1,4 @@
-import {useCallback, useMemo} from "react";
+import {useCallback, useMemo, useRef, useEffect} from "react";
 
 import {useDevkitStore} from "../stores/devkitStore.ts";
 
@@ -22,6 +22,11 @@ export function MemoryView() {
     const cpuSnapshot = useDevkitStore((state) => state.cpuSnapshot);
     const setFirstRowAddress = useDevkitStore((state) => state.setFirstRowAddress);
     const setViewSize = useDevkitStore((state) => state.setViewSize);
+    const shouldScrollToPC = useDevkitStore((state) => state.shouldScrollToPC);
+    const setShouldScrollToPC = useDevkitStore((state) => state.setShouldScrollToPC);
+
+    // Refs
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     // Computed values
     const programCounter = cpuSnapshot.programCounter;
@@ -40,7 +45,8 @@ export function MemoryView() {
 
             for (let col = 0; col < BYTES_PER_ROW; col++) {
                 const address = rowAddress + col;
-                if (address < memorySnapshot.length && (row * BYTES_PER_ROW + col) < viewSize) {
+                // Always show all 8 bytes per row, just check memory bounds
+                if (address < memorySnapshot.length) {
                     const byte = memorySnapshot[address];
                     bytes.push({
                         hex: byte.toString(16).padStart(2, '0').toUpperCase(),
@@ -69,6 +75,37 @@ export function MemoryView() {
 
     const rows = useMemo(() => generateHexDump(), [generateHexDump]);
 
+    // Effect to scroll to PC when crosshairs button is clicked
+    useEffect(() => {
+        // Only scroll if the flag is set
+        if (!shouldScrollToPC) return;
+        if (!scrollContainerRef.current) return;
+
+        // Check if PC is within the visible range
+        if (programCounter < firstRowAddress || programCounter >= firstRowAddress + viewSize) {
+            setShouldScrollToPC(false);
+            return;
+        }
+
+        // Calculate which row the PC is on (0-indexed)
+        const pcRowIndex = Math.floor((programCounter - firstRowAddress) / BYTES_PER_ROW);
+
+        // Get the row elements
+        const rowElements = scrollContainerRef.current.children;
+        if (pcRowIndex >= 0 && pcRowIndex < rowElements.length) {
+            const pcRowElement = rowElements[pcRowIndex] as HTMLElement;
+
+            // Scroll the row into view (centered if possible)
+            pcRowElement.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+            });
+        }
+
+        // Reset the flag after scrolling
+        setShouldScrollToPC(false);
+    }, [shouldScrollToPC, firstRowAddress, programCounter, viewSize, setShouldScrollToPC]);
+
     // Render
     return <div className="flex flex-col min-h-0 overflow-hidden">
         <Panel padding="p-2" border="bottom" className="flex gap-4 items-center">
@@ -86,7 +123,7 @@ export function MemoryView() {
                 minValue={1}
             />
         </Panel>
-        <Panel className="font-mono flex-1 overflow-y-auto text-gray-500">
+        <Panel className="font-mono flex-1 overflow-y-auto text-gray-500" innerRef={scrollContainerRef}>
             {rows.map((row, idx) => (
                 <div key={idx} className="flex gap-8 mb-1">
                     <span>{row.address}</span>

@@ -30,6 +30,9 @@ interface DevkitState {
   breakpointAddresses: Set<number>;  // Memory addresses where breakpoints are set
   codeChangedSinceAssembly: boolean; // Track if code changed since last assembly
 
+  // Memory view state
+  shouldScrollToPC: boolean;         // Flag to trigger scroll to PC in memory view
+
   // Actions
   setIsConsoleRunning: (isRunning: boolean) => void;
   setFirstRowAddress: (address: number) => void;
@@ -42,6 +45,7 @@ interface DevkitState {
   updateBreakpointAddresses: (sourceMap: SourceMapEntry[]) => void;
   clearAllBreakpoints: () => void;
   setCodeChangedSinceAssembly: (changed: boolean) => void;
+  setShouldScrollToPC: (shouldScroll: boolean) => void;
 }
 
 export const useDevkitStore = create<DevkitState>((set) => ({
@@ -62,6 +66,7 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   breakpointLines: new Set<number>(),
   breakpointAddresses: new Set<number>(),
   codeChangedSinceAssembly: false,
+  shouldScrollToPC: false,
 
   // Actions
   setIsConsoleRunning: (isRunning: boolean) => set({ isConsoleRunning: isRunning }),
@@ -117,4 +122,6 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   }),
 
   setCodeChangedSinceAssembly: (changed: boolean) => set({ codeChangedSinceAssembly: changed }),
+
+  setShouldScrollToPC: (shouldScroll: boolean) => set({ shouldScrollToPC: shouldScroll }),
 }));
