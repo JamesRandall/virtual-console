@@ -319,24 +319,12 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
 
     lastFrameTime = timestamp - (elapsed % FRAME_TIME);
 
-    // Copy data from shared memory to GPU buffers
-    // Note: We need to copy from SharedArrayBuffer to regular ArrayBuffer
-    // because WebGPU doesn't accept SharedArrayBuffer directly
-
-    // Copy framebuffer data
-    const framebufferData = new Uint8Array(FRAMEBUFFER_SIZE);
-    framebufferData.set(memory.subarray(FRAMEBUFFER_START, FRAMEBUFFER_START + FRAMEBUFFER_SIZE));
-    device.queue.writeBuffer(framebufferBuffer, 0, framebufferData);
-
-    // Copy palette data
-    const paletteData = new Uint8Array(PALETTE_RAM_SIZE);
-    paletteData.set(memory.subarray(PALETTE_RAM_START, PALETTE_RAM_START + PALETTE_RAM_SIZE));
-    device.queue.writeBuffer(paletteBuffer, 0, paletteData);
-
-    // Copy scanline map data
-    const scanlineMapData = new Uint8Array(SCANLINE_MAP_SIZE);
-    scanlineMapData.set(memory.subarray(SCANLINE_MAP_START, SCANLINE_MAP_START + SCANLINE_MAP_SIZE));
-    device.queue.writeBuffer(scanlineMapBuffer, 0, scanlineMapData);
+    // Write data from shared memory directly to GPU buffers
+    // TypeScript's GPUQueue.writeBuffer types don't recognize SharedArrayBuffer-backed Uint8Array,
+    // but it works correctly at runtime per WebGPU spec
+    device.queue.writeBuffer(framebufferBuffer, 0, memory as unknown as BufferSource, FRAMEBUFFER_START, FRAMEBUFFER_SIZE);
+    device.queue.writeBuffer(paletteBuffer, 0, memory as unknown as BufferSource, PALETTE_RAM_START, PALETTE_RAM_SIZE);
+    device.queue.writeBuffer(scanlineMapBuffer, 0, memory as unknown as BufferSource, SCANLINE_MAP_START, SCANLINE_MAP_SIZE);
 
     // Create command encoder
     const commandEncoder = device.createCommandEncoder();
