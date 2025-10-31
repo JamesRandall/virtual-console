@@ -27,7 +27,8 @@ loop:
   INC R1           ; Increment counter
   CMP R1, #16      ; Check if done
   BRNZ loop        ; Loop if not done
-  NOP
+infiniteloop:
+  JMP infiniteloop
 `;
 
 export function EditorContainer() {
@@ -39,6 +40,9 @@ export function EditorContainer() {
     const sourceMap = useDevkitStore((state) => state.sourceMap);
     const cpuSnapshot = useDevkitStore((state) => state.cpuSnapshot);
     const isConsoleRunning = useDevkitStore((state) => state.isConsoleRunning);
+    const breakpointLines = useDevkitStore((state) => state.breakpointLines);
+    const toggleBreakpoint = useDevkitStore((state) => state.toggleBreakpoint);
+    const updateBreakpointAddresses = useDevkitStore((state) => state.updateBreakpointAddresses);
 
     // Virtual console hook
     const virtualConsole = useVirtualConsole();
@@ -71,7 +75,7 @@ export function EditorContainer() {
         return line;
     }, [sourceMap]);
 
-    // Update gutter decorations based on current PC
+    // Update gutter decorations based on current PC and breakpoints
     const updateDecorations = useCallback(() => {
         if (!editorRef.current || !monacoRef.current || !decorationsCollectionRef.current) {
             return;
@@ -79,36 +83,41 @@ export function EditorContainer() {
 
         const monaco = monacoRef.current;
         const decorationsCollection = decorationsCollectionRef.current;
+        const newDecorations: MonacoEditor.editor.IModelDeltaDecoration[] = [];
 
-        // If CPU is running, clear decorations
-        if (isConsoleRunning) {
-            decorationsCollection.set([]);
-            return;
-        }
-
-        // Find the line for the current PC
-        const currentLine = findLineForPC(cpuSnapshot.programCounter);
-
-        if (currentLine === null) {
-            // Clear decorations if no line found
-            decorationsCollection.set([]);
-            return;
-        }
-
-        // Create decoration for current line
-        const newDecorations: MonacoEditor.editor.IModelDeltaDecoration[] = [
-            {
-                range: new monaco.Range(currentLine, 1, currentLine, 1),
+        // Add breakpoint decorations
+        breakpointLines.forEach((line) => {
+            newDecorations.push({
+                range: new monaco.Range(line, 1, line, 1),
                 options: {
                     isWholeLine: false,
-                    glyphMarginClassName: 'current-line-glyph',
-                    glyphMarginHoverMessage: { value: `PC: 0x${cpuSnapshot.programCounter.toString(16).toUpperCase().padStart(4, '0')}` },
+                    glyphMarginClassName: 'breakpoint-glyph',
+                    glyphMarginHoverMessage: { value: 'Breakpoint' },
                 }
+            });
+        });
+
+        // Add PC decoration if not running
+        if (!isConsoleRunning) {
+            const currentLine = findLineForPC(cpuSnapshot.programCounter);
+
+            if (currentLine !== null) {
+                // Check if there's a breakpoint on the current line
+                const hasBreakpoint = breakpointLines.has(currentLine);
+
+                newDecorations.push({
+                    range: new monaco.Range(currentLine, 1, currentLine, 1),
+                    options: {
+                        isWholeLine: false,
+                        glyphMarginClassName: hasBreakpoint ? 'breakpoint-with-pc-glyph' : 'current-line-glyph',
+                        glyphMarginHoverMessage: { value: `PC: 0x${cpuSnapshot.programCounter.toString(16).toUpperCase().padStart(4, '0')}` },
+                    }
+                });
             }
-        ];
+        }
 
         decorationsCollection.set(newDecorations);
-    }, [isConsoleRunning, cpuSnapshot.programCounter, findLineForPC]);
+    }, [isConsoleRunning, cpuSnapshot.programCounter, findLineForPC, breakpointLines]);
 
     // Update decorations when CPU state changes
     useEffect(() => {
@@ -172,9 +181,22 @@ export function EditorContainer() {
         // Create decorations collection
         decorationsCollectionRef.current = editor.createDecorationsCollection();
 
+        // Add mouse down handler for breakpoint toggling
+        editor.onMouseDown((e) => {
+            if (!monacoRef.current) return;
+
+            // Check if click is in the glyph margin
+            if (e.target.type === monacoRef.current.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+                const line = e.target.position?.lineNumber;
+                if (line) {
+                    toggleBreakpoint(line);
+                }
+            }
+        });
+
         // Validate initial content
         validateCode(DEFAULT_PROGRAM);
-    }, [validateCode]);
+    }, [validateCode, toggleBreakpoint]);
 
     const handleEditorChange = useCallback((value: string | undefined) => {
         const code = value || "";
@@ -216,6 +238,9 @@ export function EditorContainer() {
             setSourceMap(result.sourceMap);
             setSymbolTable(result.symbolTable);
 
+            // Update breakpoint addresses based on new source map
+            updateBreakpointAddresses(result.sourceMap);
+
             // Update snapshots
             updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
                 console.error("Error updating snapshots:", error);
@@ -227,7 +252,7 @@ export function EditorContainer() {
             console.error("Unexpected error assembling code:", error);
             setAssemblyError("assembly error");
         }
-    }, [editorContent, setSourceMap, setSymbolTable, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
+    }, [editorContent, setSourceMap, setSymbolTable, updateBreakpointAddresses, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
 
     // Render
     return <div className="flex flex-col h-full w-full bg-zinc-800">

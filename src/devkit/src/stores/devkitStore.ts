@@ -25,6 +25,10 @@ interface DevkitState {
   sourceMap: SourceMapEntry[];
   symbolTable: SymbolTable;
 
+  // Breakpoint state
+  breakpointLines: Set<number>;      // Line numbers where breakpoints are set
+  breakpointAddresses: Set<number>;  // Memory addresses where breakpoints are set
+
   // Actions
   setIsConsoleRunning: (isRunning: boolean) => void;
   setFirstRowAddress: (address: number) => void;
@@ -33,6 +37,9 @@ interface DevkitState {
   updateCpuSnapshot: (snapshot: CpuSnapshot) => void;
   setSourceMap: (sourceMap: SourceMapEntry[]) => void;
   setSymbolTable: (symbolTable: SymbolTable) => void;
+  toggleBreakpoint: (line: number) => void;
+  updateBreakpointAddresses: (sourceMap: SourceMapEntry[]) => void;
+  clearAllBreakpoints: () => void;
 }
 
 export const useDevkitStore = create<DevkitState>((set) => ({
@@ -50,6 +57,8 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   },
   sourceMap: [],
   symbolTable: {},
+  breakpointLines: new Set<number>(),
+  breakpointAddresses: new Set<number>(),
 
   // Actions
   setIsConsoleRunning: (isRunning: boolean) => set({ isConsoleRunning: isRunning }),
@@ -59,4 +68,33 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   updateCpuSnapshot: (snapshot: CpuSnapshot) => set({ cpuSnapshot: snapshot }),
   setSourceMap: (sourceMap: SourceMapEntry[]) => set({ sourceMap }),
   setSymbolTable: (symbolTable: SymbolTable) => set({ symbolTable }),
+
+  toggleBreakpoint: (line: number) => set((state) => {
+    const newBreakpointLines = new Set(state.breakpointLines);
+    if (newBreakpointLines.has(line)) {
+      newBreakpointLines.delete(line);
+    } else {
+      newBreakpointLines.add(line);
+    }
+    return { breakpointLines: newBreakpointLines };
+  }),
+
+  updateBreakpointAddresses: (sourceMap: SourceMapEntry[]) => set((state) => {
+    const newBreakpointAddresses = new Set<number>();
+
+    // For each breakpoint line, find the corresponding address in the source map
+    state.breakpointLines.forEach((line) => {
+      const entry = sourceMap.find(entry => entry.line === line);
+      if (entry) {
+        newBreakpointAddresses.add(entry.address);
+      }
+    });
+
+    return { breakpointAddresses: newBreakpointAddresses };
+  }),
+
+  clearAllBreakpoints: () => set({
+    breakpointLines: new Set<number>(),
+    breakpointAddresses: new Set<number>()
+  }),
 }));

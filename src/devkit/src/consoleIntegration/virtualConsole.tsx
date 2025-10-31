@@ -43,6 +43,9 @@ export interface VirtualConsoleController {
   /** Set the CPU program counter */
   setProgramCounter(address: number): void;
 
+  /** Set breakpoint addresses */
+  setBreakpoints(addresses: number[]): void;
+
   /** Request current CPU state snapshot */
   getSnapshot(): Promise<CpuSnapshot>;
 }
@@ -121,6 +124,22 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
           resolve(snapshot);
           resolvers.clear();
         }
+      } else if (type === 'breakpointHit') {
+        // Breakpoint was hit - resolve snapshot promise and dispatch event
+        const resolvers = snapshotResolversRef.current;
+        const resolve = resolvers.values().next().value;
+        if (resolve) {
+          resolve(snapshot);
+          resolvers.clear();
+        }
+        // Dispatch custom event for UI to handle
+        window.dispatchEvent(new CustomEvent('cpuBreakpointHit', { detail: { snapshot } }));
+      } else if (type === 'paused') {
+        // CPU paused - dispatch event
+        window.dispatchEvent(new Event('cpuPaused'));
+      } else if (type === 'running') {
+        // CPU started running - dispatch event
+        window.dispatchEvent(new Event('cpuRunning'));
       } else if (type === 'error') {
         console.error('CPU Worker error:', error);
       }
@@ -161,6 +180,13 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
         worker.postMessage({
           type: 'setProgramCounter',
           payload: { address },
+        });
+      },
+
+      setBreakpoints(addresses: number[]) {
+        worker.postMessage({
+          type: 'setBreakpoints',
+          payload: { addresses },
         });
       },
 

@@ -1,5 +1,22 @@
-/* Current line glyph margin icon */
+/* Current line glyph margin icon (yellow arrow) */
 .current-line-glyph {
     background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><path fill="%23eab308" d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg>') center center no-repeat;
     background-size: 60% 60%;
+    z-index: 2; /* Ensure PC marker appears above breakpoint */
+}
+
+/* Breakpoint glyph margin icon (red circle) */
+.breakpoint-glyph {
+    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><circle cx="256" cy="256" r="256" fill="%23dc2626"/></svg>') center center no-repeat;
+    background-size: 70% 70%;
+    z-index: 1;
+}
+
+/* Breakpoint with current line (both markers) */
+.breakpoint-with-pc-glyph {
+    background:
+        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><path fill="%23eab308" d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg>') center center no-repeat,
+        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><circle cx="256" cy="256" r="256" fill="%23dc2626"/></svg>') center center no-repeat;
+    background-size: 60% 60%, 70% 70%;
+    z-index: 2;
 }

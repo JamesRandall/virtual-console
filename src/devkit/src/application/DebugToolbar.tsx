@@ -1,4 +1,4 @@
-import {useCallback} from "react";
+import {useCallback, useEffect} from "react";
 
 import {useDevkitStore} from "../stores/devkitStore.ts";
 import {updateVirtualConsoleSnapshot} from "../stores/utilities.ts";
@@ -13,9 +13,47 @@ export function DebugToolbar() {
     const setIsConsoleRunning = useDevkitStore((state) => state.setIsConsoleRunning);
     const updateMemorySnapshot = useDevkitStore((state) => state.updateMemorySnapshot);
     const updateCpuSnapshot = useDevkitStore((state) => state.updateCpuSnapshot);
+    const breakpointAddresses = useDevkitStore((state) => state.breakpointAddresses);
 
     // Virtual console hook
     const virtualConsole = useVirtualConsole();
+
+    // Sync breakpoint addresses to worker whenever they change
+    useEffect(() => {
+        virtualConsole.setBreakpoints(Array.from(breakpointAddresses));
+    }, [breakpointAddresses, virtualConsole]);
+
+    // Listen for CPU state changes (from breakpoints, pauses, etc.)
+    useEffect(() => {
+        const handleCpuPaused = () => {
+            setIsConsoleRunning(false);
+            // Update snapshots when paused
+            updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
+                console.error("Error updating snapshots:", error);
+            });
+        };
+
+        const handleBreakpointHit = (event: Event) => {
+            const customEvent = event as CustomEvent;
+            setIsConsoleRunning(false);
+            // Update CPU snapshot with the snapshot from the breakpoint hit
+            if (customEvent.detail?.snapshot) {
+                updateCpuSnapshot(customEvent.detail.snapshot);
+            }
+            // Update memory snapshot
+            updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
+                console.error("Error updating snapshots:", error);
+            });
+        };
+
+        window.addEventListener('cpuPaused', handleCpuPaused);
+        window.addEventListener('cpuBreakpointHit', handleBreakpointHit);
+
+        return () => {
+            window.removeEventListener('cpuPaused', handleCpuPaused);
+            window.removeEventListener('cpuBreakpointHit', handleBreakpointHit);
+        };
+    }, [setIsConsoleRunning, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
 
     // Event handlers
     const handleRun = useCallback(() => {

@@ -22,6 +22,7 @@ let cpu: CPU;
 let isRunning = false;
 let lastTimestamp = 0;
 let accumulatedCycles = 0;
+let breakpointAddresses: Set<number> = new Set();
 
 /**
  * Free-wheeling execution loop that maintains 3MHz clock rate
@@ -42,6 +43,21 @@ function executionLoop(): void {
   // Execute cycles to catch up
   while (accumulatedCycles >= 1 && isRunning) {
     try {
+      // Check if PC is at a breakpoint before executing
+      const pc = cpu.getProgramCounter();
+      if (breakpointAddresses.has(pc)) {
+        // Breakpoint hit - pause execution and notify UI
+        isRunning = false;
+        const snapshot = createSnapshot();
+        self.postMessage({
+          type: 'breakpointHit',
+          snapshot,
+          address: pc,
+        });
+        self.postMessage({ type: 'paused' });
+        return;
+      }
+
       cpu.step();
       accumulatedCycles -= 1;
     } catch (error) {
@@ -168,6 +184,13 @@ self.onmessage = (event: MessageEvent) => {
         cpu.setProgramCounter(address);
         self.postMessage({ type: 'programCounterSet' });
       }
+      break;
+    }
+
+    case 'setBreakpoints': {
+      const { addresses } = payload;
+      breakpointAddresses = new Set(addresses);
+      self.postMessage({ type: 'breakpointsSet' });
       break;
     }
 
