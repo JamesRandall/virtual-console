@@ -17,6 +17,7 @@ const toHex16 = (value: number): string => value.toString(16).padStart(4, '0').t
 interface CpuFlags {
     C: boolean; // Carry
     Z: boolean; // Zero
+    I: boolean; // Interrupt Enable
     V: boolean; // Overflow
     N: boolean; // Negative
 }
@@ -28,6 +29,7 @@ const extractFlags = (statusRegister: number): CpuFlags => {
     return {
         C: (statusRegister & (1 << 0)) !== 0,
         Z: (statusRegister & (1 << 1)) !== 0,
+        I: (statusRegister & (1 << 2)) !== 0,
         V: (statusRegister & (1 << 6)) !== 0,
         N: (statusRegister & (1 << 7)) !== 0,
     };
@@ -89,6 +91,7 @@ export function RegisterView() {
                 <div className="flex gap-3">
                     <span className={flags.C ? 'text-green-400' : 'text-gray-600'}>C</span>
                     <span className={flags.Z ? 'text-green-400' : 'text-gray-600'}>Z</span>
+                    <span className={flags.I ? 'text-green-400' : 'text-gray-600'}>I</span>
                     <span className={flags.V ? 'text-green-400' : 'text-gray-600'}>V</span>
                     <span className={flags.N ? 'text-green-400' : 'text-gray-600'}>N</span>
                 </div>

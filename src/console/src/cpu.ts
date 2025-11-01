@@ -685,7 +685,7 @@ export class CPU {
         addr = this.resolveAddress(mode, src);
         break;
       default:
-        throw new Error(`Invalid mode for CALL: ${mode}`);
+        throw new Error(`Invalid mode for CALL: ${mode} at PC 0x${this.pc.toString(16)}`);
     }
 
     // Push return address (current PC)

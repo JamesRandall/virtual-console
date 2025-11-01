@@ -123,7 +123,37 @@ main_loop:
 - Harder to maintain timing
 - Doesn't match real hardware
 
-## Other Examples
+## Graphics Demos
+
+### starfield.asm
+An animated 3-layer parallax starfield using VBlank interrupts.
+
+**What it does:**
+- Displays 48 stars across 3 layers (16 stars per layer)
+- Each layer moves at different speed: 1, 2, and 3 pixels per frame
+- Stars move from right to left creating parallax depth effect
+- Different brightness levels for each layer (dark, medium, bright)
+- Smooth 60fps animation via VBlank interrupts
+
+**How to use:**
+1. Load the program in the devkit
+2. Run the program
+3. Watch the animated starfield
+
+**What to expect:**
+- Background stars (dark gray) move slowly
+- Mid-ground stars (medium gray) move at medium speed
+- Foreground stars (white) move quickly
+- Stars wrap around from left to right edge
+- Smooth scrolling at 60fps
+
+**Demonstrates:**
+- VBlank interrupt-driven animation
+- Parallax scrolling technique
+- 4bpp pixel plotting (even/odd pixel handling)
+- Multi-layer sprite management
+- Framebuffer address calculation
+- Star position tracking in memory
 
 ### smiley2.asm
 A graphical demo that draws a smiley face. Demonstrates:
