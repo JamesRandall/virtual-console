@@ -55,6 +55,7 @@ import {
   BR_NV,
   FLAG_C,
   FLAG_Z,
+  FLAG_I,
   FLAG_N,
   FLAG_V,
 } from './cpu';
@@ -772,16 +773,22 @@ describe('CPU', () => {
 
     describe('RTI - Return from Interrupt', () => {
       it('should pop status and return address', () => {
+        // Setup stack as if interrupt was dispatched
+        // Interrupt dispatch pushes: Status, PC high, PC low (in that order)
+        // So stack should have (from top to bottom):
+        //   [0x7FFF] = Status (first pushed)
+        //   [0x7FFE] = PC high (second pushed)
+        //   [0x7FFD] = PC low (last pushed)
         cpu.setStackPointer(0x7FFC);
-        bus.write8(0x7FFD, 0x83); // Status with C, Z, N flags set
-        bus.write8(0x7FFE, 0x56); // Low byte of PC
-        bus.write8(0x7FFF, 0x78); // High byte of PC
+        bus.write8(0x7FFF, 0x83); // Status with C, Z, N flags set (first pushed)
+        bus.write8(0x7FFE, 0x78); // High byte of PC (second pushed)
+        bus.write8(0x7FFD, 0x56); // Low byte of PC (last pushed)
 
         const bytecode = [OP_EXT << 4 | MODE_REGISTER << 1, EXT_RTI]; // EXT opcode + RTI sub-opcode
         const cycles = setupAndExecute(bus, cpu, bytecode);
 
-        expect(cpu.getStatus()).toBe(0x83);
         expect(cpu.getProgramCounter()).toBe(0x7856);
+        expect(cpu.getStatus()).toBe(0x83);
         expect(cpu.getStackPointer()).toBe(0x7FFF);
         expect(cycles).toBe(3);
       });
@@ -954,6 +961,58 @@ describe('CPU', () => {
   });
 
   describe('Integration Tests', () => {
+    it('should handle interrupt dispatch and RTI correctly', () => {
+      // Setup: PC=0x1000, Status=0x00, SP=0x7FFF
+      cpu.setProgramCounter(0x1000);
+      cpu.setStackPointer(0x7FFF);
+      const initialStatus = 0x05; // Some flags set
+
+      // Manually set status to simulate state before interrupt
+      cpu.setRegister(0, 0x00);
+      const ld = [...encodeInstruction(OP_LD, MODE_IMMEDIATE, 0, 0), initialStatus];
+      for (let i = 0; i < ld.length; i++) {
+        bus.write8(0x0500 + i, ld[i]);
+      }
+      cpu.setProgramCounter(0x0500);
+      cpu.step();
+
+      // Reset PC to simulate being in middle of execution
+      cpu.setProgramCounter(0x1000);
+
+      // Simulate interrupt dispatch manually (normally done by checkInterrupts)
+      const statusBeforeInterrupt = cpu.getStatus();
+      const pcBeforeInterrupt = cpu.getProgramCounter();
+
+      // Push status, PC high, PC low (as dispatchInterrupt does)
+      const push = (value: number) => {
+        bus.write8(cpu.getStackPointer(), value & 0xFF);
+        cpu.setStackPointer((cpu.getStackPointer() - 1) & 0xFFFF);
+      };
+
+      push(statusBeforeInterrupt);
+      push((pcBeforeInterrupt >> 8) & 0xFF);
+      push(pcBeforeInterrupt & 0xFF);
+
+      // Verify stack contents
+      expect(bus.read8(0x7FFF)).toBe(statusBeforeInterrupt); // Status
+      expect(bus.read8(0x7FFE)).toBe(0x10); // PC high
+      expect(bus.read8(0x7FFD)).toBe(0x00); // PC low
+      expect(cpu.getStackPointer()).toBe(0x7FFC);
+
+      // Now execute RTI
+      const rti = [OP_EXT << 4 | MODE_REGISTER << 1, EXT_RTI];
+      for (let i = 0; i < rti.length; i++) {
+        bus.write8(0x2000 + i, rti[i]);
+      }
+      cpu.setProgramCounter(0x2000);
+      cpu.step();
+
+      // Verify RTI restored everything correctly
+      expect(cpu.getProgramCounter()).toBe(0x1000); // PC restored
+      expect(cpu.getStatus()).toBe(statusBeforeInterrupt); // Status restored
+      expect(cpu.getStackPointer()).toBe(0x7FFF); // Stack restored
+    });
+
     it('should execute a sequence of instructions correctly', () => {
       const program = [
         // LD R0, #0x10

@@ -63,18 +63,19 @@ A custom 8-bit RISC-inspired CPU derived from 6502 principles.
 
 ## 3. Status Flags
 
-Single 8-bit status register with four active flags:
+Single 8-bit status register with five active flags:
 
 ```
 Bit:  7  6  5  4  3  2  1  0
-     [N][V][ ][ ][ ][ ][Z][C]
+     [N][V][ ][ ][ ][I][Z][C]
 ```
 
 | Bit | Flag | Name | Description |
 |-----|------|------|-------------|
 | 7 | N | Negative | Set if bit 7 of result is 1 |
 | 6 | V | Overflow | Set on signed arithmetic overflow |
-| 5-2 | - | Reserved | Reserved for future use |
+| 5-3 | - | Reserved | Reserved for future use |
+| 2 | I | Interrupt Enable | 0=interrupts disabled, 1=interrupts enabled |
 | 1 | Z | Zero | Set if result is zero |
 | 0 | C | Carry | Set on arithmetic carry/borrow |
 
@@ -98,6 +99,13 @@ Bit:  7  6  5  4  3  2  1  0
 - Set on signed arithmetic overflow
 - Indicates sign bit changed incorrectly
 - Affected by: ADD, SUB
+
+**Interrupt Enable (I)**
+- Controls hardware interrupt handling
+- Set by SEI instruction, cleared by CLI instruction
+- When set, allows hardware interrupts to fire
+- Automatically cleared when interrupt is triggered
+- Restored by RTI instruction
 
 ---
 
@@ -485,9 +493,52 @@ C → [7][6][5][4][3][2][1][0] → C
 #### RTI - Return from Interrupt
 **Sub-opcode**: 0xF1
 
-**Syntax**: `RTI`  
-**Operation**: Pop status flags, pop PC  
+**Syntax**: `RTI`
+**Operation**: Pop status flags, pop PC
 **Bytes**: 2
+
+Returns from an interrupt handler. Restores the CPU state (status register and program counter)
+from the stack and resumes execution at the interrupted location. The I flag is restored,
+re-enabling interrupts if they were enabled before the interrupt fired.
+
+#### SEI - Set Interrupt Enable
+**Sub-opcode**: 0xF8
+
+**Syntax**: `SEI`
+**Operation**: Set I flag in status register (enable interrupts)
+**Bytes**: 2
+**Cycles**: 1
+
+Enables hardware interrupts. Interrupts will fire when:
+- I flag is set (by this instruction)
+- INT_ENABLE register (0x0115) has corresponding interrupt bit set
+- INT_STATUS register (0x0114) has corresponding interrupt bit set
+
+Example:
+```assembly
+SEI                    ; Enable interrupts in CPU
+LD R0, #$01
+ST R0, [$0115]         ; Enable VBlank in INT_ENABLE
+```
+
+#### CLI - Clear Interrupt Enable
+**Sub-opcode**: 0xF9
+
+**Syntax**: `CLI`
+**Operation**: Clear I flag in status register (disable interrupts)
+**Bytes**: 2
+**Cycles**: 1
+
+Disables all hardware interrupts. Used for critical sections where code
+must not be interrupted. Interrupts remain pending in INT_STATUS and will
+fire when I flag is set again via SEI.
+
+Example:
+```assembly
+CLI                    ; Disable interrupts
+; Critical section here
+SEI                    ; Re-enable interrupts
+```
 
 ---
 
@@ -666,14 +717,189 @@ Consistent, predictable timing:
 
 - Instructions execute sequentially
 - No pipeline stalls or cache considerations
-- Scanline interrupts fire at predetermined cycle counts
-- Frame budget: TBD cycles per 60Hz frame
+- Hardware interrupts checked after each instruction completes
+- Frame budget: 50,000 cycles per 60Hz frame (at 3MHz)
 
 ---
 
-## 8. Programming Examples
+## 8. Interrupt Handling
 
-### 8.1 Hello World (Memory Fill)
+The CPU supports hardware-triggered interrupts for responding to events like frame completion (VBlank) and scanline rendering.
+
+### 8.1 Interrupt Sources
+
+Hardware interrupts are triggered by peripheral events:
+
+| Interrupt | Trigger | Frequency |
+|-----------|---------|-----------|
+| **VBlank** | Frame rendering completes | 60 Hz (every ~16.7ms) |
+| **Scanline** | Rendering reaches specified scanline | Variable (future) |
+
+### 8.2 Interrupt Vectors
+
+Interrupt handler addresses are stored in hardware registers:
+
+| Register | Address | Description |
+|----------|---------|-------------|
+| VBLANK_VEC_LO | 0x0132 | VBlank handler address (low byte) |
+| VBLANK_VEC_HI | 0x0133 | VBlank handler address (high byte) |
+| SCANLINE_VEC_LO | 0x0134 | Scanline handler address (low byte) |
+| SCANLINE_VEC_HI | 0x0135 | Scanline handler address (high byte) |
+
+**Vector format**: 16-bit address stored little-endian (low byte, then high byte)
+
+### 8.3 Interrupt Enable Control
+
+Interrupts fire when **all three** conditions are met:
+
+1. **I flag** (status bit 2) is set via SEI instruction
+2. **INT_ENABLE** register (0x0115) has corresponding interrupt bit set
+3. **INT_STATUS** register (0x0114) has corresponding interrupt bit set
+
+**Example setup:**
+```assembly
+; Install VBlank handler
+LD R0, #<vblank_handler    ; Low byte of handler address
+ST R0, [$0132]             ; VBLANK_VEC_LO
+
+LD R0, #>vblank_handler    ; High byte of handler address
+ST R0, [$0133]             ; VBLANK_VEC_HI
+
+; Enable VBlank interrupts
+LD R0, #$01                ; Bit 0 = VBlank
+ST R0, [$0115]             ; INT_ENABLE
+
+SEI                        ; Enable interrupts in CPU
+```
+
+### 8.4 Interrupt Handling Sequence
+
+When all enable conditions are met and an interrupt fires:
+
+1. **CPU finishes current instruction**
+2. **Push status register to stack** (preserves all flags including I)
+3. **Push PC high byte to stack**
+4. **Push PC low byte to stack**
+5. **Clear I flag** (automatically disables further interrupts)
+6. **Read handler address** from interrupt vector (0x0132-0x0133 for VBlank)
+7. **Jump to handler address**
+
+**Cycles**: 7 cycles total for interrupt dispatch
+
+**Interrupt handler responsibilities:**
+- Save any registers it uses (PUSH Rx)
+- Clear the interrupt flag in INT_STATUS (write-1-to-clear)
+- Perform time-critical operations
+- Restore registers (POP Rx)
+- Execute RTI to return
+
+**RTI (Return from Interrupt) sequence:**
+1. **Pop PC low byte from stack**
+2. **Pop PC high byte from stack**
+3. **Pop status register from stack** (restores I flag, re-enables interrupts)
+4. **Resume execution** at interrupted location
+
+### 8.5 Interrupt Latency
+
+- **Minimum latency**: 1 cycle (if interrupt fires between instructions)
+- **Maximum latency**: ~4 cycles (longest instruction duration)
+- **Handler entry overhead**: 7 cycles (stack operations + vector fetch + jump)
+- **Total interrupt overhead**: 8-11 cycles from trigger to first handler instruction
+
+### 8.6 Interrupt Priority
+
+If multiple interrupts are pending when I flag is set:
+
+1. **VBlank** has higher priority (checked first)
+2. **Scanline** has lower priority (checked second)
+3. Only one interrupt handled per instruction completion
+
+### 8.7 Interrupt vs. Polling
+
+The system supports two approaches for handling VBlank:
+
+**Polling (simple but inefficient):**
+```assembly
+main_loop:
+  wait_vblank:
+    LD R0, [$0114]         ; Read INT_STATUS
+    AND R0, #$01           ; Test VBlank bit
+    BRZ wait_vblank        ; Loop until set
+
+  LD R0, #$01
+  ST R0, [$0114]           ; Clear VBlank flag
+
+  CALL update_game
+  JMP main_loop
+```
+
+**Interrupts (efficient, recommended):**
+```assembly
+; Setup (run once at startup)
+setup:
+  ; Install VBlank handler
+  LD R0, #<vblank_handler
+  ST R0, [$0132]           ; VBLANK_VEC_LO
+  LD R0, #>vblank_handler
+  ST R0, [$0133]           ; VBLANK_VEC_HI
+
+  ; Enable VBlank interrupts
+  LD R0, #$01
+  ST R0, [$0115]           ; INT_ENABLE
+  SEI                      ; Enable in CPU
+
+; Main game loop - runs continuously
+main_loop:
+  CALL run_ai
+  CALL update_physics
+  CALL process_input
+  JMP main_loop
+
+; VBlank handler - called automatically at 60Hz
+vblank_handler:
+  PUSH R0
+  PUSH R1
+  PUSH R2
+
+  ; Clear VBlank flag
+  LD R0, #$01
+  ST R0, [$0114]           ; INT_STATUS
+
+  ; Update display during safe VBlank period
+  CALL update_sprite_positions
+  CALL update_palette
+
+  POP R2
+  POP R1
+  POP R0
+  RTI                      ; Return and re-enable interrupts
+```
+
+**Comparison:**
+- Polling wastes ~40,000 cycles per frame waiting
+- Interrupts allow game logic to run continuously
+- Interrupts match real console hardware (NES, SNES, Game Boy)
+- Polling is simpler for beginners
+
+### 8.8 Critical Sections
+
+Use CLI/SEI to protect code that must not be interrupted:
+
+```assembly
+; Reading multi-byte value atomically
+CLI                        ; Disable interrupts
+LD R0, [$1000]            ; Read low byte
+LD R1, [$1001]            ; Read high byte
+SEI                        ; Re-enable interrupts
+
+; Now R0:R1 contains consistent value
+```
+
+---
+
+## 9. Programming Examples
+
+### 9.1 Hello World (Memory Fill)
 
 ```assembly
 ; Fill screen with color
@@ -692,7 +918,7 @@ loop:
   BRNZ loop
 ```
 
-### 8.2 16-bit Counter
+### 9.2 16-bit Counter
 
 ```assembly
 ; Increment 16-bit counter at $0B00-$0B01
@@ -711,7 +937,7 @@ store:
   ST R1, [$0B00]   ; Store high
 ```
 
-### 8.3 Subroutine Call
+### 9.3 Subroutine Call
 
 ```assembly
 main:

@@ -331,7 +331,7 @@ function evaluateMathExpression(expr: string): number {
     return parts.reduce((acc, part) => (acc & evaluateMathExpression(part.trim())) & 0xFFFF, 0xFFFF);
   }
 
-  // Comparison operators
+  // Comparison operators (check multi-char operators first, then shift, then single-char)
   if (expr.includes('==')) {
     const [left, right] = expr.split('==');
     return evaluateMathExpression(left.trim()) === evaluateMathExpression(right.trim()) ? 1 : 0;
@@ -348,16 +348,8 @@ function evaluateMathExpression(expr: string): number {
     const [left, right] = expr.split('>=');
     return evaluateMathExpression(left.trim()) >= evaluateMathExpression(right.trim()) ? 1 : 0;
   }
-  if (expr.includes('<')) {
-    const [left, right] = expr.split('<');
-    return evaluateMathExpression(left.trim()) < evaluateMathExpression(right.trim()) ? 1 : 0;
-  }
-  if (expr.includes('>')) {
-    const [left, right] = expr.split('>');
-    return evaluateMathExpression(left.trim()) > evaluateMathExpression(right.trim()) ? 1 : 0;
-  }
 
-  // Shift operators
+  // Shift operators (must check before < and > to avoid matching >> and << incorrectly)
   if (expr.includes('<<')) {
     const [left, right] = expr.split('<<');
     return (evaluateMathExpression(left.trim()) << evaluateMathExpression(right.trim())) & 0xFFFF;
@@ -365,6 +357,16 @@ function evaluateMathExpression(expr: string): number {
   if (expr.includes('>>')) {
     const [left, right] = expr.split('>>');
     return (evaluateMathExpression(left.trim()) >> evaluateMathExpression(right.trim())) & 0xFFFF;
+  }
+
+  // Single-char comparison operators (checked after shift to avoid confusion with << and >>)
+  if (expr.includes('<')) {
+    const [left, right] = expr.split('<');
+    return evaluateMathExpression(left.trim()) < evaluateMathExpression(right.trim()) ? 1 : 0;
+  }
+  if (expr.includes('>')) {
+    const [left, right] = expr.split('>');
+    return evaluateMathExpression(left.trim()) > evaluateMathExpression(right.trim()) ? 1 : 0;
   }
 
   // Addition and subtraction

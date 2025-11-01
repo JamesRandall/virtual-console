@@ -60,7 +60,11 @@ Fast access memory for pointers, frequently accessed variables, and temporary st
 | 0x0115 | INT_ENABLE | Interrupt enable control |
 | 0x0116-0x0128 | Audio Registers | 4-channel audio system (see Audio Registers) |
 | 0x0129-0x0131 | Text Registers | Hardware text rendering system (see Text Registers) |
-| 0x0132-0x01FF | Reserved | Additional hardware registers |
+| 0x0132 | VBLANK_VEC_LO | VBlank interrupt handler address (low byte) |
+| 0x0133 | VBLANK_VEC_HI | VBlank interrupt handler address (high byte) |
+| 0x0134 | SCANLINE_VEC_LO | Scanline interrupt handler address (low byte) |
+| 0x0135 | SCANLINE_VEC_HI | Scanline interrupt handler address (high byte) |
+| 0x0136-0x01FF | Reserved | Additional hardware registers |
 
 **256 bytes**
 
@@ -129,6 +133,8 @@ Fast access memory for pointers, frequently accessed variables, and temporary st
 
 **Write-1-to-clear (W1C):** Writing 1 to a bit clears it (sets to 0). This allows selective clearing of specific interrupt flags without affecting others.
 
+**Interrupt Triggering**: When the I flag in the CPU status register is set (via SEI instruction) and the corresponding bit in INT_ENABLE is set, the CPU will automatically call the interrupt handler when a flag is set in this register. Alternatively, games can poll these flags manually for simpler (but less efficient) operation.
+
 Example:
 ```assembly
 ; Check if VBlank occurred
@@ -143,9 +149,11 @@ ST R0, [$0114]      ; INT_STATUS becomes 0b00000010
 ```
 
 **INT_ENABLE (0x0115)**
-- Bit 0: Enable VBlank interrupt
-- Bit 1: Enable scanline interrupt
+- Bit 0: Enable VBlank interrupt (0=polling only, 1=trigger CPU interrupt)
+- Bit 1: Enable scanline interrupt (0=polling only, 1=trigger CPU interrupt)
 - Bits 2-7: Reserved
+
+When a bit is set, the corresponding interrupt will trigger CPU interrupt handling (via interrupt vectors at 0x0132-0x0135) if the I flag in the CPU status register is also set. When clear, games must poll INT_STATUS manually.
 
 #### Audio Registers
 
@@ -283,7 +291,20 @@ Collision detection occurs **during frame rendering**:
 - Pixel-perfect: ~100-1000 pixel comparisons per overlapping pair, suitable for 30-50 sprites
 - Typical frame with 20 active sprites: ~190 checks, negligible overhead (<1ms)
 
-**Typical game loop:**
+#### Interrupt Vectors
+
+Interrupt handler addresses are stored in hardware registers in the hardware register area:
+
+| Register | Address | Description |
+|----------|---------|-------------|
+| VBLANK_VEC_LO | 0x0132 | VBlank interrupt handler address (low byte) |
+| VBLANK_VEC_HI | 0x0133 | VBlank interrupt handler address (high byte) |
+| SCANLINE_VEC_LO | 0x0134 | Scanline interrupt handler address (low byte) |
+| SCANLINE_VEC_HI | 0x0135 | Scanline interrupt handler address (high byte) |
+
+**Vector format**: 16-bit address stored little-endian (low byte first, then high byte)
+
+**Typical game loop (polling approach - simple but inefficient):**
 ```assembly
 main_loop:
   ; Wait for VBlank
@@ -291,19 +312,65 @@ main_loop:
     LD R0, [$0114]      ; Read INT_STATUS
     AND R0, #$01        ; Check VBlank bit
     BRZ wait_vblank
-  
+
   ; Clear VBlank flag
   LD R0, #$01
   ST R0, [$0114]        ; Write 1 to clear
-  
+
   ; Process collisions
   CALL check_collisions
-  
+
   ; Update game state
   CALL update_player
-  
+
   JMP main_loop
 ```
+
+**Typical game loop (interrupt approach - efficient, recommended):**
+```assembly
+; Setup (run once at startup)
+setup:
+  ; Install VBlank interrupt handler
+  LD R0, #<vblank_handler
+  ST R0, [$0132]           ; VBLANK_VEC_LO
+  LD R0, #>vblank_handler
+  ST R0, [$0133]           ; VBLANK_VEC_HI
+
+  ; Enable VBlank interrupts
+  LD R0, #$01
+  ST R0, [$0115]           ; INT_ENABLE
+  SEI                      ; Enable interrupts in CPU
+
+; Main game loop - runs continuously (no waiting!)
+main_loop:
+  CALL run_ai
+  CALL update_physics
+  CALL process_input
+  JMP main_loop
+
+; VBlank handler - called automatically at 60Hz
+vblank_handler:
+  PUSH R0
+  PUSH R1
+
+  ; Clear VBlank flag
+  LD R0, #$01
+  ST R0, [$0114]           ; INT_STATUS
+
+  ; Update display during safe VBlank period
+  CALL check_collisions
+  CALL update_player
+
+  POP R1
+  POP R0
+  RTI                      ; Return and re-enable interrupts
+```
+
+**Comparison:**
+- Polling wastes ~40,000 CPU cycles per frame in the wait loop
+- Interrupts allow game logic to use all available CPU time
+- Interrupts match real console hardware (NES, SNES, Game Boy, Genesis)
+- Polling is simpler for beginners or simple applications
 
 #### Controller Button Layout (CONTROLLER_1 / CONTROLLER_2)
 

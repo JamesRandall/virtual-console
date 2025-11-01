@@ -404,38 +404,287 @@ describe('Assembler', () => {
   });
 
   describe('Expression Evaluation', () => {
-    it('should evaluate arithmetic expressions', () => {
-      const code = `
-        .define A 10
-        .define B 20
-        LD R0, #(A + B)
-      `;
-      const result = assemble(code);
-      expect(result.errors).toHaveLength(0);
-      expect(result.segments[0].data[2]).toBe(30);
+    describe('Arithmetic operators', () => {
+      it('should evaluate addition', () => {
+        const code = `
+          .define A 10
+          .define B 20
+          LD R0, #(A + B)
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(30);
+      });
+
+      it('should evaluate subtraction', () => {
+        const code = `
+          .define A 50
+          .define B 30
+          LD R0, #(A - B)
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(20);
+      });
+
+      it('should evaluate multiplication', () => {
+        const code = `LD R0, #(5 * 6)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(30);
+      });
+
+      it('should evaluate division', () => {
+        const code = `LD R0, #(20 / 4)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(5);
+      });
+
+      it('should evaluate modulo', () => {
+        const code = `LD R0, #(17 % 5)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(2);
+      });
+
+      it('should respect operator precedence (multiplication before addition)', () => {
+        const code = `LD R0, #(2 + 3 * 4)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(14); // 2 + 12 = 14, not (2+3)*4 = 20
+      });
+
+      it('should handle parentheses to override precedence', () => {
+        const code = `LD R0, #((2 + 3) * 4)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(20);
+      });
     });
 
-    it('should evaluate bitwise operations', () => {
-      const code = `
-        .define MASK 0xFF
-        LD R0, #(MASK & 0x0F)
-      `;
-      const result = assemble(code);
-      expect(result.errors).toHaveLength(0);
-      expect(result.segments[0].data[2]).toBe(0x0F);
+    describe('Shift operators', () => {
+      it('should evaluate left shift (<<)', () => {
+        const code = `LD R0, #(1 << 4)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(16);
+      });
+
+      it('should evaluate right shift (>>)', () => {
+        const code = `LD R0, #(32 >> 2)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(8);
+      });
+
+      it('should evaluate right shift with symbol', () => {
+        const code = `
+          .define VALUE 32831
+          LD R0, #(VALUE >> 8)
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(128); // 32831 >> 8 = 128.24...
+      });
+
+      it('should evaluate left shift with symbol', () => {
+        const code = `
+          .define VALUE 128
+          LD R0, #(VALUE << 8)
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        // 128 << 8 = 32768, which is 0x8000
+        // As 8-bit value: 0x8000 & 0xFF = 0
+        expect(result.segments[0].data[2]).toBe(0);
+      });
+
+      it('should evaluate shift in .word directive', () => {
+        const code = `.word (256 >> 1)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        // 256 >> 1 = 128 = 0x80
+        // Little-endian: low byte first
+        expect(result.segments[0].data[0]).toBe(0x80);
+        expect(result.segments[0].data[1]).toBe(0x00);
+      });
     });
 
-    it('should handle current address symbol $', () => {
-      const code = `
-        .org $1000
-      skip:
-        JMP $+5
-      `;
-      const result = assemble(code);
-      expect(result.errors).toHaveLength(0);
-      // JMP is at $1000, target is $1000 + 5 = $1005
-      expect(result.segments[0].data[2]).toBe(0x05);
-      expect(result.segments[0].data[3]).toBe(0x10);
+    describe('Bitwise operators', () => {
+      it('should evaluate bitwise AND (&)', () => {
+        const code = `
+          .define MASK 0xFF
+          LD R0, #(MASK & 0x0F)
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(0x0F);
+      });
+
+      it('should evaluate bitwise OR (|)', () => {
+        const code = `LD R0, #(0x0F | 0xF0)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(0xFF);
+      });
+
+      it('should evaluate bitwise XOR (^)', () => {
+        const code = `LD R0, #(0xFF ^ 0xAA)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(0x55);
+      });
+
+      it('should evaluate bitwise NOT (~)', () => {
+        const code = `LD R0, #(~0x00)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        // ~0x00 in 16-bit = 0xFFFF, as 8-bit = 0xFF
+        expect(result.segments[0].data[2]).toBe(0xFF);
+      });
+    });
+
+    describe('Comparison operators', () => {
+      it('should evaluate equality (==)', () => {
+        const code = `LD R0, #(5 == 5)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(1);
+      });
+
+      it('should evaluate inequality (!=)', () => {
+        const code = `LD R0, #(5 != 3)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(1);
+      });
+
+      it('should evaluate less than (<)', () => {
+        const code = `LD R0, #(3 < 5)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(1);
+      });
+
+      it('should evaluate greater than (>)', () => {
+        const code = `LD R0, #(7 > 5)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(1);
+      });
+
+      it('should evaluate less than or equal (<=)', () => {
+        const code = `LD R0, #(5 <= 5)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(1);
+      });
+
+      it('should evaluate greater than or equal (>=)', () => {
+        const code = `LD R0, #(6 >= 5)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(1);
+      });
+
+      it('should not confuse > with >>', () => {
+        const code = `LD R0, #(128 >> 4)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(8); // 128 >> 4 = 8, not comparison
+      });
+
+      it('should not confuse < with <<', () => {
+        const code = `LD R0, #(2 << 3)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(16); // 2 << 3 = 16, not comparison
+      });
+    });
+
+    describe('Logical operators', () => {
+      it('should evaluate logical AND (&&)', () => {
+        const code = `LD R0, #(1 && 1)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(1);
+      });
+
+      it('should evaluate logical OR (||)', () => {
+        const code = `LD R0, #(0 || 1)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(1);
+      });
+
+      it('should evaluate logical NOT (!)', () => {
+        const code = `LD R0, #(!0)`;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(1);
+      });
+    });
+
+    describe('Complex expressions', () => {
+      it('should evaluate expression with mixed operators', () => {
+        const code = `
+          .define BASE 0x8000
+          .define OFFSET 0x100
+          LD R0, #((BASE + OFFSET) >> 8)
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        // (0x8000 + 0x100) >> 8 = 0x8100 >> 8 = 0x81
+        expect(result.segments[0].data[2]).toBe(0x81);
+      });
+
+      it('should handle current address symbol $', () => {
+        const code = `
+          .org $1000
+        skip:
+          JMP $+5
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        // JMP is at $1000, target is $1000 + 5 = $1005
+        expect(result.segments[0].data[2]).toBe(0x05);
+        expect(result.segments[0].data[3]).toBe(0x10);
+      });
+
+      it('should evaluate expressions in label context', () => {
+        const code = `
+          .org $8000
+        handler:
+          NOP
+        main:
+          LD R0, #(handler >> 8)
+          LD R1, #(handler & $FF)
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        // handler is at $8000
+        // NOP is at bytes 0-1, first LD starts at byte 2
+        // Byte layout: [opcode, register, immediate]
+        expect(result.segments[0].data[4]).toBe(0x80); // High byte of handler
+        expect(result.segments[0].data[7]).toBe(0x00); // Low byte of handler
+      });
+    });
+
+    describe('Error handling', () => {
+      it('should error on division by zero', () => {
+        const code = `LD R0, #(10 / 0)`;
+        const result = assemble(code);
+        expect(result.errors.length).toBeGreaterThan(0);
+        expect(result.errors.some(e => e.message.includes('evaluation failed'))).toBe(true);
+      });
+
+      it('should error on modulo by zero', () => {
+        const code = `LD R0, #(10 % 0)`;
+        const result = assemble(code);
+        expect(result.errors.length).toBeGreaterThan(0);
+        expect(result.errors.some(e => e.message.includes('evaluation failed'))).toBe(true);
+      });
     });
   });
 

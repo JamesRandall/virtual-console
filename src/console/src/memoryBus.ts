@@ -55,6 +55,15 @@ export class MemoryBus {
     if (value < 0 || value > 0xFF) {
       throw new Error(`Invalid 8-bit value: 0x${value.toString(16)}`);
     }
+
+    // Special handling for INT_STATUS (0x0114) - write-1-to-clear
+    // Writing a 1 to a bit clears that bit, writing 0 has no effect
+    if (address === 0x0114) {
+      const current = this.memory[address];
+      this.memory[address] = current & ~value;
+      return;
+    }
+
     this.memory[address] = value;
   }
 

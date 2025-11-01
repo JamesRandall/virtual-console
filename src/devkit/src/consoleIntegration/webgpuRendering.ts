@@ -352,6 +352,11 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
     // Submit commands
     device.queue.submit([commandEncoder.finish()]);
 
+    // Set VBlank interrupt flag in INT_STATUS (0x0114)
+    // Use Atomics.or to set bit 0 atomically for thread safety
+    const INT_STATUS_ADDR = 0x0114;
+    Atomics.or(memory, INT_STATUS_ADDR, 0x01);
+
     // Schedule next frame
     animationFrameId = requestAnimationFrame(renderFrame);
   }

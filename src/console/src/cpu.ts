@@ -63,6 +63,7 @@ export const BR_NV = 0x7;  // Branch if not overflow
 // Status flag bit positions
 export const FLAG_C = 0; // Carry
 export const FLAG_Z = 1; // Zero
+export const FLAG_I = 2; // Interrupt Enable
 export const FLAG_N = 7; // Negative
 export const FLAG_V = 6; // Overflow
 
@@ -100,6 +101,13 @@ export class CPU {
     this.pc = 0x0000;
     this.status = 0;
     this.cycles = 0;
+
+    // Clear interrupt registers to prevent spurious interrupts
+    this.bus.write8(0x0114, 0x00); // Clear INT_STATUS
+    this.bus.write8(0x0115, 0x00); // Clear INT_ENABLE
+    // Clear interrupt vectors to safe values
+    this.bus.write16(0x0132, 0x0000); // Clear VBLANK_VEC
+    this.bus.write16(0x0134, 0x0000); // Clear SCANLINE_VEC
 
     // Set default video mode (Mode 0: 256×160 @ 4bpp)
     setVideoMode(this.bus, 0);
@@ -209,6 +217,9 @@ export class CPU {
     // Execute instruction
     this.executeInstruction(opcode, mode);
 
+    // Check for interrupts after instruction completes
+    this.checkInterrupts();
+
     return this.cycles - startCycles;
   }
 
@@ -266,7 +277,7 @@ export class CPU {
         this.execEXT(mode);
         break;
       default:
-        throw new Error(`Unknown opcode: 0x${opcode.toString(16)}`);
+        throw new Error(`Unknown opcode: 0x${opcode.toString(16)} at PC 0x${this.pc.toString(16)}`);
     }
   }
 
@@ -609,7 +620,7 @@ export class CPU {
         addr = this.resolveAddress(mode, src);
         break;
       default:
-        throw new Error(`Invalid mode for JMP: ${mode}`);
+        throw new Error(`Invalid mode for JMP: ${mode} at PC 0x${this.pc.toString(16)}`);
     }
 
     this.pc = addr;
@@ -725,7 +736,7 @@ export class CPU {
         this.cycles += 1;
         break;
       default:
-        throw new Error(`Unknown extended opcode: 0x${subOpcode.toString(16)}`);
+        throw new Error(`Unknown extended opcode: 0x${subOpcode.toString(16)} at PC 0x${this.pc.toString(16)}`);
     }
   }
 
@@ -737,13 +748,13 @@ export class CPU {
   }
 
   private execRTI(): void {
-    // Pop status register
-    this.status = this.pop();
-
-    // Pop return address
-    const low = this.pop();
-    const high = this.pop();
+    // Pop return address (reverse order of push)
+    const low = this.pop();   // Last pushed (PC low)
+    const high = this.pop();  // Second pushed (PC high)
     this.pc = (high << 8) | low;
+
+    // Pop status register (first pushed, last popped)
+    this.status = this.pop();
 
     this.cycles += 3;
   }
@@ -803,14 +814,66 @@ export class CPU {
   }
 
   private execSEI(): void {
-    // Set interrupt enable flag - not yet implemented in status register
-    // This is a placeholder for future interrupt support
+    // Set interrupt enable flag
+    this.setFlag(FLAG_I, true);
     this.cycles += 1;
   }
 
   private execCLI(): void {
-    // Clear interrupt enable flag - not yet implemented in status register
-    // This is a placeholder for future interrupt support
+    // Clear interrupt enable flag
+    this.setFlag(FLAG_I, false);
     this.cycles += 1;
+  }
+
+  /**
+   * Check for pending interrupts and dispatch if appropriate
+   */
+  private checkInterrupts(): void {
+    // Only check if I flag is set (interrupts enabled)
+    if (!this.getFlag(FLAG_I)) {
+      return;
+    }
+
+    // Read INT_STATUS and INT_ENABLE registers
+    const intStatus = this.bus.read8(0x0114);
+    const intEnable = this.bus.read8(0x0115);
+
+    // Check VBlank interrupt (highest priority)
+    if ((intStatus & 0x01) && (intEnable & 0x01)) {
+      this.dispatchInterrupt(0x0132); // VBLANK_VEC
+      return;
+    }
+
+    // Check Scanline interrupt (lower priority)
+    if ((intStatus & 0x02) && (intEnable & 0x02)) {
+      this.dispatchInterrupt(0x0134); // SCANLINE_VEC
+      return;
+    }
+  }
+
+  /**
+   * Dispatch an interrupt to the handler at the given vector address
+   */
+  private dispatchInterrupt(vectorAddr: number): void {
+    // Push status register to stack
+    this.push(this.status);
+
+    // Push PC to stack (high byte, then low byte)
+    const pcHigh = (this.pc >> 8) & 0xFF;
+    const pcLow = this.pc & 0xFF;
+    this.push(pcHigh);
+    this.push(pcLow);
+
+    // Clear I flag to disable further interrupts during handler
+    this.setFlag(FLAG_I, false);
+
+    // Read handler address from vector
+    const handlerAddr = this.bus.read16(vectorAddr);
+
+    // Jump to handler
+    this.pc = handlerAddr;
+
+    // Interrupt dispatch takes 7 cycles
+    this.cycles += 7;
   }
 }
