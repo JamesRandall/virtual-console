@@ -27,6 +27,7 @@
 
 ; RAM locations for dynamic star X coordinates
 .define STAR_X_RAM $0900
+.define FRAME_COUNTER $0960
 
 ; Entry point
 main:
@@ -40,11 +41,24 @@ main:
     ; Copy initial star X coordinates to RAM
     CALL init_star_positions
 
+    ; Initialize frame counter to 0
+    LD R0, #0
+    ST R0, [FRAME_COUNTER]
+
     ; Clear screen to black
     CALL clear_screen
 
     ; Main animation loop
 animation_loop:
+    ; Toggle frame counter (0->1 or 1->0)
+    LD R0, [FRAME_COUNTER]
+    XOR R0, #1
+    ST R0, [FRAME_COUNTER]
+
+    ; If frame counter is 1, skip erase/update and just draw
+    CMP R0, #1
+    BRZ skip_update
+
     ; Step 1: Erase all stars (draw in black)
     LD R0, #0          ; Start index
     LD R1, #32         ; Count (white stars)
@@ -80,6 +94,7 @@ animation_loop:
     LD R2, #SPEED_DARK_GRAY
     CALL update_star_positions
 
+skip_update:
     ; Step 3: Draw all stars in color
     LD R0, #0          ; Start index
     LD R1, #32         ; Count
