@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import { useVirtualConsole } from '../consoleIntegration/virtualConsole';
 import { createWebGPURenderer, type WebGPURenderer } from '../consoleIntegration/webgpuRendering';
 
-export function ConsoleView() {
+export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
   // Virtual console
   const { sharedMemory } = useVirtualConsole();
 
@@ -47,6 +47,13 @@ export function ConsoleView() {
       }
     };
   }, [sharedMemory]);
+
+  // Control renderer visibility based on isActive prop
+  useEffect(() => {
+    if (rendererRef.current) {
+      rendererRef.current.setVisible(isActive);
+    }
+  }, [isActive]);
 
   // Render
   if (error) {

@@ -47,14 +47,18 @@ export function DebugView() {
             />
 
             {/* Tab content - flex-1 makes it fill available space */}
-            <div className="flex-1 overflow-hidden">
-                {activeTab === 'debug' ? (
+            <div className="flex-1 overflow-hidden relative">
+                {/* Console view - always mounted to keep renderer running */}
+                <div className={`absolute inset-0 ${activeTab === 'console' ? 'block' : 'hidden'}`}>
+                    <ConsoleView isActive={activeTab === 'console'} />
+                </div>
+
+                {/* Debug view - only render when active */}
+                {activeTab === 'debug' && (
                     <div className="h-full grid grid-rows-[1fr_auto]">
                         <MemoryView />
                         <RegisterView />
                     </div>
-                ) : (
-                    <ConsoleView />
                 )}
             </div>
 

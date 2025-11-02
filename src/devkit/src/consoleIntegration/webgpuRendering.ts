@@ -39,6 +39,11 @@ export interface WebGPURenderer {
    * Check if renderer is running
    */
   isRunning(): boolean;
+
+  /**
+   * Control whether GPU rendering is performed (interrupts always fire)
+   */
+  setVisible(visible: boolean): void;
 }
 
 /**
@@ -300,6 +305,7 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
 
   // Render state
   let isActive = false;
+  let isVisible = true;
   let lastFrameTime = 0;
   let animationFrameId: number | null = null;
 
@@ -308,7 +314,6 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
    */
   function renderFrame(timestamp: number): void {
     if (!isActive) return;
-    if (!context) return;
 
     // Throttle to 60fps
     const elapsed = timestamp - lastFrameTime;
@@ -319,40 +324,44 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
 
     lastFrameTime = timestamp - (elapsed % FRAME_TIME);
 
-    // Write data from shared memory directly to GPU buffers
-    // TypeScript's GPUQueue.writeBuffer types don't recognize SharedArrayBuffer-backed Uint8Array,
-    // but it works correctly at runtime per WebGPU spec
-    device.queue.writeBuffer(framebufferBuffer, 0, memory as unknown as BufferSource, FRAMEBUFFER_START, FRAMEBUFFER_SIZE);
-    device.queue.writeBuffer(paletteBuffer, 0, memory as unknown as BufferSource, PALETTE_RAM_START, PALETTE_RAM_SIZE);
-    device.queue.writeBuffer(scanlineMapBuffer, 0, memory as unknown as BufferSource, SCANLINE_MAP_START, SCANLINE_MAP_SIZE);
+    // Only perform GPU rendering if visible
+    if (isVisible && context) {
+      // Write data from shared memory directly to GPU buffers
+      // TypeScript's GPUQueue.writeBuffer types don't recognize SharedArrayBuffer-backed Uint8Array,
+      // but it works correctly at runtime per WebGPU spec
+      device.queue.writeBuffer(framebufferBuffer, 0, memory as unknown as BufferSource, FRAMEBUFFER_START, FRAMEBUFFER_SIZE);
+      device.queue.writeBuffer(paletteBuffer, 0, memory as unknown as BufferSource, PALETTE_RAM_START, PALETTE_RAM_SIZE);
+      device.queue.writeBuffer(scanlineMapBuffer, 0, memory as unknown as BufferSource, SCANLINE_MAP_START, SCANLINE_MAP_SIZE);
 
-    // Create command encoder
-    const commandEncoder = device.createCommandEncoder();
+      // Create command encoder
+      const commandEncoder = device.createCommandEncoder();
 
-    // Get current texture to render to
-    const textureView = context.getCurrentTexture().createView();
+      // Get current texture to render to
+      const textureView = context.getCurrentTexture().createView();
 
-    // Create render pass
-    const renderPass = commandEncoder.beginRenderPass({
-      colorAttachments: [
-        {
-          view: textureView,
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
-          loadOp: 'clear',
-          storeOp: 'store',
-        },
-      ],
-    });
+      // Create render pass
+      const renderPass = commandEncoder.beginRenderPass({
+        colorAttachments: [
+          {
+            view: textureView,
+            clearValue: { r: 0, g: 0, b: 0, a: 1 },
+            loadOp: 'clear',
+            storeOp: 'store',
+          },
+        ],
+      });
 
-    renderPass.setPipeline(pipeline);
-    renderPass.setBindGroup(0, bindGroup);
-    renderPass.draw(6); // 6 vertices for 2 triangles (fullscreen quad)
-    renderPass.end();
+      renderPass.setPipeline(pipeline);
+      renderPass.setBindGroup(0, bindGroup);
+      renderPass.draw(6); // 6 vertices for 2 triangles (fullscreen quad)
+      renderPass.end();
 
-    // Submit commands
-    device.queue.submit([commandEncoder.finish()]);
+      // Submit commands
+      device.queue.submit([commandEncoder.finish()]);
+    }
 
-    // Set VBlank interrupt flag in INT_STATUS (0x0114)
+    // ALWAYS set VBlank interrupt flag in INT_STATUS (0x0114)
+    // This fires even when not visible to keep CPU timing consistent
     // Use Atomics.or to set bit 0 atomically for thread safety
     const INT_STATUS_ADDR = 0x0114;
     Atomics.or(memory, INT_STATUS_ADDR, 0x01);
@@ -391,6 +400,10 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
 
     isRunning() {
       return isActive;
+    },
+
+    setVisible(visible: boolean) {
+      isVisible = visible;
     },
   };
 }
