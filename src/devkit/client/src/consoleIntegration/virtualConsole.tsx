@@ -6,7 +6,7 @@ import React, {
   useRef,
   type ReactNode,
 } from 'react';
-import { MemoryBus } from '../../../console/src/memoryBus';
+import { MemoryBus } from '../../../../console/src/memoryBus';
 import type { CpuSnapshot } from '../stores/devkitStore';
 
 const MEMORY_SIZE = 65536; // 64KB

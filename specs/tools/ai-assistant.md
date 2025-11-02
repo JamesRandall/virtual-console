@@ -43,6 +43,8 @@ A candidate architecture diagram has been supplied along with this prompt.
 
 There is no need to worry about security for the moment. This is only running locally.
 
-As part of the implementation create a script that will start everything up: Ollama, the API and the DevKit.
+The node app is new and should be created in the folder script in the folder /Users/jamesrandall/code/virtual-console/src/devkit/api
+
+As part of the implementation create a script that will start everything up: Ollama, the API and the DevKit. Create this script in the folder /Users/jamesrandall/code/virtual-console/src/devkit
 
 Provide a plan for the implementation.

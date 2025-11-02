@@ -7,7 +7,7 @@ import {updateVirtualConsoleSnapshot} from "../stores/utilities.ts";
 import "./EditorContainer.css";
 
 import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
-import {assemble, type AssemblerError} from "../../../console/src/assembler.ts";
+import {assemble, type AssemblerError} from "../../../../console/src/assembler.ts";
 import {
     registerAssemblerLanguage,
     ASSEMBLER_LANGUAGE_ID,

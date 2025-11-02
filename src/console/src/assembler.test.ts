@@ -13,12 +13,11 @@
 import { describe, it, expect } from 'vitest';
 import { assemble } from './assembler';
 import {
-  OP_NOP, OP_LD, OP_ST, OP_MOV, OP_ADD, OP_SUB, OP_AND, OP_OR,
-  OP_XOR, OP_SHL, OP_SHR, OP_CMP, OP_JMP, OP_BR, OP_CALL, OP_EXT,
+  OP_NOP, OP_LD, OP_MOV, OP_ADD, OP_BR, OP_EXT,
   EXT_RET, EXT_PUSH, EXT_POP, EXT_INC, EXT_DEC,
   MODE_IMMEDIATE, MODE_REGISTER, MODE_ABSOLUTE, MODE_ZERO_PAGE,
   MODE_ZERO_PAGE_INDEXED, MODE_REGISTER_PAIR,
-  BR_Z, BR_NZ, BR_C, BR_NC
+  BR_Z, BR_NZ, BR_C
 } from './cpu';
 
 describe('Assembler', () => {

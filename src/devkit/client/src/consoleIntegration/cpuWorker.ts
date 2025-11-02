@@ -4,8 +4,8 @@
  * Runs the CPU in a separate thread at 3MHz, using a SharedArrayBuffer for memory access.
  */
 
-import { CPU } from '../../../console/src/cpu';
-import { MemoryBus } from '../../../console/src/memoryBus';
+import { CPU } from '../../../../console/src/cpu';
+import { MemoryBus } from '../../../../console/src/memoryBus';
 
 const TARGET_FREQUENCY = 3_000_000; // 3MHz
 const CYCLES_PER_MS = TARGET_FREQUENCY / 1000;
