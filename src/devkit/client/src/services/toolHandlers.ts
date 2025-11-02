@@ -39,25 +39,26 @@ export async function handleToolRequest(tool: string, parameters: Record<string,
 }
 
 async function handleReadSourceCode(): Promise<unknown> {
-  // Get current editor content from the global editor instance
-  // We'll need to expose this through a custom event or global state
-  const event = new CustomEvent('get-editor-content');
-  window.dispatchEvent(event);
-
   return new Promise((resolve) => {
     const handler = (e: Event) => {
       const customEvent = e as CustomEvent;
+      console.log('Received editor content response:', customEvent.detail);
       resolve(customEvent.detail);
       window.removeEventListener('editor-content-response', handler);
     };
 
+    // Add listener BEFORE dispatching the event
     window.addEventListener('editor-content-response', handler);
 
     // Timeout after 5 seconds
-    setTimeout(() => {
+    const timeout = setTimeout(() => {
       window.removeEventListener('editor-content-response', handler);
       resolve({ code: '', error: 'Timeout reading editor content' });
     }, 5000);
+
+    // Now dispatch the event
+    const event = new CustomEvent('get-editor-content');
+    window.dispatchEvent(event);
   });
 }
 
@@ -159,9 +160,6 @@ async function handleResetConsole(): Promise<unknown> {
 }
 
 async function handleAssembleCode(): Promise<unknown> {
-  const event = new CustomEvent('editor-assemble');
-  window.dispatchEvent(event);
-
   return new Promise((resolve) => {
     const handler = (e: Event) => {
       const customEvent = e as CustomEvent;
@@ -169,6 +167,7 @@ async function handleAssembleCode(): Promise<unknown> {
       window.removeEventListener('editor-assemble-response', handler);
     };
 
+    // Add listener BEFORE dispatching the event
     window.addEventListener('editor-assemble-response', handler);
 
     // Timeout after 10 seconds
@@ -176,5 +175,9 @@ async function handleAssembleCode(): Promise<unknown> {
       window.removeEventListener('editor-assemble-response', handler);
       resolve({ success: false, error: 'Timeout assembling code' });
     }, 10000);
+
+    // Now dispatch the event
+    const event = new CustomEvent('editor-assemble');
+    window.dispatchEvent(event);
   });
 }

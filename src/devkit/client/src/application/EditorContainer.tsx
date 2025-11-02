@@ -230,9 +230,14 @@ export function EditorContainer() {
     // Set up event listeners for AI tools
     const setupAiToolListeners = useCallback((editor: MonacoEditor.editor.IStandaloneCodeEditor) => {
         // Get editor content
-        window.addEventListener('get-editor-content', () => {
+        const handleGetEditorContent = () => {
             const model = editor.getModel();
-            if (!model) return;
+            if (!model) {
+                window.dispatchEvent(new CustomEvent('editor-content-response', {
+                    detail: { code: '', error: 'No editor model' }
+                }));
+                return;
+            }
 
             const position = editor.getPosition();
             const selection = editor.getSelection();
@@ -249,12 +254,14 @@ export function EditorContainer() {
                 } : undefined
             };
 
+            console.log('Sending editor content response:', response.code.substring(0, 50) + '...');
             window.dispatchEvent(new CustomEvent('editor-content-response', { detail: response }));
-        });
+        };
 
         // Set editor content
-        window.addEventListener('set-editor-content', ((e: CustomEvent) => {
-            const { code, cursorLine, cursorColumn } = e.detail;
+        const handleSetEditorContent = (e: Event) => {
+            const customEvent = e as CustomEvent;
+            const { code, cursorLine, cursorColumn } = customEvent.detail;
             const model = editor.getModel();
             if (!model) return;
 
@@ -264,10 +271,10 @@ export function EditorContainer() {
                 editor.setPosition({ lineNumber: cursorLine, column: cursorColumn });
                 editor.revealLineInCenter(cursorLine);
             }
-        }) as EventListener);
+        };
 
         // Assemble code
-        window.addEventListener('editor-assemble', () => {
+        const handleEditorAssemble = () => {
             handleAssemble();
             // Response will be sent after assembly completes
             // For now, send a simple response
@@ -276,7 +283,18 @@ export function EditorContainer() {
                     detail: { success: true }
                 }));
             }, 100);
-        });
+        };
+
+        window.addEventListener('get-editor-content', handleGetEditorContent);
+        window.addEventListener('set-editor-content', handleSetEditorContent);
+        window.addEventListener('editor-assemble', handleEditorAssemble);
+
+        // Return cleanup function
+        return () => {
+            window.removeEventListener('get-editor-content', handleGetEditorContent);
+            window.removeEventListener('set-editor-content', handleSetEditorContent);
+            window.removeEventListener('editor-assemble', handleEditorAssemble);
+        };
     }, [handleAssemble]);
 
     const handleEditorMount: OnMount = useCallback((editor) => {
@@ -302,8 +320,13 @@ export function EditorContainer() {
         // Validate initial content
         validateCode(DEFAULT_PROGRAM);
 
-        // Set up AI tool event listeners
-        setupAiToolListeners(editor);
+        // Set up AI tool event listeners and store cleanup function
+        const cleanup = setupAiToolListeners(editor);
+
+        // Return cleanup on editor unmount
+        return () => {
+            if (cleanup) cleanup();
+        };
     }, [validateCode, setupAiToolListeners, toggleBreakpoint]);
 
     const handleEditorChange = useCallback((value: string | undefined) => {
