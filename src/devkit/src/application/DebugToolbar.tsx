@@ -5,7 +5,7 @@ import {updateVirtualConsoleSnapshot} from "../stores/utilities.ts";
 
 import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {faPlay, faPause, faForward, faCrosshairs} from "@fortawesome/free-solid-svg-icons";
+import {faPlay, faPause, faForward, faCrosshairs, faPowerOff} from "@fortawesome/free-solid-svg-icons";
 
 export function DebugToolbar() {
     // Zustand store hooks
@@ -95,6 +95,28 @@ export function DebugToolbar() {
         }
     }, [virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
 
+    const handleReset = useCallback(() => {
+        try {
+            // First pause the CPU
+            virtualConsole.pause();
+            setIsConsoleRunning(false);
+
+            // Zero the memory
+            const memoryArray = new Uint8Array(virtualConsole.sharedMemory);
+            memoryArray.fill(0);
+
+            // Reset the CPU
+            virtualConsole.reset();
+
+            // Update snapshots after reset
+            updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
+                console.error("Error updating snapshots:", error);
+            });
+        } catch (error) {
+            console.error("Error resetting console:", error);
+        }
+    }, [virtualConsole, setIsConsoleRunning, updateMemorySnapshot, updateCpuSnapshot]);
+
     const handleCenterOnPC = useCallback(() => {
         const pc = cpuSnapshot.programCounter;
 
@@ -149,6 +171,13 @@ export function DebugToolbar() {
                     className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded disabled:bg-zinc-400 disabled:cursor-not-allowed"
                 >
                     <FontAwesomeIcon icon={faForward} />
+                </button>
+                <button
+                    onClick={handleReset}
+                    className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded"
+                    title="Reset CPU and memory"
+                >
+                    <FontAwesomeIcon icon={faPowerOff} />
                 </button>
             </div>
             <button

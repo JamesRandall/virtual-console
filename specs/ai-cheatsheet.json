@@ -1,0 +1,841 @@
+{
+  "system_overview": {
+    "name": "8-bit Virtual Console",
+    "architecture": "RISC-inspired, derived from 6502",
+    "data_width": "8-bit",
+    "address_space": "16-bit (64KB)",
+    "total_memory": "8,256 KB (~8MB including banks)",
+    "clock_speed": "3MHz",
+    "frame_budget": "50,000 cycles per 60Hz frame"
+  },
+  "cpu": {
+    "registers": {
+      "general_purpose": {
+        "count": 6,
+        "names": ["R0", "R1", "R2", "R3", "R4", "R5"],
+        "width": "8-bit",
+        "register_pairs": {
+          "R0:R1": "high:low",
+          "R2:R3": "high:low",
+          "R4:R5": "high:low"
+        },
+        "conventions": {
+          "R0": "Return value / accumulator",
+          "R1": "Scratch / temporary",
+          "R2:R3": "Primary pointer pair",
+          "R4:R5": "Secondary pointer pair"
+        }
+      },
+      "special": {
+        "SP": {
+          "name": "Stack Pointer",
+          "width": "16-bit",
+          "grows": "downward",
+          "convention": "from 0x7FFF"
+        },
+        "PC": {
+          "name": "Program Counter",
+          "width": "16-bit",
+          "access": "implicit only"
+        }
+      }
+    },
+    "status_flags": {
+      "register_width": "8-bit",
+      "flags": {
+        "C": {"bit": 0, "name": "Carry", "description": "Arithmetic carry/borrow"},
+        "Z": {"bit": 1, "name": "Zero", "description": "Result equals zero"},
+        "I": {"bit": 2, "name": "Interrupt Enable", "description": "0=disabled, 1=enabled"},
+        "V": {"bit": 6, "name": "Overflow", "description": "Signed arithmetic overflow"},
+        "N": {"bit": 7, "name": "Negative", "description": "Bit 7 of result is 1"}
+      }
+    },
+    "addressing_modes": {
+      "immediate": {
+        "syntax": "#value",
+        "example": "LD R0, #42",
+        "bytes": 2,
+        "description": "Load literal value directly"
+      },
+      "register_direct": {
+        "syntax": "Rx",
+        "example": "ADD R0, R1",
+        "bytes": 1,
+        "description": "Operate on register contents"
+      },
+      "absolute": {
+        "syntax": "[$addr]",
+        "example": "LD R0, [$1234]",
+        "bytes": 3,
+        "description": "Access memory at 16-bit address"
+      },
+      "zero_page_indirect": {
+        "syntax": "[$zp]",
+        "example": "LD R0, [$80]",
+        "bytes": 2,
+        "description": "Use zero page location as pointer to 16-bit address"
+      },
+      "zero_page_indexed": {
+        "syntax": "[$zp+Rx]",
+        "example": "LD R0, [$80+R1]",
+        "bytes": 2,
+        "description": "Zero page pointer plus register offset"
+      },
+      "register_pair_indirect": {
+        "syntax": "[Rx:Ry]",
+        "example": "LD R0, [R2:R3]",
+        "bytes": 1,
+        "description": "Register pair as 16-bit pointer"
+      },
+      "relative": {
+        "syntax": "label",
+        "example": "BRZ loop",
+        "bytes": 2,
+        "range": "±127 bytes",
+        "description": "Branch instructions only"
+      }
+    },
+    "instruction_set": {
+      "data_movement": {
+        "LD": {
+          "opcode": "0x01",
+          "name": "Load",
+          "flags": "Z, N",
+          "modes": ["immediate", "register", "absolute", "zero_page", "zp_indexed", "reg_pair"]
+        },
+        "ST": {
+          "opcode": "0x02",
+          "name": "Store",
+          "flags": "none",
+          "modes": ["absolute", "zero_page", "zp_indexed", "reg_pair"]
+        },
+        "MOV": {
+          "opcode": "0x03",
+          "name": "Move",
+          "syntax": "MOV Rd, Rs",
+          "flags": "Z, N",
+          "bytes": 1
+        }
+      },
+      "arithmetic": {
+        "ADD": {
+          "opcode": "0x04",
+          "name": "Add",
+          "flags": "C, Z, N, V",
+          "modes": ["register", "immediate"]
+        },
+        "SUB": {
+          "opcode": "0x05",
+          "name": "Subtract",
+          "flags": "C, Z, N, V",
+          "modes": ["register", "immediate"]
+        }
+      },
+      "logical": {
+        "AND": {
+          "opcode": "0x06",
+          "name": "Bitwise AND",
+          "flags": "Z, N",
+          "modes": ["register", "immediate"]
+        },
+        "OR": {
+          "opcode": "0x07",
+          "name": "Bitwise OR",
+          "flags": "Z, N",
+          "modes": ["register", "immediate"]
+        },
+        "XOR": {
+          "opcode": "0x08",
+          "name": "Bitwise XOR",
+          "flags": "Z, N",
+          "modes": ["register", "immediate"]
+        }
+      },
+      "shift": {
+        "SHL": {
+          "opcode": "0x09",
+          "name": "Shift Left",
+          "flags": "C, Z, N",
+          "modes": ["single", "multiple"]
+        },
+        "SHR": {
+          "opcode": "0x0A",
+          "name": "Shift Right",
+          "flags": "C, Z, N",
+          "modes": ["single", "multiple"]
+        }
+      },
+      "comparison": {
+        "CMP": {
+          "opcode": "0x0B",
+          "name": "Compare",
+          "flags": "C, Z, N",
+          "description": "Rd - Rs (result discarded)",
+          "modes": ["register", "immediate"]
+        }
+      },
+      "control_flow": {
+        "JMP": {
+          "opcode": "0x0C",
+          "name": "Jump",
+          "flags": "none",
+          "modes": ["absolute", "zero_page", "reg_pair"]
+        },
+        "BRZ": {
+          "opcode": "0x0D (sub:0x00)",
+          "name": "Branch if Zero",
+          "flags": "none",
+          "condition": "Z==1"
+        },
+        "BRNZ": {
+          "opcode": "0x0D (sub:0x01)",
+          "name": "Branch if Not Zero",
+          "flags": "none",
+          "condition": "Z==0"
+        },
+        "BRC": {
+          "opcode": "0x0D (sub:0x02)",
+          "name": "Branch if Carry",
+          "flags": "none",
+          "condition": "C==1"
+        },
+        "BRNC": {
+          "opcode": "0x0D (sub:0x03)",
+          "name": "Branch if Not Carry",
+          "flags": "none",
+          "condition": "C==0"
+        },
+        "BRN": {
+          "opcode": "0x0D (sub:0x04)",
+          "name": "Branch if Negative",
+          "flags": "none",
+          "condition": "N==1"
+        },
+        "BRNN": {
+          "opcode": "0x0D (sub:0x05)",
+          "name": "Branch if Not Negative",
+          "flags": "none",
+          "condition": "N==0"
+        },
+        "BRV": {
+          "opcode": "0x0D (sub:0x06)",
+          "name": "Branch if Overflow",
+          "flags": "none",
+          "condition": "V==1"
+        },
+        "BRNV": {
+          "opcode": "0x0D (sub:0x07)",
+          "name": "Branch if Not Overflow",
+          "flags": "none",
+          "condition": "V==0"
+        },
+        "CALL": {
+          "opcode": "0x0E",
+          "name": "Call Subroutine",
+          "flags": "none",
+          "modes": ["absolute", "zero_page", "reg_pair"]
+        },
+        "RET": {
+          "opcode": "0x0F (sub:0xF0)",
+          "name": "Return",
+          "flags": "none",
+          "bytes": 2
+        },
+        "RTI": {
+          "opcode": "0x0F (sub:0xF1)",
+          "name": "Return from Interrupt",
+          "flags": "all restored",
+          "bytes": 2
+        }
+      },
+      "stack": {
+        "PUSH": {
+          "opcode": "0x0F (sub:0xF2)",
+          "name": "Push Register",
+          "syntax": "PUSH Rx",
+          "bytes": 3
+        },
+        "POP": {
+          "opcode": "0x0F (sub:0xF3)",
+          "name": "Pop Register",
+          "syntax": "POP Rx",
+          "bytes": 3
+        }
+      },
+      "increment_decrement": {
+        "INC": {
+          "opcode": "0x0F (sub:0xF4)",
+          "name": "Increment",
+          "syntax": "INC Rx",
+          "flags": "Z, N",
+          "bytes": 3
+        },
+        "DEC": {
+          "opcode": "0x0F (sub:0xF5)",
+          "name": "Decrement",
+          "syntax": "DEC Rx",
+          "flags": "Z, N",
+          "bytes": 3
+        }
+      },
+      "rotate": {
+        "ROL": {
+          "opcode": "0x0F (sub:0xF6)",
+          "name": "Rotate Left",
+          "syntax": "ROL Rx",
+          "flags": "C, Z, N",
+          "bytes": 3
+        },
+        "ROR": {
+          "opcode": "0x0F (sub:0xF7)",
+          "name": "Rotate Right",
+          "syntax": "ROR Rx",
+          "flags": "C, Z, N",
+          "bytes": 3
+        }
+      },
+      "interrupt_control": {
+        "SEI": {
+          "opcode": "0x0F (sub:0xF8)",
+          "name": "Set Interrupt Enable",
+          "description": "Enable interrupts (set I flag)",
+          "bytes": 2
+        },
+        "CLI": {
+          "opcode": "0x0F (sub:0xF9)",
+          "name": "Clear Interrupt Enable",
+          "description": "Disable interrupts (clear I flag)",
+          "bytes": 2
+        }
+      },
+      "misc": {
+        "NOP": {
+          "opcode": "0x00",
+          "name": "No Operation",
+          "flags": "none",
+          "bytes": 2
+        }
+      }
+    },
+    "timing": {
+      "register_operations": 1,
+      "immediate_operations": 2,
+      "memory_load_zp": 2,
+      "memory_load_abs": 3,
+      "memory_store_zp": 2,
+      "memory_store_abs": 3,
+      "branch_not_taken": 1,
+      "branch_taken": 2,
+      "jump": 2,
+      "call": 4,
+      "return": 3,
+      "push_pop": 2,
+      "interrupt_overhead": "7 cycles"
+    },
+    "interrupts": {
+      "sources": ["VBlank (60Hz)", "Scanline (variable)"],
+      "vectors": {
+        "VBLANK_VEC_LO": "0x0132",
+        "VBLANK_VEC_HI": "0x0133",
+        "SCANLINE_VEC_LO": "0x0134",
+        "SCANLINE_VEC_HI": "0x0135"
+      },
+      "enable_conditions": [
+        "I flag set (via SEI)",
+        "INT_ENABLE register bit set",
+        "INT_STATUS register bit set"
+      ],
+      "sequence": [
+        "Finish current instruction",
+        "Push status register",
+        "Push PC high byte",
+        "Push PC low byte",
+        "Clear I flag (disable further interrupts)",
+        "Read handler address from vector",
+        "Jump to handler"
+      ],
+      "priority": ["VBlank (higher)", "Scanline (lower)"]
+    }
+  },
+  "memory_layout": {
+    "total_space": "64KB (0x0000-0xFFFF)",
+    "lower_32k": {
+      "range": "0x0000-0x7FFF",
+      "description": "Fixed, always visible",
+      "regions": {
+        "zero_page": {
+          "range": "0x0000-0x00FF",
+          "size": "256 bytes",
+          "description": "Fast access memory for pointers and variables"
+        },
+        "hardware_registers": {
+          "range": "0x0100-0x01FF",
+          "size": "256 bytes",
+          "key_registers": {
+            "BANK_REG": {"addr": "0x0100", "desc": "Banking register (0-255)"},
+            "VIDEO_MODE": {"addr": "0x0101", "desc": "Video mode select (0-3)"},
+            "SCANLINE_INT": {"addr": "0x0102", "desc": "Scanline interrupt trigger line"},
+            "SCANLINE_CURRENT": {"addr": "0x0103", "desc": "Current scanline (read-only)"},
+            "SPRITE_ENABLE": {"addr": "0x0104", "desc": "Sprite system enable/disable"},
+            "SPRITE_COUNT": {"addr": "0x0105", "desc": "Number of active sprites"},
+            "CONTROLLER_1": {"addr": "0x0106", "desc": "Controller 1 state", "bits": "UDLRABCD"},
+            "CONTROLLER_2": {"addr": "0x0107", "desc": "Controller 2 state"},
+            "COLLISION_FLAGS": {"addr": "0x0108", "desc": "Collision status flags"},
+            "COLLISION_COUNT": {"addr": "0x0109", "desc": "Collision entry count"},
+            "COLLISION_MODE": {"addr": "0x010A", "desc": "Collision detection mode"},
+            "TILEMAP_ENABLE": {"addr": "0x010B", "desc": "Enable tilemap rendering"},
+            "TILEMAP_BANK": {"addr": "0x010C", "desc": "Bank with tile graphics"},
+            "TILEMAP_X_SCROLL": {"addr": "0x010D", "desc": "X scroll (0-255)"},
+            "TILEMAP_Y_SCROLL": {"addr": "0x010E", "desc": "Y scroll (0-255)"},
+            "TILEMAP_WIDTH": {"addr": "0x010F", "desc": "Tilemap width in tiles"},
+            "TILEMAP_HEIGHT": {"addr": "0x0110", "desc": "Tilemap height in tiles"},
+            "TILEMAP_ADDR_LO": {"addr": "0x0111", "desc": "Tilemap data low byte"},
+            "TILEMAP_ADDR_HI": {"addr": "0x0112", "desc": "Tilemap data high byte"},
+            "TILE_ANIM_FRAME": {"addr": "0x0113", "desc": "Global animation frame counter"},
+            "INT_STATUS": {"addr": "0x0114", "desc": "Interrupt status (W1C)", "bits": {"0": "VBlank", "1": "Scanline"}},
+            "INT_ENABLE": {"addr": "0x0115", "desc": "Interrupt enable", "bits": {"0": "VBlank", "1": "Scanline"}},
+            "AUDIO_MASTER": {"addr": "0x0128", "desc": "Master audio enable + volume"}
+          }
+        },
+        "palette_ram": {
+          "range": "0x0200-0x05FF",
+          "size": "1024 bytes",
+          "description": "Indexed palette storage (indices into master palette)",
+          "4bpp_layout": "64 palettes × 16 colors",
+          "8bpp_layout": "4 palettes × 256 colors"
+        },
+        "scanline_palette_map": {
+          "range": "0x0600-0x06FF",
+          "size": "256 bytes",
+          "description": "Per-scanline palette selection"
+        },
+        "sprite_attribute_table": {
+          "range": "0x0700-0x0AFF",
+          "size": "896 bytes",
+          "max_sprites": 128,
+          "entry_size": "5 bytes",
+          "format": {
+            "x": "byte 0: X position (0-255)",
+            "y": "byte 1: Y position (0-255)",
+            "sprite_idx": "byte 2: Sprite graphics index",
+            "flags": "byte 3: flip_h|flip_v|priority|palette_offset|reserved",
+            "bank": "byte 4: Bank containing sprite graphics"
+          }
+        },
+        "collision_buffer": {
+          "range": "0x0A00-0x0AFF",
+          "size": "256 bytes",
+          "max_entries": 85,
+          "entry_size": "3 bytes",
+          "format": {
+            "sprite_id": "byte 0: Which sprite (0-127)",
+            "data": "byte 1: Other sprite ID or tile type",
+            "type_flags": "byte 2: Bit 7: 1=sprite-tile, 0=sprite-sprite; Bits 3-0: collision side"
+          }
+        },
+        "tile_properties": {
+          "range": "0x0B00-0x0B7F",
+          "size": "128 bytes",
+          "description": "Properties for 128 tile types",
+          "format": "Bit 7:Solid, Bit 6:Hazard, Bit 4:Animated, Bits 3-2:Anim speed, Bits 1-0:Frame count"
+        },
+        "general_ram": {
+          "range": "0x0B80-0x7FFF",
+          "size": "~29 KB",
+          "description": "User program, stack, variables, buffers"
+        }
+      }
+    },
+    "upper_32k": {
+      "range": "0x8000-0xFFFF",
+      "size": "32 KB",
+      "description": "Bankable (256 banks available)",
+      "total_bankable": "8,192 KB (8MB)",
+      "framebuffer_location": "Top-aligned, ending at 0xFFFF"
+    },
+    "controller_buttons": {
+      "bit_mapping": {
+        "7": "Up (0x80)",
+        "6": "Down (0x40)",
+        "5": "Left (0x20)",
+        "4": "Right (0x10)",
+        "3": "A (0x08)",
+        "2": "B (0x04)",
+        "1": "C (0x02)",
+        "0": "D (0x01)"
+      },
+      "constants": {
+        "CTRL_UP": "0x80",
+        "CTRL_DOWN": "0x40",
+        "CTRL_LEFT": "0x20",
+        "CTRL_RIGHT": "0x10",
+        "CTRL_A": "0x08",
+        "CTRL_B": "0x04",
+        "CTRL_C": "0x02",
+        "CTRL_D": "0x01"
+      }
+    },
+    "audio_channels": {
+      "channel_0_pulse": {
+        "range": "0x0116-0x011A",
+        "registers": {
+          "CH0_FREQ_LO": "0x0116",
+          "CH0_FREQ_HI": "0x0117",
+          "CH0_VOLUME": "0x0118 (bits 3-0:volume 0-15, bit 4:enable)",
+          "CH0_DUTY": "0x0119 (bits 1-0: 0=12.5%, 1=25%, 2=50%, 3=75%)",
+          "CH0_SWEEP": "0x011A"
+        }
+      },
+      "channel_1_pulse": {
+        "range": "0x011B-0x011F",
+        "description": "Same as Channel 0"
+      },
+      "channel_2_wave": {
+        "range": "0x0120-0x0123",
+        "registers": {
+          "CH2_FREQ_LO": "0x0120",
+          "CH2_FREQ_HI": "0x0121",
+          "CH2_VOLUME": "0x0122",
+          "CH2_WAVEFORM": "0x0123 (0=triangle, 1=sine, 2=sawtooth)"
+        }
+      },
+      "channel_3_noise": {
+        "range": "0x0124-0x0127",
+        "registers": {
+          "CH3_FREQ_LO": "0x0124",
+          "CH3_FREQ_HI": "0x0125",
+          "CH3_VOLUME": "0x0126",
+          "CH3_MODE": "0x0127 (0=white noise, 1=periodic)"
+        }
+      }
+    }
+  },
+  "video": {
+    "screen_modes": {
+      "mode_0": {
+        "resolution": "256×160",
+        "bpp": 4,
+        "description": "widescreen, large",
+        "framebuffer": "0xB000-0xFFFF (20,480 bytes)"
+      },
+      "mode_1": {
+        "resolution": "160×96",
+        "bpp": 8,
+        "description": "widescreen, colorful",
+        "framebuffer": "0xC400-0xFFFF (15,360 bytes)"
+      },
+      "mode_2": {
+        "resolution": "128×128",
+        "bpp": 8,
+        "description": "square, compact",
+        "framebuffer": "0xC000-0xFFFF (16,384 bytes)"
+      },
+      "mode_3": {
+        "resolution": "176×176",
+        "bpp": 4,
+        "description": "square, spacious",
+        "framebuffer": "0xC380-0xFFFF (15,488 bytes)"
+      }
+    },
+    "palette_system": {
+      "master_palette": "256 fixed RGB colors (Tailwind CSS)",
+      "user_palettes": "Indices into master palette at 0x0200-0x05FF",
+      "4bpp_default_indices": [253, 255, 6, 61, 127, 37, 224, 9, 64, 130, 52, 229, 149, 60, 170, 237],
+      "4bpp_default_names": ["black", "white", "red", "green", "blue", "yellow", "light_gray", "dark_red", "dark_green", "dark_blue", "dark_yellow", "dark_gray", "purple", "cyan", "pink", "stone"],
+      "palette_organization": {
+        "red_row": "indices 0-10",
+        "orange_row": "indices 11-21",
+        "amber_row": "indices 22-32",
+        "yellow_row": "indices 33-43",
+        "lime_row": "indices 44-54",
+        "green_row": "indices 55-65",
+        "emerald_row": "indices 66-76",
+        "teal_row": "indices 77-87",
+        "cyan_row": "indices 88-98",
+        "sky_row": "indices 99-109",
+        "blue_row": "indices 110-120",
+        "indigo_row": "indices 121-131",
+        "violet_row": "indices 132-142",
+        "purple_row": "indices 143-153",
+        "fuchsia_row": "indices 154-164",
+        "pink_row": "indices 165-175",
+        "rose_row": "indices 176-186",
+        "pink2_row": "indices 187-197",
+        "slate_row": "indices 198-208",
+        "gray_row": "indices 209-219",
+        "zinc_row": "indices 220-230",
+        "neutral_row": "indices 231-241",
+        "stone_row": "indices 242-252",
+        "black_white": "indices 253-255 (black, black, white)"
+      }
+    },
+    "sprites": {
+      "max_count": 128,
+      "attribute_table": "0x0700-0x0AFF (5 bytes per sprite)",
+      "transparent_color": "Palette index 0",
+      "collision_detection": {
+        "modes": ["bounding_box", "pixel_perfect"],
+        "types": ["sprite-sprite", "sprite-tile"]
+      }
+    },
+    "tilemap": {
+      "tile_size": "16×16 pixels",
+      "max_types": 128,
+      "storage_4bpp": "128 bytes per tile (16KB total)",
+      "storage_8bpp": "256 bytes per tile (32KB total)",
+      "format": "Bit 7:flip_h, Bits 6-0:tile_type",
+      "addressing": "row-major: address = base + (y * width) + x"
+    }
+  },
+  "assembler": {
+    "syntax": {
+      "line_format": "[label:] [opcode [operands]] [; comment]",
+      "case_sensitivity": {
+        "opcodes": "case-insensitive",
+        "registers": "case-insensitive",
+        "labels": "case-sensitive",
+        "directives": "case-insensitive"
+      },
+      "comments": "Single-line starting with ;",
+      "identifiers": {
+        "start_chars": "A-Z, a-z, _, .",
+        "continue_chars": "A-Z, a-z, 0-9, _, ."
+      }
+    },
+    "number_formats": {
+      "decimal": "42, 255",
+      "hexadecimal": "$2A, 0x2A, $FF00, 0xFF00",
+      "binary": "%00101010, 0b00101010",
+      "character": "'A', ' ', '\\n'"
+    },
+    "directives": {
+      ".org": {
+        "syntax": ".org address",
+        "description": "Set assembly origin address",
+        "example": ".org $8000"
+      },
+      ".byte": {
+        "syntax": ".byte value [, value, ...]",
+        "aliases": [".db"],
+        "description": "Define byte(s)",
+        "example": ".byte $12, $34, 'A'"
+      },
+      ".word": {
+        "syntax": ".word value [, value, ...]",
+        "aliases": [".dw"],
+        "description": "Define 16-bit word(s) (little-endian)",
+        "example": ".word $1234, sprite_table"
+      },
+      ".string": {
+        "syntax": ".string \"text\"",
+        "aliases": [".asciiz"],
+        "description": "Define null-terminated string",
+        "example": ".string \"Hello, World!\""
+      },
+      ".define": {
+        "syntax": ".define name value",
+        "aliases": [".equ"],
+        "description": "Define constant (no memory allocation)",
+        "example": ".define SCREEN_WIDTH 256"
+      },
+      ".res": {
+        "syntax": ".res count",
+        "aliases": [".dsb"],
+        "description": "Reserve bytes (filled with zeros)",
+        "example": ".res 256"
+      },
+      ".align": {
+        "syntax": ".align boundary",
+        "description": "Align to next boundary",
+        "example": ".align 256"
+      }
+    },
+    "labels": {
+      "definition": "name:",
+      "local_labels": {
+        "prefix": ".",
+        "scope": "Local to previous non-local label",
+        "example": ".loop:"
+      },
+      "special_symbols": {
+        "$": "Current address",
+        "example": "JMP $+10"
+      }
+    },
+    "expressions": {
+      "operators": {
+        "arithmetic": ["+", "-", "*", "/", "%"],
+        "bitwise": ["&", "|", "^", "~", "<<", ">>"],
+        "comparison": ["==", "!=", "<", ">", "<=", ">="],
+        "logical": ["&&", "||", "!"]
+      },
+      "precedence_order": [
+        "() parentheses",
+        "~, !, unary -",
+        "*, /, %",
+        "+, -",
+        "<<, >>",
+        "<, >, <=, >=",
+        "==, !=",
+        "&",
+        "^",
+        "|",
+        "&&",
+        "||"
+      ]
+    },
+    "escape_sequences": {
+      "\\n": "Newline (0x0A)",
+      "\\r": "Carriage return (0x0D)",
+      "\\t": "Tab (0x09)",
+      "\\\\": "Backslash",
+      "\\\"": "Quote",
+      "\\0": "Null (0x00)"
+    },
+    "assembly_process": {
+      "type": "Two-pass assembler",
+      "pass_1": "Collect symbols, calculate sizes",
+      "pass_2": "Resolve references, generate code",
+      "output": {
+        "binary": "Uint8Array of machine code",
+        "symbol_table": "label → address mapping",
+        "source_map": "address → line number mapping"
+      }
+    }
+  },
+  "programming_patterns": {
+    "16bit_addition": {
+      "description": "Add R2:R3 to R4:R5",
+      "code": ["ADD R5, R3  ; Add low bytes", "ADD R4, R2  ; Add high bytes (carry propagates)"]
+    },
+    "16bit_counter": {
+      "description": "Increment 16-bit counter",
+      "code": [
+        "LD R0, [$0B01]  ; Load low byte",
+        "LD R1, [$0B00]  ; Load high byte",
+        "ADD R0, #1      ; Increment low",
+        "BRC carry_set   ; If carry, inc high",
+        "JMP store",
+        "carry_set:",
+        "  ADD R1, #1",
+        "store:",
+        "  ST R0, [$0B01]",
+        "  ST R1, [$0B00]"
+      ]
+    },
+    "zero_page_pointer_setup": {
+      "description": "Setup pointer at $80 to $C000",
+      "code": [
+        "LD R0, #$00",
+        "ST R0, [$80]    ; Store low byte",
+        "LD R0, #$C0",
+        "ST R0, [$81]    ; Store high byte",
+        "LD R1, [$80]    ; Now use pointer"
+      ]
+    },
+    "vblank_polling": {
+      "description": "Wait for VBlank (simple)",
+      "code": [
+        "wait_vblank:",
+        "  LD R0, [$0114]    ; Read INT_STATUS",
+        "  AND R0, #$01      ; Test VBlank bit",
+        "  BRZ wait_vblank   ; Loop until set",
+        "LD R0, #$01",
+        "ST R0, [$0114]      ; Clear VBlank flag"
+      ]
+    },
+    "vblank_interrupt_setup": {
+      "description": "Setup VBlank interrupt handler",
+      "code": [
+        "; Install handler",
+        "LD R0, #<vblank_handler",
+        "ST R0, [$0132]        ; VBLANK_VEC_LO",
+        "LD R0, #>vblank_handler",
+        "ST R0, [$0133]        ; VBLANK_VEC_HI",
+        "; Enable interrupt",
+        "LD R0, #$01",
+        "ST R0, [$0115]        ; INT_ENABLE",
+        "SEI                   ; Enable in CPU"
+      ]
+    },
+    "vblank_handler": {
+      "description": "VBlank interrupt handler template",
+      "code": [
+        "vblank_handler:",
+        "  PUSH R0",
+        "  PUSH R1",
+        "  ; Clear flag",
+        "  LD R0, #$01",
+        "  ST R0, [$0114]",
+        "  ; Do work here",
+        "  POP R1",
+        "  POP R0",
+        "  RTI"
+      ]
+    },
+    "controller_input": {
+      "description": "Check controller buttons",
+      "code": [
+        "LD R0, [$0106]     ; Read controller 1",
+        "AND R0, #$80       ; Check Up button",
+        "BRNZ player_up",
+        "LD R0, [$0106]",
+        "AND R0, #$08       ; Check A button",
+        "BRNZ fire_weapon"
+      ]
+    },
+    "collision_check": {
+      "description": "Process collision buffer",
+      "code": [
+        "LD R0, [$0108]     ; Read COLLISION_FLAGS",
+        "AND R0, #$02       ; Check sprite-tile bit",
+        "BRZ no_collisions",
+        "LD R1, [$0109]     ; Get count",
+        "CMP R1, #0",
+        "BRZ no_collisions",
+        "; Process first collision",
+        "LD R2, [$0A00]     ; sprite_id",
+        "LD R3, [$0A01]     ; tile_type",
+        "LD R4, [$0A02]     ; flags"
+      ]
+    }
+  },
+  "best_practices": {
+    "register_usage": [
+      "Use R0 for return values and primary accumulator",
+      "Use R2:R3 for primary pointer pair",
+      "Use R4:R5 for secondary pointer pair",
+      "Save/restore registers in subroutines if modified"
+    ],
+    "interrupts": [
+      "Use interrupts instead of polling for better efficiency",
+      "Always clear interrupt flags in handler (W1C)",
+      "Save/restore used registers in handler",
+      "Keep handlers short and fast",
+      "Use CLI/SEI for critical sections"
+    ],
+    "memory_access": [
+      "Use zero page for frequently accessed variables",
+      "Use zero page pointers for array/buffer access",
+      "Use register pairs for dynamic addressing",
+      "Bank switching: always save/restore BANK_REG if changing"
+    ],
+    "optimization": [
+      "Register operations are fastest (1 cycle)",
+      "Prefer register-to-register over memory",
+      "Use SHL/SHR for multiply/divide by powers of 2",
+      "Use INC/DEC instead of ADD #1/SUB #1",
+      "Unroll small loops for speed"
+    ]
+  },
+  "common_pitfalls": {
+    "branch_range": "Branches limited to ±127 bytes, use JMP for longer distances",
+    "carry_flag": "Carry flag not cleared automatically, affects multi-byte operations",
+    "interrupt_reentrancy": "I flag cleared on interrupt entry, RTI restores it",
+    "zero_page_wrap": "Zero page indexed wraps at 0xFF (doesn't cross to 0x100)",
+    "palette_index_0": "Sprite palette index 0 is transparent",
+    "framebuffer_location": "Framebuffer end-aligned at 0xFFFF, start varies by mode",
+    "banking": "Upper 32KB only, lower 32KB always visible",
+    "register_pairs": "High byte first in pair notation (R2:R3 = R2 high, R3 low)"
+  }
+}
