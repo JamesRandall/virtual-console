@@ -7,15 +7,15 @@ Begin by reading these files:
 /Users/jamesrandall/code/virtual-console/specs/hardware/video.md
 /Users/jamesrandall/code/virtual-console/specs/tools/assembler.md
 /Users/jamesrandall/code/virtual-console/specs/typescript-guide.md
-/Users/jamesrandall/code/virtual-console/src/devkit/react-guidelines.md
-/Users/jamesrandall/code/virtual-console/src/devkit/*
+/Users/jamesrandall/code/virtual-console/src/devkit/client/react-guidelines.md
+/Users/jamesrandall/code/virtual-console/src/devkit/client/*
 /Users/jamesrandall/code/virtual-console/src/console/src/*
 
 I want us to add an AI assistant to the devkit that can help understand and write code and debug things. We can use Ollama in which I already have the qwen3-coder:30b model installed. I want us to add:
 
 * A simple "chat" UI to the devkit which should appear in a sidebar at the right of the devkit.
     - Their should be a "new chat" button that resets the context window and starts again
-    - When a new chat is started I want to "seed" the chat with some knowledge:
+    - When a new chat is started I want to "seed" the chat with some knowledge (this seeding ought to take place in our node server, see below):
         a. A cheatsheet that describes the hardware: /Users/jamesrandall/code/virtual-console/specs/ai-cheatsheet.json
         b. Working example code:
             /Users/jamesrandall/code/virtual-console/src/examples/assembly/smiley2.asm
@@ -45,6 +45,6 @@ There is no need to worry about security for the moment. This is only running lo
 
 The node app is new and should be created in the folder script in the folder /Users/jamesrandall/code/virtual-console/src/devkit/api
 
-As part of the implementation create a script that will start everything up: Ollama, the API and the DevKit. Create this script in the folder /Users/jamesrandall/code/virtual-console/src/devkit
+As part of the implementation create a script that will start everything up: Ollama (be fault tolerant around Ollama - it may already be running and serving on the endpoint), the API and the DevKit. Create this script in the folder /Users/jamesrandall/code/virtual-console/src/devkit
 
 Provide a plan for the implementation.
