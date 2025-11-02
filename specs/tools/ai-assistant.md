@@ -21,7 +21,9 @@ I want us to add an AI assistant to the devkit that can help understand and writ
             /Users/jamesrandall/code/virtual-console/src/examples/assembly/smiley2.asm
             /Users/jamesrandall/code/virtual-console/src/examples/assembly/drawPixel.asm
             /Users/jamesrandall/code/virtual-console/src/examples/assembly/animatedStarfieldWithVblank.asm
-* A node API that can communicate with Ollama and host our (MCP?) tools
+    - Ideally we would use a prebuilt component such as ChatBotKit: https://github.com/chatbotkit/node-sdk/tree/main/packages/react
+    - It should support the handling of streamed responses
+* A node API that can communicate with Ollama and host our (MCP?) tools. In response to a chat request this is able to run an agent to respond to the users request consuming tools as appropriate. The agents progress should be communicated back to the chat interface in the browser over the socket connection ideally using streaming responses.
 * A websocket connection between the browser and the node API that allows the tools in the node API to interact with and control the devkit
 
 I want to add tools that:
@@ -36,6 +38,8 @@ I want to add tools that:
 * Can invoke an assembly of the source code
 
 State should be synced between the tools and the devkit when the AI requires it. The tools can run in the API service and invoke actions over the socket connection.
+
+A candidate architecture diagram has been supplied along with this prompt.
 
 There is no need to worry about security for the moment. This is only running locally.
 
