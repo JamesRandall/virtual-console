@@ -1,0 +1,13 @@
+{
+  "name": "devkit",
+  "version": "1.0.0",
+  "description": "Virtual Console DevKit with AI Assistant",
+  "scripts": {
+    "start": "bash start.sh",
+    "dev:api": "cd api && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "install:all": "cd api && npm install && cd ../client && npm install",
+    "build:all": "cd api && npm run build && cd ../client && npm run build"
+  },
+  "private": true
+}

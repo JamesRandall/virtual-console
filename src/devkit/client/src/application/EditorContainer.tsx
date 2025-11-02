@@ -176,43 +176,6 @@ export function EditorContainer() {
         registerAssemblerLanguage(monaco);
     }, []);
 
-    const handleEditorMount: OnMount = useCallback((editor) => {
-        // Store editor instance
-        editorRef.current = editor;
-
-        // Create decorations collection
-        decorationsCollectionRef.current = editor.createDecorationsCollection();
-
-        // Add mouse down handler for breakpoint toggling
-        editor.onMouseDown((e) => {
-            if (!monacoRef.current) return;
-
-            // Check if click is in the glyph margin
-            if (e.target.type === monacoRef.current.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
-                const line = e.target.position?.lineNumber;
-                if (line) {
-                    toggleBreakpoint(line);
-                }
-            }
-        });
-
-        // Validate initial content
-        validateCode(DEFAULT_PROGRAM);
-    }, [validateCode, toggleBreakpoint]);
-
-    const handleEditorChange = useCallback((value: string | undefined) => {
-        const code = value || "";
-        setEditorContent(code);
-
-        // Mark code as changed if we have an existing source map (assembly has occurred)
-        if (sourceMap.length > 0) {
-            setCodeChangedSinceAssembly(true);
-        }
-
-        // Validate code on change
-        validateCode(code);
-    }, [validateCode, sourceMap.length, setCodeChangedSinceAssembly]);
-
     const handleAssemble = useCallback(() => {
         if (!editorContent) {
             setAssemblyError("No code to assemble");
@@ -263,6 +226,98 @@ export function EditorContainer() {
             setAssemblyError("assembly error");
         }
     }, [editorContent, setSourceMap, setSymbolTable, updateBreakpointAddresses, setCodeChangedSinceAssembly, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
+
+    // Set up event listeners for AI tools
+    const setupAiToolListeners = useCallback((editor: MonacoEditor.editor.IStandaloneCodeEditor) => {
+        // Get editor content
+        window.addEventListener('get-editor-content', () => {
+            const model = editor.getModel();
+            if (!model) return;
+
+            const position = editor.getPosition();
+            const selection = editor.getSelection();
+
+            const response = {
+                code: model.getValue(),
+                cursorLine: position?.lineNumber,
+                cursorColumn: position?.column,
+                selection: selection ? {
+                    startLine: selection.startLineNumber,
+                    startColumn: selection.startColumn,
+                    endLine: selection.endLineNumber,
+                    endColumn: selection.endColumn,
+                } : undefined
+            };
+
+            window.dispatchEvent(new CustomEvent('editor-content-response', { detail: response }));
+        });
+
+        // Set editor content
+        window.addEventListener('set-editor-content', ((e: CustomEvent) => {
+            const { code, cursorLine, cursorColumn } = e.detail;
+            const model = editor.getModel();
+            if (!model) return;
+
+            model.setValue(code);
+
+            if (cursorLine && cursorColumn) {
+                editor.setPosition({ lineNumber: cursorLine, column: cursorColumn });
+                editor.revealLineInCenter(cursorLine);
+            }
+        }) as EventListener);
+
+        // Assemble code
+        window.addEventListener('editor-assemble', () => {
+            handleAssemble();
+            // Response will be sent after assembly completes
+            // For now, send a simple response
+            setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('editor-assemble-response', {
+                    detail: { success: true }
+                }));
+            }, 100);
+        });
+    }, [handleAssemble]);
+
+    const handleEditorMount: OnMount = useCallback((editor) => {
+        // Store editor instance
+        editorRef.current = editor;
+
+        // Create decorations collection
+        decorationsCollectionRef.current = editor.createDecorationsCollection();
+
+        // Add mouse down handler for breakpoint toggling
+        editor.onMouseDown((e) => {
+            if (!monacoRef.current) return;
+
+            // Check if click is in the glyph margin
+            if (e.target.type === monacoRef.current.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+                const line = e.target.position?.lineNumber;
+                if (line) {
+                    toggleBreakpoint(line);
+                }
+            }
+        });
+
+        // Validate initial content
+        validateCode(DEFAULT_PROGRAM);
+
+        // Set up AI tool event listeners
+        setupAiToolListeners(editor);
+    }, [validateCode, setupAiToolListeners, toggleBreakpoint]);
+
+    const handleEditorChange = useCallback((value: string | undefined) => {
+        const code = value || "";
+        setEditorContent(code);
+
+        // Mark code as changed if we have an existing source map (assembly has occurred)
+        if (sourceMap.length > 0) {
+            setCodeChangedSinceAssembly(true);
+        }
+
+        // Validate code on change
+        validateCode(code);
+    }, [validateCode, sourceMap.length, setCodeChangedSinceAssembly]);
 
     // Determine if we should show the warning banner
     const showWarningBanner = codeChangedSinceAssembly && breakpointLines.size > 0 && sourceMap.length > 0;

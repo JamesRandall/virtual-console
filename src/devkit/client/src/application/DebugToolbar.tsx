@@ -27,38 +27,6 @@ export function DebugToolbar() {
         virtualConsole.setBreakpoints(Array.from(breakpointAddresses));
     }, [breakpointAddresses, virtualConsole]);
 
-    // Listen for CPU state changes (from breakpoints, pauses, etc.)
-    useEffect(() => {
-        const handleCpuPaused = () => {
-            setIsConsoleRunning(false);
-            // Update snapshots when paused
-            updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
-                console.error("Error updating snapshots:", error);
-            });
-        };
-
-        const handleBreakpointHit = (event: Event) => {
-            const customEvent = event as CustomEvent;
-            setIsConsoleRunning(false);
-            // Update CPU snapshot with the snapshot from the breakpoint hit
-            if (customEvent.detail?.snapshot) {
-                updateCpuSnapshot(customEvent.detail.snapshot);
-            }
-            // Update memory snapshot
-            updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
-                console.error("Error updating snapshots:", error);
-            });
-        };
-
-        window.addEventListener('cpuPaused', handleCpuPaused);
-        window.addEventListener('cpuBreakpointHit', handleBreakpointHit);
-
-        return () => {
-            window.removeEventListener('cpuPaused', handleCpuPaused);
-            window.removeEventListener('cpuBreakpointHit', handleBreakpointHit);
-        };
-    }, [setIsConsoleRunning, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
-
     // Event handlers
     const handleRun = useCallback(() => {
         try {
@@ -145,6 +113,65 @@ export function DebugToolbar() {
         // Set flag to trigger scroll in MemoryView
         setShouldScrollToPC(true);
     }, [cpuSnapshot.programCounter, viewSize, setFirstRowAddress, setShouldScrollToPC]);
+
+    // Listen for CPU state changes (from breakpoints, pauses, etc.)
+    useEffect(() => {
+        const handleCpuPaused = () => {
+            setIsConsoleRunning(false);
+            // Update snapshots when paused
+            updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
+                console.error("Error updating snapshots:", error);
+            });
+        };
+
+        const handleBreakpointHit = (event: Event) => {
+            const customEvent = event as CustomEvent;
+            setIsConsoleRunning(false);
+            // Update CPU snapshot with the snapshot from the breakpoint hit
+            if (customEvent.detail?.snapshot) {
+                updateCpuSnapshot(customEvent.detail.snapshot);
+            }
+            // Update memory snapshot
+            updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot).catch((error) => {
+                console.error("Error updating snapshots:", error);
+            });
+        };
+
+        // AI tool event listeners
+        const handleDebuggerStep = () => {
+            handleStep();
+        };
+
+        const handleDebuggerRun = () => {
+            handleRun();
+        };
+
+        const handleDebuggerPause = () => {
+            handlePause();
+        };
+
+        const handleDebuggerReset = () => {
+            handleReset();
+        };
+
+        window.addEventListener('cpuPaused', handleCpuPaused);
+        window.addEventListener('cpuBreakpointHit', handleBreakpointHit);
+        window.addEventListener('debugger-step', handleDebuggerStep);
+        window.addEventListener('debugger-run', handleDebuggerRun);
+        window.addEventListener('debugger-pause', handleDebuggerPause);
+        window.addEventListener('debugger-reset', handleDebuggerReset);
+
+        return () => {
+            window.removeEventListener('cpuPaused', handleCpuPaused);
+            window.removeEventListener('cpuBreakpointHit', handleBreakpointHit);
+            window.removeEventListener('debugger-step', handleDebuggerStep);
+            window.removeEventListener('debugger-run', handleDebuggerRun);
+            window.removeEventListener('debugger-pause', handleDebuggerPause);
+            window.removeEventListener('debugger-reset', handleDebuggerReset);
+        };
+    }, [setIsConsoleRunning, virtualConsole, updateMemorySnapshot, updateCpuSnapshot, handleStep, handleRun, handlePause, handleReset]);
+
+
 
     // Render
     return <div className="p-4 border-t border-zinc-300">

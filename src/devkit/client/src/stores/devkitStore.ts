@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { SourceMapEntry, SymbolTable } from '../../../console/src/assembler.ts';
+import type { SourceMapEntry, SymbolTable } from '../../../../console/src/assembler.ts';
 
 export interface CpuSnapshot {
   registers: Uint8Array;  // R0-R5 (6 registers)
@@ -7,6 +7,13 @@ export interface CpuSnapshot {
   programCounter: number; // PC (16-bit)
   statusRegister: number; // Status flags (8-bit)
   cycleCount: number;     // Cycle counter
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
 }
 
 interface DevkitState {
@@ -33,6 +40,12 @@ interface DevkitState {
   // Memory view state
   shouldScrollToPC: boolean;         // Flag to trigger scroll to PC in memory view
 
+  // AI Chat state
+  chatMessages: ChatMessage[];
+  isChatConnected: boolean;
+  isAiThinking: boolean;
+  currentStreamingMessage: string;
+
   // Actions
   setIsConsoleRunning: (isRunning: boolean) => void;
   setFirstRowAddress: (address: number) => void;
@@ -46,6 +59,14 @@ interface DevkitState {
   clearAllBreakpoints: () => void;
   setCodeChangedSinceAssembly: (changed: boolean) => void;
   setShouldScrollToPC: (shouldScroll: boolean) => void;
+
+  // AI Chat actions
+  addChatMessage: (message: ChatMessage) => void;
+  appendToStreamingMessage: (content: string) => void;
+  finalizeStreamingMessage: () => void;
+  clearChatHistory: () => void;
+  setChatConnected: (connected: boolean) => void;
+  setAiThinking: (thinking: boolean) => void;
 }
 
 export const useDevkitStore = create<DevkitState>((set) => ({
@@ -67,6 +88,12 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   breakpointAddresses: new Set<number>(),
   codeChangedSinceAssembly: false,
   shouldScrollToPC: false,
+
+  // AI Chat initial state
+  chatMessages: [],
+  isChatConnected: false,
+  isAiThinking: false,
+  currentStreamingMessage: '',
 
   // Actions
   setIsConsoleRunning: (isRunning: boolean) => set({ isConsoleRunning: isRunning }),
@@ -124,4 +151,38 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   setCodeChangedSinceAssembly: (changed: boolean) => set({ codeChangedSinceAssembly: changed }),
 
   setShouldScrollToPC: (shouldScroll: boolean) => set({ shouldScrollToPC: shouldScroll }),
+
+  // AI Chat actions
+  addChatMessage: (message: ChatMessage) => set((state) => ({
+    chatMessages: [...state.chatMessages, message]
+  })),
+
+  appendToStreamingMessage: (content: string) => set((state) => ({
+    currentStreamingMessage: state.currentStreamingMessage + content
+  })),
+
+  finalizeStreamingMessage: () => set((state) => {
+    if (!state.currentStreamingMessage) return {};
+
+    const message: ChatMessage = {
+      id: `msg-${Date.now()}-${Math.random()}`,
+      role: 'assistant',
+      content: state.currentStreamingMessage,
+      timestamp: Date.now()
+    };
+
+    return {
+      chatMessages: [...state.chatMessages, message],
+      currentStreamingMessage: ''
+    };
+  }),
+
+  clearChatHistory: () => set({
+    chatMessages: [],
+    currentStreamingMessage: ''
+  }),
+
+  setChatConnected: (connected: boolean) => set({ isChatConnected: connected }),
+
+  setAiThinking: (thinking: boolean) => set({ isAiThinking: thinking }),
 }));
