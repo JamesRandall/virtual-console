@@ -43,6 +43,7 @@ async function handleReadSourceCode(): Promise<unknown> {
     const handler = (e: Event) => {
       const customEvent = e as CustomEvent;
       console.log('Received editor content response:', customEvent.detail);
+      clearTimeout(timeout);
       resolve(customEvent.detail);
       window.removeEventListener('editor-content-response', handler);
     };
@@ -69,12 +70,29 @@ async function handleUpdateSourceCode(parameters: Record<string, unknown>): Prom
     cursorColumn?: number;
   };
 
-  const event = new CustomEvent('set-editor-content', {
-    detail: { code, cursorLine, cursorColumn }
-  });
-  window.dispatchEvent(event);
+  return new Promise((resolve) => {
+    const handler = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      clearTimeout(timeout);
+      resolve(customEvent.detail);
+      window.removeEventListener('editor-content-updated', handler);
+    };
 
-  return { success: true };
+    // Add listener BEFORE dispatching the event
+    window.addEventListener('editor-content-updated', handler);
+
+    // Timeout after 5 seconds
+    const timeout = setTimeout(() => {
+      window.removeEventListener('editor-content-updated', handler);
+      resolve({ success: false, error: 'Timeout updating editor content' });
+    }, 5000);
+
+    // Now dispatch the event
+    const event = new CustomEvent('set-editor-content', {
+      detail: { code, cursorLine, cursorColumn }
+    });
+    window.dispatchEvent(event);
+  });
 }
 
 async function handleReadCpuState(): Promise<unknown> {
@@ -163,6 +181,7 @@ async function handleAssembleCode(): Promise<unknown> {
   return new Promise((resolve) => {
     const handler = (e: Event) => {
       const customEvent = e as CustomEvent;
+      clearTimeout(timeout);
       resolve(customEvent.detail);
       window.removeEventListener('editor-assemble-response', handler);
     };
@@ -171,7 +190,7 @@ async function handleAssembleCode(): Promise<unknown> {
     window.addEventListener('editor-assemble-response', handler);
 
     // Timeout after 10 seconds
-    setTimeout(() => {
+    const timeout = setTimeout(() => {
       window.removeEventListener('editor-assemble-response', handler);
       resolve({ success: false, error: 'Timeout assembling code' });
     }, 10000);

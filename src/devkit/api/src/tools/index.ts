@@ -48,6 +48,16 @@ export function registerToolResponse(id: string, result: unknown, error?: string
     return;
   }
 
+  // Log assembly results for debugging
+  const typedResult = result as any;
+  if (typedResult && typeof typedResult === 'object' && 'success' in typedResult) {
+    if (typedResult.success === false && typedResult.errors) {
+      console.log('🔴 Assembly FAILED with errors:', JSON.stringify(typedResult.errors, null, 2));
+    } else if (typedResult.success === true) {
+      console.log('✅ Assembly succeeded, PC:', typedResult.programCounter);
+    }
+  }
+
   // Clear timeout
   clearTimeout(pending.timeout);
   pendingToolRequests.delete(id);
@@ -179,7 +189,7 @@ export function getToolDefinitions() {
     },
     {
       name: 'assemble_code',
-      description: 'Assembles the current source code and loads it into memory. This must be done before running any code. Returns success or assembly errors.',
+      description: 'Assembles the current source code and loads it into memory. This must be done before running any code. CRITICAL: You MUST check the "success" field in the response! Returns { success: true, programCounter: number } on success. Returns { success: false, errors: [{line: number, column?: number, message: string}] } if assembly fails. If success is false, you MUST fix all errors and reassemble - DO NOT attempt to run the code. Each error includes the line number, optional column, and a message describing what is wrong.',
       input_schema: {
         type: 'object' as const,
         properties: {},

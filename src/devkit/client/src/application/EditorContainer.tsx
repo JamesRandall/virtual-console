@@ -177,19 +177,31 @@ export function EditorContainer() {
     }, []);
 
     const handleAssemble = useCallback(() => {
-        if (!editorContent) {
+        // Get the current code directly from the editor to avoid stale state
+        const currentCode = editorRef.current?.getModel()?.getValue() || editorContent;
+
+        if (!currentCode) {
             setAssemblyError("No code to assemble");
-            return;
+            return { success: false, error: "No code to assemble" };
         }
+
+        console.log('📝 Assembling code (length:', currentCode.length, 'chars)');
 
         try {
             // Assemble the code
-            const result = assemble(editorContent);
+            const result = assemble(currentCode);
 
             // Check for errors
             if (result.errors.length > 0) {
                 setAssemblyError("assembly error");
-                return;
+                return {
+                    success: false,
+                    errors: result.errors.map(err => ({
+                        line: err.line,
+                        column: err.column,
+                        message: err.message
+                    }))
+                };
             }
 
             // Load the assembled code into memory
@@ -221,9 +233,12 @@ export function EditorContainer() {
 
             // Clear error on success
             setAssemblyError(null);
+            return { success: true, programCounter: result.segments[0]?.startAddress ?? 0 };
         } catch (error) {
             console.error("Unexpected error assembling code:", error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
             setAssemblyError("assembly error");
+            return { success: false, error: errorMessage };
         }
     }, [editorContent, setSourceMap, setSymbolTable, updateBreakpointAddresses, setCodeChangedSinceAssembly, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
 
@@ -263,26 +278,35 @@ export function EditorContainer() {
             const customEvent = e as CustomEvent;
             const { code, cursorLine, cursorColumn } = customEvent.detail;
             const model = editor.getModel();
-            if (!model) return;
+            if (!model) {
+                window.dispatchEvent(new CustomEvent('editor-content-updated', {
+                    detail: { success: false, error: 'No editor model' }
+                }));
+                return;
+            }
 
+            console.log('🔧 Setting editor content (length:', code?.length ?? 0, 'chars)');
             model.setValue(code);
 
             if (cursorLine && cursorColumn) {
                 editor.setPosition({ lineNumber: cursorLine, column: cursorColumn });
                 editor.revealLineInCenter(cursorLine);
             }
+
+            // Send confirmation that editor was updated
+            window.dispatchEvent(new CustomEvent('editor-content-updated', {
+                detail: { success: true, length: code?.length ?? 0 }
+            }));
         };
 
         // Assemble code
         const handleEditorAssemble = () => {
-            handleAssemble();
-            // Response will be sent after assembly completes
-            // For now, send a simple response
-            setTimeout(() => {
-                window.dispatchEvent(new CustomEvent('editor-assemble-response', {
-                    detail: { success: true }
-                }));
-            }, 100);
+            const result = handleAssemble();
+            console.log('🔧 Assembly result:', result);
+            // Dispatch the assembly result immediately
+            window.dispatchEvent(new CustomEvent('editor-assemble-response', {
+                detail: result
+            }));
         };
 
         window.addEventListener('get-editor-content', handleGetEditorContent);
