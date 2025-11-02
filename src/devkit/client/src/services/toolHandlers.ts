@@ -108,13 +108,36 @@ async function handleReadCpuState(): Promise<unknown> {
 }
 
 async function handleReadMemory(parameters: Record<string, unknown>): Promise<unknown> {
-  const { address, length } = parameters as { address: number; length: number };
+  const rawAddress = parameters.address as string | number;
+  const rawLength = parameters.length as string | number;
 
-  if (address < 0 || address > 0xFFFF) {
+  // Parse address - handle hex strings like "0xA000" or decimal
+  let address: number;
+  if (typeof rawAddress === 'string') {
+    address = rawAddress.toLowerCase().startsWith('0x')
+      ? parseInt(rawAddress, 16)
+      : parseInt(rawAddress, 10);
+  } else {
+    address = rawAddress;
+  }
+
+  // Parse length - handle both string and number
+  let length: number;
+  if (typeof rawLength === 'string') {
+    length = rawLength.toLowerCase().startsWith('0x')
+      ? parseInt(rawLength, 16)
+      : parseInt(rawLength, 10);
+  } else {
+    length = rawLength;
+  }
+
+  console.log('📖 Reading memory at address:', typeof rawAddress === 'string' ? rawAddress : `0x${address.toString(16)}`, '(parsed:', address, ') length:', length);
+
+  if (isNaN(address) || address < 0 || address > 0xFFFF) {
     throw new Error('Address out of range (0x0000-0xFFFF)');
   }
 
-  if (length < 1 || length > 1024) {
+  if (isNaN(length) || length < 1 || length > 1024) {
     throw new Error('Length out of range (1-1024)');
   }
 
@@ -157,10 +180,13 @@ async function handleStepDebugger(): Promise<unknown> {
 }
 
 async function handleRunDebugger(): Promise<unknown> {
+  const cpuSnapshot = useDevkitStore.getState().cpuSnapshot;
+  console.log('🏃 Running debugger, PC before run:', cpuSnapshot.programCounter.toString(16));
+
   const event = new CustomEvent('debugger-run');
   window.dispatchEvent(event);
 
-  return { success: true };
+  return { success: true, programCounter: cpuSnapshot.programCounter };
 }
 
 async function handlePauseDebugger(): Promise<unknown> {
@@ -171,10 +197,11 @@ async function handlePauseDebugger(): Promise<unknown> {
 }
 
 async function handleResetConsole(): Promise<unknown> {
+  console.log('🔄 Resetting console - PC will be set to 0');
   const event = new CustomEvent('debugger-reset');
   window.dispatchEvent(event);
 
-  return { success: true };
+  return { success: true, message: 'Console reset - PC set to 0, all registers cleared' };
 }
 
 async function handleAssembleCode(): Promise<unknown> {

@@ -123,11 +123,11 @@ export function getToolDefinitions() {
         properties: {
           address: {
             type: 'number' as const,
-            description: 'Starting memory address to read from (0x0000-0xFFFF)'
+            description: 'Starting memory address to read from (0x0000-0xFFFF). Can be a number or hex string like "0xA000"'
           },
           length: {
             type: 'number' as const,
-            description: 'Number of bytes to read (1-256 recommended for readability)'
+            description: 'Number of bytes to read (1-256 recommended for readability). Can be a number or hex string'
           }
         },
         required: ['address', 'length']
@@ -162,7 +162,7 @@ export function getToolDefinitions() {
     },
     {
       name: 'run_debugger',
-      description: 'Starts continuous CPU execution. The CPU will run until a breakpoint is hit or the user manually pauses.',
+      description: 'Starts continuous CPU execution from the current program counter. The CPU will run until a breakpoint is hit or the user manually pauses. After assembling code, just run - do NOT reset first as assembly already set the PC correctly.',
       input_schema: {
         type: 'object' as const,
         properties: {},
@@ -180,7 +180,7 @@ export function getToolDefinitions() {
     },
     {
       name: 'reset_console',
-      description: 'Resets the virtual console CPU to its initial state. This clears registers, resets PC to 0, and initializes the stack pointer.',
+      description: 'Resets the virtual console CPU to its initial state. This clears registers, resets PC to 0, and initializes the stack pointer. WARNING: This resets PC to 0, so do NOT use after assembling code! Assembly already sets PC correctly.',
       input_schema: {
         type: 'object' as const,
         properties: {},
@@ -189,7 +189,7 @@ export function getToolDefinitions() {
     },
     {
       name: 'assemble_code',
-      description: 'Assembles the current source code and loads it into memory. This must be done before running any code. CRITICAL: You MUST check the "success" field in the response! Returns { success: true, programCounter: number } on success. Returns { success: false, errors: [{line: number, column?: number, message: string}] } if assembly fails. If success is false, you MUST fix all errors and reassemble - DO NOT attempt to run the code. Each error includes the line number, optional column, and a message describing what is wrong.',
+      description: 'Assembles the current source code and loads it into memory. This sets the program counter to the correct start address automatically. CRITICAL: You MUST check the "success" field in the response! Returns { success: true, programCounter: number } on success (note the PC value for reference). Returns { success: false, errors: [{line: number, column?: number, message: string}] } if assembly fails. If success is false, you MUST fix all errors and reassemble - DO NOT attempt to run the code. After successful assembly, you can run_debugger immediately - do NOT reset!',
       input_schema: {
         type: 'object' as const,
         properties: {},

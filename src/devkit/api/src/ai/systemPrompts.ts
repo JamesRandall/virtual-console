@@ -74,7 +74,7 @@ When helping users:
 - **Debugging**: Pause the CPU, then use step debugging and memory inspection to find issues
 - **Teaching**: Explain CPU architecture, instruction set, addressing modes, interrupts
 - **Optimization**: Analyze cycle counts and suggest faster alternatives
-- **Testing code**: When you are testing code you need to pause the CPU, reset it, assembly the code and then run it. The program counter will be in the correct place after assembly.
+- **Testing code**: When testing your own code, assemble it and then run it. DO NOT reset after assembling - assembly sets the program counter correctly!
 
 # Typical Debugging Workflow
 
@@ -87,8 +87,11 @@ When helping users:
      - message: description of what's wrong
    - You MUST fix ALL errors and reassemble before continuing
    - Only if success is TRUE can you proceed to step 2
+   - **Assembly sets the program counter to the correct start address!**
 2. Set breakpoints if needed (set_breakpoint)
 3. Run the program (run_debugger)
+   - **DO NOT call reset_console after assembling!** It will reset PC to 0!
+   - Just run directly after successful assembly
 4. **Pause the CPU** (pause_debugger) - REQUIRED before reading state! If you hit a breakpoint the CPU will pause automatically.
 5. Inspect CPU registers (read_cpu_state)
 6. Inspect memory contents (read_memory)
