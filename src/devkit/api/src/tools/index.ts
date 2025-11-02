@@ -98,7 +98,7 @@ export function getToolDefinitions() {
     },
     {
       name: 'read_cpu_state',
-      description: 'Reads the current CPU state including all registers (R0-R5), stack pointer, program counter, status flags, and cycle count. Use this to inspect the current execution state.',
+      description: 'Reads the current CPU state including all registers (R0-R5), stack pointer, program counter, status flags, and cycle count. IMPORTANT: The CPU must be paused (use pause_debugger) before reading CPU state, otherwise values will change rapidly as the program executes.',
       input_schema: {
         type: 'object' as const,
         properties: {},
@@ -107,7 +107,7 @@ export function getToolDefinitions() {
     },
     {
       name: 'read_memory',
-      description: 'Reads a range of memory bytes from the virtual console. Memory addresses range from 0x0000 to 0xFFFF (64KB total).',
+      description: 'Reads a range of memory bytes from the virtual console. Memory addresses range from 0x0000 to 0xFFFF (64KB total). IMPORTANT: The CPU must be paused (use pause_debugger) before reading memory, otherwise values may change as the program executes.',
       input_schema: {
         type: 'object' as const,
         properties: {

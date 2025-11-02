@@ -99,7 +99,7 @@ class AiWebSocketClient {
     });
 
     this.socket.on('ai_response_start', () => {
-      // Clear any previous streaming message
+      // Start a new streaming message
       useDevkitStore.setState({ currentStreamingMessage: '' });
     });
 
@@ -108,8 +108,14 @@ class AiWebSocketClient {
     });
 
     this.socket.on('ai_response_done', () => {
-      useDevkitStore.getState().finalizeStreamingMessage();
-      useDevkitStore.getState().setAiThinking(false);
+      // Finalize and save the current streaming message (if any)
+      const currentMessage = useDevkitStore.getState().currentStreamingMessage;
+      if (currentMessage && currentMessage.trim()) {
+        useDevkitStore.getState().finalizeStreamingMessage();
+      } else {
+        // Clear empty streaming message
+        useDevkitStore.setState({ currentStreamingMessage: '' });
+      }
     });
 
     this.socket.on('ai_tool_use', (data: { tool: string; parameters: Record<string, unknown> }) => {

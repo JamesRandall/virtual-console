@@ -1,16 +1,26 @@
 import dotenv from 'dotenv';
+import type { ProviderType } from './ai/providers/factory.js';
 
 // Load environment variables
 dotenv.config();
 
 export const config = {
+  // AI Provider selection
+  aiProvider: (process.env.AI_PROVIDER || 'anthropic') as ProviderType,
+
   // Anthropic API
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+  anthropicModel: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929',
 
-  // Claude configuration
-  claudeModel: process.env.CLAUDE_MODEL || 'claude-sonnet-4-5-20250929',
-  claudeMaxTokens: parseInt(process.env.CLAUDE_MAX_TOKENS || '20000', 10),
-  claudeTemperature: parseFloat(process.env.CLAUDE_TEMPERATURE || '1'),
+  // AWS Bedrock
+  bedrockRegion: process.env.BEDROCK_REGION || 'eu-west-2',
+  bedrockModelId: process.env.BEDROCK_MODEL_ID || '',
+  bedrockMaxRetries: parseInt(process.env.BEDROCK_MAX_RETRIES || '5', 10),
+  bedrockBaseDelayMs: parseInt(process.env.BEDROCK_BASE_DELAY_MS || '1000', 10),
+
+  // Model configuration
+  maxTokens: parseInt(process.env.MAX_TOKENS || '20000', 10),
+  temperature: parseFloat(process.env.TEMPERATURE || '1'),
 
   // Server configuration
   port: parseInt(process.env.PORT || '3001', 10),
@@ -18,10 +28,24 @@ export const config = {
 
   // Validate required config
   validate(): void {
-    if (!this.anthropicApiKey) {
+    if (this.aiProvider === 'anthropic') {
+      if (!this.anthropicApiKey) {
+        throw new Error(
+          'ANTHROPIC_API_KEY is required when using Anthropic provider.\n' +
+          'Copy .env.example to .env and add your API key.'
+        );
+      }
+    } else if (this.aiProvider === 'bedrock') {
+      if (!this.bedrockModelId) {
+        throw new Error(
+          'BEDROCK_MODEL_ID is required when using Bedrock provider.\n' +
+          'Set BEDROCK_MODEL_ID in .env file (e.g., arn:aws:bedrock:eu-west-2:551004122490:inference-profile/eu.anthropic.claude-sonnet-4-5-20250929-v1:0)'
+        );
+      }
+    } else {
       throw new Error(
-        'ANTHROPIC_API_KEY is required. Please set it in .env file.\n' +
-        'Copy .env.example to .env and add your API key.'
+        `Unsupported AI_PROVIDER: ${this.aiProvider}\n` +
+        'Supported providers: anthropic, bedrock'
       );
     }
   }

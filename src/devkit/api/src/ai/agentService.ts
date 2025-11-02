@@ -1,8 +1,10 @@
 import type { Socket } from 'socket.io';
-import { anthropic, CLAUDE_CONFIG } from './claudeClient.js';
 import { loadSystemPrompt } from './systemPrompts.js';
 import { getToolDefinitions, executeToolRequest } from '../tools/index.js';
+import { createAIProvider } from './providers/factory.js';
+import { config } from '../config.js';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
+import type { ToolUseBlock } from './providers/interface.js';
 
 // Store conversation history per socket
 const conversationHistory = new Map<string, MessageParam[]>();
@@ -48,31 +50,40 @@ async function streamClaudeResponse(socket: Socket, history: MessageParam[]): Pr
   const systemPrompt = loadSystemPrompt();
   const tools = getToolDefinitions();
 
-  // Start streaming response
-  const stream = await anthropic.messages.create({
-    ...CLAUDE_CONFIG,
-    system: systemPrompt,
-    messages: history,
-    tools,
-    stream: true,
+  // Create AI provider based on configuration
+  const provider = createAIProvider({
+    type: config.aiProvider,
+    anthropicApiKey: config.anthropicApiKey,
+    anthropicModel: config.anthropicModel,
+    bedrockRegion: config.bedrockRegion,
+    bedrockModelId: config.bedrockModelId,
+    bedrockMaxRetries: config.bedrockMaxRetries,
+    bedrockBaseDelayMs: config.bedrockBaseDelayMs,
   });
 
   let currentResponse = '';
-  let toolUseBlocks: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
+  let toolUseBlocks: ToolUseBlock[] = [];
 
   socket.emit('ai_response_start', {});
 
   try {
+    const stream = provider.streamChat({
+      system: systemPrompt,
+      messages: history,
+      tools,
+      maxTokens: config.maxTokens,
+      temperature: config.temperature,
+    });
+
     for await (const event of stream) {
       if (event.type === 'content_block_start') {
-        if (event.content_block.type === 'text') {
+        if (event.contentBlock.type === 'text') {
           // Text content starting
-        } else if (event.content_block.type === 'tool_use') {
+        } else if (event.contentBlock.type === 'tool_use') {
           // Tool use starting
-          const toolBlock = event.content_block;
           toolUseBlocks.push({
-            id: toolBlock.id,
-            name: toolBlock.name,
+            id: event.contentBlock.id,
+            name: event.contentBlock.name,
             input: {}
           });
         }
@@ -99,7 +110,7 @@ async function streamClaudeResponse(socket: Socket, history: MessageParam[]): Pr
         // Content block completed
       } else if (event.type === 'message_delta') {
         if (event.delta.stop_reason === 'tool_use') {
-          // Claude wants to use tools
+          // AI wants to use tools
           console.log(`🔧 Claude requesting tool use: ${toolUseBlocks.map(t => t.name).join(', ')}`);
         }
       } else if (event.type === 'message_stop') {
@@ -110,6 +121,9 @@ async function streamClaudeResponse(socket: Socket, history: MessageParam[]): Pr
 
     // If there are tool uses, execute them
     if (toolUseBlocks.length > 0) {
+      // Finalize the current streaming message before executing tools
+      socket.emit('ai_response_done', {});
+
       await handleToolUses(socket, history, currentResponse, toolUseBlocks);
     } else {
       // No tools, just save the response
@@ -132,7 +146,7 @@ async function handleToolUses(
   socket: Socket,
   history: MessageParam[],
   textResponse: string,
-  toolUseBlocks: Array<{ id: string; name: string; input: Record<string, unknown> }>
+  toolUseBlocks: ToolUseBlock[]
 ): Promise<void> {
   // Build assistant message with tool uses
   const assistantContent: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }> = [];

@@ -19,7 +19,13 @@ async function main() {
     httpServer.listen(config.port, () => {
       console.log(`✅ Server running on port ${config.port}`);
       console.log(`📡 WebSocket ready for connections`);
-      console.log(`🤖 Claude model: ${config.claudeModel}`);
+      console.log(`🤖 AI Provider: ${config.aiProvider}`);
+      if (config.aiProvider === 'anthropic') {
+        console.log(`   Model: ${config.anthropicModel}`);
+      } else if (config.aiProvider === 'bedrock') {
+        console.log(`   Region: ${config.bedrockRegion}`);
+        console.log(`   Model: ${config.bedrockModelId}`);
+      }
     });
 
   } catch (error) {
