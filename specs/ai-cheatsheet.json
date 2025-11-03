@@ -800,6 +800,266 @@
       ]
     }
   },
+  "common_patterns": {
+    "signed_comparison": {
+      "problem": "CMP performs UNSIGNED comparison, but values may be SIGNED (using two's complement)",
+      "critical_note": "Negative numbers (bit 7 = 1) appear as large positive values (128-255) in unsigned comparison",
+      "example_bug": "e2 = -20 (0xEC = 236 unsigned), CMP e2, 50 treats 236 >= 50, but signed -20 < 50",
+      "solution_patterns": [
+        {
+          "name": "Check sign bit first",
+          "when": "Comparing signed value < unsigned value",
+          "code": [
+            "; Check if signed_val < unsigned_val",
+            "LD R0, [signed_val]",
+            "AND R0, #$80        ; Check bit 7 (sign bit)",
+            "BRNZ is_negative    ; If negative, always < positive",
+            "; Value is positive, safe to use CMP",
+            "LD R0, [signed_val]",
+            "LD R1, [unsigned_val]",
+            "CMP R0, R1",
+            "BRC greater_or_equal"
+          ]
+        },
+        {
+          "name": "Reformulate as addition",
+          "when": "Testing if e2 >= -dy",
+          "code": [
+            "; Instead of: e2 >= -dy",
+            "; Use: e2 + dy >= 0",
+            "LD R0, [e2]",
+            "LD R1, [dy]",
+            "ADD R0, R1          ; e2 + dy",
+            "AND R0, #$80        ; Check sign bit",
+            "BRNZ is_negative    ; Negative means e2 < -dy"
+          ]
+        },
+        {
+          "name": "Reformulate as subtraction",
+          "when": "Testing if e2 <= dx",
+          "code": [
+            "; Instead of: e2 <= dx",
+            "; Use: dx - e2 >= 0",
+            "LD R0, [dx]",
+            "LD R1, [e2]",
+            "SUB R0, R1          ; dx - e2",
+            "AND R0, #$80        ; Check sign bit",
+            "BRNZ skip_action    ; Negative means dx < e2"
+          ]
+        }
+      ]
+    },
+    "bresenham_line_algorithm": {
+      "description": "Correct implementation of Bresenham line drawing",
+      "key_challenges": [
+        "CMP is unsigned, but error terms are signed",
+        "Need to handle 8 octants (all directions)",
+        "Step directions must be ±1"
+      ],
+      "correct_pattern": [
+        "; Calculate dx, dy (absolute values)",
+        "; Calculate sx, sy (±1 step directions)",
+        "; err = dx - dy (SIGNED value)",
+        "",
+        ".loop:",
+        "  ; Plot pixel at (x0, y0)",
+        "  CALL plot",
+        "  ",
+        "  ; Check if reached endpoint",
+        "  CMP x0, x1",
+        "  BRNZ .continue",
+        "  CMP y0, y1",
+        "  BRZ .done",
+        "  ",
+        ".continue:",
+        "  ; e2 = 2*err (SIGNED)",
+        "  LD R0, [err]",
+        "  ADD R0, R0          ; e2 = err * 2",
+        "  ST R0, [e2]",
+        "  ",
+        "  ; CRITICAL: Check if e2 >= -dy (SIGNED comparison!)",
+        "  LD R0, [e2]",
+        "  LD R1, [dy]",
+        "  ADD R0, R1          ; e2 + dy",
+        "  AND R0, #$80",
+        "  BRNZ .skip_x        ; Negative = skip X step",
+        "  ",
+        "  ; X step: err -= dy, x0 += sx",
+        "  LD R0, [err]",
+        "  LD R1, [dy]",
+        "  SUB R0, R1",
+        "  ST R0, [err]",
+        "  LD R0, [x0]",
+        "  LD R1, [sx]",
+        "  ADD R0, R1          ; Handle both +1 and -1 (0xFF)",
+        "  ST R0, [x0]",
+        "  ",
+        ".skip_x:",
+        "  ; CRITICAL: Check if e2 <= dx (SIGNED comparison!)",
+        "  LD R0, [dx]",
+        "  LD R1, [e2]",
+        "  SUB R0, R1          ; dx - e2",
+        "  AND R0, #$80",
+        "  BRNZ .loop          ; Negative = skip Y step",
+        "  ",
+        "  ; Y step: err += dx, y0 += sy",
+        "  LD R0, [err]",
+        "  LD R1, [dx]",
+        "  ADD R0, R1",
+        "  ST R0, [err]",
+        "  LD R0, [y0]",
+        "  LD R1, [sy]",
+        "  ADD R0, R1",
+        "  ST R0, [y0]",
+        "  JMP .loop"
+      ],
+      "common_mistakes": [
+        "Using CMP on e2 without checking sign bit first",
+        "Not handling negative step directions properly",
+        "Testing wrong condition (e2 > -dy instead of e2 >= -dy)"
+      ]
+    },
+    "loop_termination": {
+      "description": "Correct patterns for loop exit conditions",
+      "patterns": [
+        {
+          "name": "Count-down loop",
+          "code": [
+            "LD R0, #100",
+            ".loop:",
+            "  ; Do work",
+            "  DEC R0",
+            "  BRNZ .loop      ; Continue while R0 != 0"
+          ]
+        },
+        {
+          "name": "Multi-condition exit",
+          "code": [
+            ".loop:",
+            "  ; Check condition 1",
+            "  LD R0, [x]",
+            "  LD R1, [target_x]",
+            "  CMP R0, R1",
+            "  BRNZ .continue",
+            "  ; Check condition 2",
+            "  LD R0, [y]",
+            "  LD R1, [target_y]",
+            "  CMP R0, R1",
+            "  BRZ .done      ; Both match = exit",
+            ".continue:",
+            "  ; Do work",
+            "  JMP .loop",
+            ".done:"
+          ]
+        }
+      ]
+    },
+    "negative_numbers": {
+      "description": "Working with negative numbers in 8-bit two's complement",
+      "representation": {
+        "-1": "0xFF (255)",
+        "-2": "0xFE (254)",
+        "-127": "0x81 (129)",
+        "-128": "0x80 (128)"
+      },
+      "patterns": [
+        {
+          "name": "Create negative step (-1)",
+          "code": [
+            "LD R0, #$FF    ; -1 in two's complement",
+            "ST R0, [step]",
+            "; Later:",
+            "LD R1, [position]",
+            "ADD R1, R0     ; Effectively subtracts 1"
+          ]
+        },
+        {
+          "name": "Negate a value",
+          "code": [
+            "; To negate R0 (get -R0):",
+            "XOR R0, #$FF   ; One's complement (flip bits)",
+            "ADD R0, #1     ; Add 1 = two's complement"
+          ]
+        },
+        {
+          "name": "Check if negative",
+          "code": [
+            "LD R0, [value]",
+            "AND R0, #$80   ; Check sign bit (bit 7)",
+            "BRNZ is_negative",
+            "; Value is positive (0-127)",
+            "JMP continue",
+            "is_negative:",
+            "; Value is negative (128-255 = -128 to -1)"
+          ]
+        }
+      ]
+    },
+    "algorithm_implementation": {
+      "description": "Best practices for implementing complex algorithms",
+      "guidelines": [
+        "Start with simple test cases (horizontal/vertical lines before Bresenham)",
+        "Trace through algorithm logic on paper with signed values before coding",
+        "Remember CMP is ALWAYS unsigned - reformulate signed comparisons",
+        "Test edge cases: boundaries, negative steps, zero distances",
+        "Add debug output (plot markers) to verify intermediate steps",
+        "Break complex algorithms into smaller subroutines"
+      ],
+      "debugging_pattern": [
+        "; Add visual markers during debugging",
+        "LD R0, [debug_x]",
+        "LD R1, [debug_y]",
+        "LD R2, #15         ; Bright color",
+        "CALL plot",
+        "",
+        "; Or write values to known memory for inspection",
+        "LD R0, [e2]",
+        "ST R0, [$0B80]     ; Store for later inspection"
+      ]
+    },
+    "coordinate_calculation": {
+      "description": "Converting (x,y) to framebuffer address",
+      "mode_0_4bpp": {
+        "resolution": "256×160",
+        "bytes_per_line": 128,
+        "formula": "addr = 0xB000 + (y * 128) + (x / 2)",
+        "pixel_packing": "High nibble = even X, low nibble = odd X",
+        "code": [
+          "; R0 = X, R1 = Y",
+          "MOV R3, R1         ; High byte of Y*128",
+          "MOV R4, R1         ; R4 will be low byte",
+          "LD R3, #0",
+          "; Multiply Y by 128 (shift left 7 times)",
+          "SHL R4",
+          "ROL R3",
+          "SHL R4",
+          "ROL R3",
+          "SHL R4",
+          "ROL R3",
+          "SHL R4",
+          "ROL R3",
+          "SHL R4",
+          "ROL R3",
+          "SHL R4",
+          "ROL R3",
+          "SHL R4",
+          "ROL R3",
+          "; Add X/2",
+          "MOV R5, R0",
+          "SHR R5            ; X/2",
+          "ADD R4, R5",
+          "BRC .carry",
+          "JMP .no_carry",
+          ".carry:",
+          "  INC R3",
+          ".no_carry:",
+          "; Add base 0xB000",
+          "ADD R3, #$B0",
+          "; R3:R4 now holds address"
+        ]
+      }
+    }
+  },
   "best_practices": {
     "register_usage": [
       "Use R0 for return values and primary accumulator",

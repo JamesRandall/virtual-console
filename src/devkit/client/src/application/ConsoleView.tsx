@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { useVirtualConsole } from '../consoleIntegration/virtualConsole';
 import { createWebGPURenderer, type WebGPURenderer } from '../consoleIntegration/webgpuRendering';
+import { useDevkitStore } from '../stores/devkitStore';
 
 export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
   // Virtual console
@@ -54,6 +55,58 @@ export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
       rendererRef.current.setVisible(isActive);
     }
   }, [isActive]);
+
+  // Canvas capture event listener for AI tool
+  useEffect(() => {
+    const handleCaptureCanvas = async () => {
+      const canvas = canvasRef.current;
+      const renderer = rendererRef.current;
+
+      if (!canvas || !renderer) {
+        window.dispatchEvent(new CustomEvent('canvas-capture-response', {
+          detail: { success: false, error: 'Canvas or renderer not available' }
+        }));
+        return;
+      }
+
+      try {
+        // Use the renderer's captureFrame method (handles WebGPU properly)
+        const imageData = await renderer.captureFrame();
+        const cpuSnapshot = useDevkitStore.getState().cpuSnapshot;
+
+        console.log('📸 Captured canvas screenshot via WebGPU renderer');
+
+        window.dispatchEvent(new CustomEvent('canvas-capture-response', {
+          detail: {
+            success: true,
+            image: imageData,
+            width: canvas.width,
+            height: canvas.height,
+            format: 'image/png',
+            capturedAt: {
+              programCounter: cpuSnapshot.programCounter,
+              cycleCount: cpuSnapshot.cycleCount,
+              timestamp: Date.now()
+            }
+          }
+        }));
+      } catch (error) {
+        console.error('Error capturing canvas:', error);
+        window.dispatchEvent(new CustomEvent('canvas-capture-response', {
+          detail: {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error capturing canvas'
+          }
+        }));
+      }
+    };
+
+    window.addEventListener('capture-canvas', handleCaptureCanvas);
+
+    return () => {
+      window.removeEventListener('capture-canvas', handleCaptureCanvas);
+    };
+  }, []);
 
   // Render
   if (error) {

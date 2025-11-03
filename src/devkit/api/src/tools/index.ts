@@ -1,4 +1,13 @@
 import type { Socket } from 'socket.io';
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Path to examples
+const EXAMPLES_DIR = join(__dirname, '..', '..', '..', '..', 'examples', 'assembly');
 
 // Tool response registry - stores pending tool requests
 const pendingToolRequests = new Map<string, {
@@ -8,6 +17,38 @@ const pendingToolRequests = new Map<string, {
 }>();
 
 const TOOL_TIMEOUT_MS = 30000; // 30 second timeout
+
+// Example metadata
+const EXAMPLES = [
+  {
+    name: 'drawLines',
+    filename: 'drawLines.asm',
+    description: 'Bresenham line drawing with proper signed arithmetic handling',
+    demonstrates: ['Bresenham algorithm', '16-bit signed math', 'plot_pixel subroutine', 'carry/borrow propagation'],
+    use_for: ['Line drawing', 'Drawing triangles/polygons', 'Reference for signed comparisons']
+  },
+  {
+    name: 'smiley2',
+    filename: 'smiley2.asm',
+    description: 'Drawing a smiley face with basic graphics primitives',
+    demonstrates: ['Basic pixel plotting', 'Palette setup', 'Simple circle drawing', 'Screen initialization'],
+    use_for: ['Basic graphics setup', 'Simple shape drawing', 'Palette configuration']
+  },
+  {
+    name: 'drawPixel',
+    filename: 'drawPixel.asm',
+    description: 'Optimized pixel plotting subroutine for 4bpp mode',
+    demonstrates: ['Framebuffer address calculation', 'Nibble packing', '16-bit math with shifts'],
+    use_for: ['Pixel plotting', 'Understanding framebuffer layout', 'Address calculation patterns']
+  },
+  {
+    name: 'starfield',
+    filename: 'animatedStarfieldWithVblank.asm',
+    description: 'Animated starfield using VBlank interrupts',
+    demonstrates: ['VBlank interrupt setup', 'Animation loops', 'Interrupt handlers', 'Frame timing'],
+    use_for: ['Animation', 'VBlank interrupts', 'Smooth movement', 'Frame synchronization']
+  }
+];
 
 /**
  * Execute a tool request by sending it to the browser and waiting for response
@@ -53,9 +94,18 @@ export function registerToolResponse(id: string, result: unknown, error?: string
   if (typedResult && typeof typedResult === 'object' && 'success' in typedResult) {
     if (typedResult.success === false && typedResult.errors) {
       console.log('🔴 Assembly FAILED with errors:', JSON.stringify(typedResult.errors, null, 2));
-    } else if (typedResult.success === true) {
+    } else if (typedResult.success === true && typedResult.programCounter !== undefined) {
       console.log('✅ Assembly succeeded, PC:', typedResult.programCounter);
     }
+  }
+
+  // Log screen capture results
+  if (typedResult && typedResult.success && typedResult.image) {
+    console.log('📸 Screen capture received:',
+      typedResult.width, 'x', typedResult.height,
+      'PC:', typedResult.capturedAt?.programCounter?.toString(16),
+      'image data length:', typedResult.image.length
+    );
   }
 
   // Clear timeout
@@ -71,10 +121,94 @@ export function registerToolResponse(id: string, result: unknown, error?: string
 }
 
 /**
+ * Execute a server-side tool (doesn't need browser)
+ */
+export async function executeServerSideTool(
+  toolName: string,
+  parameters: Record<string, unknown>
+): Promise<unknown> {
+  switch (toolName) {
+    case 'get_example':
+      return handleGetExample(parameters);
+    default:
+      throw new Error(`Unknown server-side tool: ${toolName}`);
+  }
+}
+
+/**
+ * Check if a tool is handled server-side
+ */
+export function isServerSideTool(toolName: string): boolean {
+  return toolName === 'get_example';
+}
+
+/**
+ * Handle get_example tool
+ */
+function handleGetExample(parameters: Record<string, unknown>): unknown {
+  const name = parameters.name as string | undefined;
+
+  // If no name provided, return list of examples
+  if (!name) {
+    return {
+      examples: EXAMPLES.map(ex => ({
+        name: ex.name,
+        description: ex.description,
+        demonstrates: ex.demonstrates,
+        use_for: ex.use_for
+      }))
+    };
+  }
+
+  // Find the requested example
+  const example = EXAMPLES.find(ex => ex.name === name);
+  if (!example) {
+    const availableNames = EXAMPLES.map(ex => ex.name).join(', ');
+    return {
+      error: `Example '${name}' not found. Available examples: ${availableNames}`
+    };
+  }
+
+  // Load the example code
+  try {
+    const filePath = join(EXAMPLES_DIR, example.filename);
+    const code = readFileSync(filePath, 'utf-8');
+
+    return {
+      name: example.name,
+      description: example.description,
+      demonstrates: example.demonstrates,
+      use_for: example.use_for,
+      code: code,
+      lines: code.split('\n').length
+    };
+  } catch (error) {
+    return {
+      error: `Failed to load example '${name}': ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+/**
  * Get tool definitions for Claude API
  */
 export function getToolDefinitions() {
   return [
+    {
+      name: 'get_example',
+      description: 'Get reference assembly code examples. Call with no parameters to list all available examples with descriptions. Call with a specific example name to get the full source code. CRITICAL: ALWAYS check examples BEFORE implementing complex algorithms like Bresenham line drawing! The examples are tested, working implementations with proper signed arithmetic. DO NOT rewrite algorithms from scratch when an example exists.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          name: {
+            type: 'string' as const,
+            description: 'Example name to fetch. Omit this parameter to list all available examples.',
+            enum: EXAMPLES.map(ex => ex.name)
+          }
+        },
+        required: []
+      }
+    },
     {
       name: 'read_source_code',
       description: 'Reads the current assembly source code from the editor, including cursor position and any text selection. Use this to understand what code the user is working on.',
@@ -190,6 +324,15 @@ export function getToolDefinitions() {
     {
       name: 'assemble_code',
       description: 'Assembles the current source code and loads it into memory. This sets the program counter to the correct start address automatically. CRITICAL: You MUST check the "success" field in the response! Returns { success: true, programCounter: number } on success (note the PC value for reference). Returns { success: false, errors: [{line: number, column?: number, message: string}] } if assembly fails. If success is false, you MUST fix all errors and reassemble - DO NOT attempt to run the code. After successful assembly, you can run_debugger immediately - do NOT reset!',
+      input_schema: {
+        type: 'object' as const,
+        properties: {},
+        required: []
+      }
+    },
+    {
+      name: 'capture_screen',
+      description: 'Captures the current display output as a PNG image for visual inspection. Use this AFTER running graphics code to verify visual output, debug rendering issues, or check sprite/text positioning. IMPORTANT: Only use when you need to SEE the visual result - not for every operation. The CPU should be paused (use pause_debugger) before capture to get a stable image. Returns { success: true, image: "<base64 PNG>", width: number, height: number, capturedAt: { programCounter, cycleCount, timestamp } } on success.',
       input_schema: {
         type: 'object' as const,
         properties: {},

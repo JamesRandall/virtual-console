@@ -1,6 +1,6 @@
 import type { Socket } from 'socket.io';
 import { loadSystemPrompt } from './systemPrompts.js';
-import { getToolDefinitions, executeToolRequest } from '../tools/index.js';
+import { getToolDefinitions, executeToolRequest, executeServerSideTool, isServerSideTool } from '../tools/index.js';
 import { createAIProvider } from './providers/factory.js';
 import { config } from '../config.js';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
@@ -177,7 +177,16 @@ async function handleToolUses(
     socket.emit('ai_tool_use', { tool: tool.name, parameters: tool.input });
 
     try {
-      const result = await executeToolRequest(socket, tool.id, tool.name, tool.input);
+      let result: unknown;
+
+      // Check if this is a server-side tool or client-side tool
+      if (isServerSideTool(tool.name)) {
+        // Execute on server
+        result = await executeServerSideTool(tool.name, tool.input);
+      } else {
+        // Execute on client (browser)
+        result = await executeToolRequest(socket, tool.id, tool.name, tool.input);
+      }
 
       toolResults.push({
         type: 'tool_result',

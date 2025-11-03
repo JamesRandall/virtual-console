@@ -44,6 +44,11 @@ export interface WebGPURenderer {
    * Control whether GPU rendering is performed (interrupts always fire)
    */
   setVisible(visible: boolean): void;
+
+  /**
+   * Capture the current frame as a PNG data URL
+   */
+  captureFrame(): Promise<string>;
 }
 
 /**
@@ -404,6 +409,30 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
 
     setVisible(visible: boolean) {
       isVisible = visible;
+    },
+
+    async captureFrame(): Promise<string> {
+      console.log('📸 Capturing frame from WebGPU canvas...');
+
+      // Wait for all GPU work to complete
+      await device.queue.onSubmittedWorkDone();
+      console.log('📸 GPU work completed');
+
+      // Wait for the next animation frame to ensure the browser has presented the content
+      return new Promise((resolve, reject) => {
+        requestAnimationFrame(() => {
+          try {
+            console.log('📸 Capturing after frame presentation...');
+            // Now the canvas should have the WebGPU-rendered content
+            const dataURL = canvas.toDataURL('image/png');
+            console.log('📸 Captured PNG data URL, length:', dataURL.length);
+            resolve(dataURL);
+          } catch (error) {
+            console.error('📸 Error capturing canvas:', error);
+            reject(error);
+          }
+        });
+      });
     },
   };
 }
