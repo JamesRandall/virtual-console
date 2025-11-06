@@ -797,6 +797,80 @@ describe('Assembler', () => {
     });
   });
 
+  describe('Operand Count Validation', () => {
+    it('should error on too many operands for LD', () => {
+      const code = 'LD R0, #0, #1, #2';
+      const result = assemble(code);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain('Invalid operand count');
+      expect(result.errors[0].message).toContain('expected 2');
+      expect(result.errors[0].message).toContain('got 4');
+    });
+
+    it('should error on too few operands for LD', () => {
+      const code = 'LD R0';
+      const result = assemble(code);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain('Invalid operand count');
+      expect(result.errors[0].message).toContain('expected 2');
+      expect(result.errors[0].message).toContain('got 1');
+    });
+
+    it('should error on too many operands for ADD', () => {
+      const code = 'ADD R0, #1, #2';
+      const result = assemble(code);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain('Invalid operand count');
+    });
+
+    it('should error on too many operands for PUSH', () => {
+      const code = 'PUSH R0, R1';
+      const result = assemble(code);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain('Invalid operand count');
+      expect(result.errors[0].message).toContain('expected 1');
+      expect(result.errors[0].message).toContain('got 2');
+    });
+
+    it('should error on operands for NOP', () => {
+      const code = 'NOP R0';
+      const result = assemble(code);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain('Invalid operand count');
+      expect(result.errors[0].message).toContain('expected 0');
+      expect(result.errors[0].message).toContain('got 1');
+    });
+
+    it('should error on operands for RET', () => {
+      const code = 'RET R0';
+      const result = assemble(code);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain('Invalid operand count');
+      expect(result.errors[0].message).toContain('expected 0');
+    });
+
+    it('should accept valid single operand for SHL', () => {
+      const code = 'SHL R0';
+      const result = assemble(code);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should accept valid two operands for SHL', () => {
+      const code = 'SHL R0, #2';
+      const result = assemble(code);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should error on too many operands for SHL', () => {
+      const code = 'SHL R0, #2, #3';
+      const result = assemble(code);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain('Invalid operand count');
+      expect(result.errors[0].message).toContain('expected 1-2');
+      expect(result.errors[0].message).toContain('got 3');
+    });
+  });
+
   describe('Integration Tests', () => {
     it('should assemble a complete program', () => {
       const code = `

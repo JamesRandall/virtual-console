@@ -100,6 +100,42 @@ const OPCODES: Record<string, OpcodeInfo> = {
   'CLI': { opcode: OP_EXT, modes: new Set([MODE_REGISTER]), extended: EXT_CLI },
 };
 
+// Expected operand counts for each opcode
+const OPERAND_COUNTS: Record<string, { min: number; max: number }> = {
+  'NOP': { min: 0, max: 0 },
+  'LD': { min: 2, max: 2 },
+  'ST': { min: 2, max: 2 },
+  'MOV': { min: 2, max: 2 },
+  'ADD': { min: 2, max: 2 },
+  'SUB': { min: 2, max: 2 },
+  'AND': { min: 2, max: 2 },
+  'OR': { min: 2, max: 2 },
+  'XOR': { min: 2, max: 2 },
+  'SHL': { min: 1, max: 2 },
+  'SHR': { min: 1, max: 2 },
+  'CMP': { min: 2, max: 2 },
+  'JMP': { min: 1, max: 1 },
+  'BRZ': { min: 1, max: 1 },
+  'BRNZ': { min: 1, max: 1 },
+  'BRC': { min: 1, max: 1 },
+  'BRNC': { min: 1, max: 1 },
+  'BRN': { min: 1, max: 1 },
+  'BRNN': { min: 1, max: 1 },
+  'BRV': { min: 1, max: 1 },
+  'BRNV': { min: 1, max: 1 },
+  'CALL': { min: 1, max: 1 },
+  'RET': { min: 0, max: 0 },
+  'RTI': { min: 0, max: 0 },
+  'PUSH': { min: 1, max: 1 },
+  'POP': { min: 1, max: 1 },
+  'INC': { min: 1, max: 1 },
+  'DEC': { min: 1, max: 1 },
+  'ROL': { min: 1, max: 1 },
+  'ROR': { min: 1, max: 1 },
+  'SEI': { min: 0, max: 0 },
+  'CLI': { min: 0, max: 0 },
+};
+
 // Branch condition mapping
 const BRANCH_CONDITIONS: Record<string, number> = {
   'BRZ': BR_Z,
@@ -621,6 +657,23 @@ function encodeInstruction(
       severity: 'error',
     });
     return new Uint8Array(0);
+  }
+
+  // Validate operand count
+  const expectedCounts = OPERAND_COUNTS[opcode];
+  if (expectedCounts) {
+    const operandCount = operands.length;
+    if (operandCount < expectedCounts.min || operandCount > expectedCounts.max) {
+      const expectedMsg = expectedCounts.min === expectedCounts.max
+        ? `${expectedCounts.min}`
+        : `${expectedCounts.min}-${expectedCounts.max}`;
+      errors.push({
+        line: parsed.line,
+        message: `Invalid operand count for ${opcode}: expected ${expectedMsg}, got ${operandCount}`,
+        severity: 'error',
+      });
+      return new Uint8Array(0);
+    }
   }
 
   try {
