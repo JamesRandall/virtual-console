@@ -58,8 +58,8 @@ function executionLoop(): void {
         return;
       }
 
-      cpu.step();
-      accumulatedCycles -= 1;
+      const cyclesConsumed = cpu.step();
+      accumulatedCycles -= cyclesConsumed;
     } catch (error) {
       // CPU error - pause execution and report
       isRunning = false;
