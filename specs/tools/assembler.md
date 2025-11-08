@@ -458,11 +458,15 @@ The assembler evaluates expressions at assembly time.
 - `<<` Shift left
 - `>>` Shift right
 
+**Byte Extraction (unary):**
+- `<` Low byte (extract bits 0-7 of 16-bit value)
+- `>` High byte (extract bits 8-15 of 16-bit value)
+
 **Comparison (result 1 or 0):**
 - `==` Equal
 - `!=` Not equal
-- `<` Less than
-- `>` Greater than
+- `<` Less than (binary)
+- `>` Greater than (binary)
 - `<=` Less than or equal
 - `>=` Greater than or equal
 
@@ -471,15 +475,19 @@ The assembler evaluates expressions at assembly time.
 - `||` Logical OR
 - `!` Logical NOT (unary)
 
+**Note:** The `<` and `>` operators serve dual purposes:
+- **Unary (prefix):** Extract low/high byte from 16-bit address or value
+- **Binary (infix):** Perform comparison operations
+
 ### 7.2 Precedence
 
 From highest to lowest:
 1. `()` Parentheses
-2. `~`, `!`, unary `-` Unary operators
+2. `<`, `>`, `~`, `!`, unary `-` Unary operators (byte extraction, bitwise NOT, logical NOT, negation)
 3. `*`, `/`, `%` Multiplicative
 4. `+`, `-` Additive
 5. `<<`, `>>` Shift
-6. `<`, `>`, `<=`, `>=` Comparison
+6. `<`, `>`, `<=`, `>=` Comparison (binary)
 7. `==`, `!=` Equality
 8. `&` Bitwise AND
 9. `^` Bitwise XOR
@@ -489,6 +497,7 @@ From highest to lowest:
 
 ### 7.3 Examples
 
+**Arithmetic and expressions:**
 ```assembly
 .define SCREEN_WIDTH 256
 .define SCREEN_HEIGHT 160
@@ -496,7 +505,45 @@ From highest to lowest:
 .define SCREEN_SIZE (SCREEN_WIDTH * SCREEN_HEIGHT)
 
 LD R0, #(SCREEN_CENTER_X + 10)
-LD R1, #(SCREEN_SIZE >> 8)          ; High byte
+LD R1, #(SCREEN_SIZE >> 8)          ; High byte using shift
+```
+
+**Byte extraction with < and > operators:**
+```assembly
+.org $C000
+sprite_data:
+    .byte $FF, $00, $AA, $55
+
+main:
+    ; Load address of sprite_data into R2:R3 (high:low)
+    LD R2, #>sprite_data            ; High byte ($C0)
+    LD R3, #<sprite_data            ; Low byte ($00)
+
+    ; Setup interrupt vector
+    LD R0, #<vblank_handler
+    ST R0, [$0132]                  ; VBLANK_VEC_LO
+    LD R0, #>vblank_handler
+    ST R0, [$0133]                  ; VBLANK_VEC_HI
+
+    ; Can be used in expressions
+    .define BASE_ADDR $8000
+    LD R0, #<(BASE_ADDR + 256)      ; Low byte of $8100 = $00
+    LD R1, #>(BASE_ADDR + 256)      ; High byte of $8100 = $81
+
+vblank_handler:
+    RTI
+```
+
+**Comparison operators (binary < and >):**
+```assembly
+.define MIN_VALUE 10
+.define MAX_VALUE 100
+
+    LD R0, [player_x]
+    CMP R0, #MIN_VALUE
+    ; Note: CMP is the instruction, but < can be used in expressions:
+    LD R1, #(MIN_VALUE < MAX_VALUE) ; Result is 1 (true)
+    LD R2, #(MAX_VALUE > MIN_VALUE) ; Result is 1 (true)
 ```
 
 ---

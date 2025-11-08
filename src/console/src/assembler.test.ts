@@ -871,6 +871,193 @@ describe('Assembler', () => {
     });
   });
 
+  describe('Byte Extraction Operators', () => {
+    describe('Low byte operator (<)', () => {
+      it('should extract low byte of a constant', () => {
+        const code = `
+          .define ADDR $C0FF
+          LD R0, #<ADDR
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(0xFF); // Low byte of 0xC0FF
+      });
+
+      it('should extract low byte of a label', () => {
+        const code = `
+          .org $8234
+        sprite_data:
+          NOP
+        main:
+          LD R0, #<sprite_data
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        // sprite_data is at $8234, low byte is 0x34
+        expect(result.segments[0].data[4]).toBe(0x34);
+      });
+
+      it('should extract low byte of an expression', () => {
+        const code = `
+          .define BASE $1000
+          LD R0, #<(BASE + 256)
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        // (0x1000 + 256) = 0x1100, low byte is 0x00
+        expect(result.segments[0].data[2]).toBe(0x00);
+      });
+
+      it('should work in .word directive', () => {
+        const code = `
+          .define ADDR $ABCD
+          .word <ADDR
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        // Low byte of 0xABCD is 0xCD
+        // Little-endian: 0xCD, 0x00
+        expect(result.segments[0].data[0]).toBe(0xCD);
+        expect(result.segments[0].data[1]).toBe(0x00);
+      });
+    });
+
+    describe('High byte operator (>)', () => {
+      it('should extract high byte of a constant', () => {
+        const code = `
+          .define ADDR $C0FF
+          LD R0, #>ADDR
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(0xC0); // High byte of 0xC0FF
+      });
+
+      it('should extract high byte of a label', () => {
+        const code = `
+          .org $8234
+        sprite_data:
+          NOP
+        main:
+          LD R0, #>sprite_data
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        // sprite_data is at $8234, high byte is 0x82
+        expect(result.segments[0].data[4]).toBe(0x82);
+      });
+
+      it('should extract high byte of an expression', () => {
+        const code = `
+          .define BASE $1000
+          LD R0, #>(BASE + 256)
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        // (0x1000 + 256) = 0x1100, high byte is 0x11
+        expect(result.segments[0].data[2]).toBe(0x11);
+      });
+
+      it('should work in .word directive', () => {
+        const code = `
+          .define ADDR $ABCD
+          .word >ADDR
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        // High byte of 0xABCD is 0xAB
+        // Little-endian: 0xAB, 0x00
+        expect(result.segments[0].data[0]).toBe(0xAB);
+        expect(result.segments[0].data[1]).toBe(0x00);
+      });
+    });
+
+    describe('Combined usage', () => {
+      it('should load 16-bit address into register pair', () => {
+        const code = `
+          .org $C000
+        screen_buffer:
+          .res 256
+
+        main:
+          LD R2, #>screen_buffer
+          LD R3, #<screen_buffer
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.symbolTable['screen_buffer']).toBe(0xC000);
+
+        // First LD R2, #>screen_buffer (high byte)
+        expect(result.segments[0].data[258]).toBe(0xC0);
+
+        // Second LD R3, #<screen_buffer (low byte)
+        expect(result.segments[0].data[261]).toBe(0x00);
+      });
+
+      it('should setup interrupt vectors', () => {
+        const code = `
+          .org $8000
+        vblank_handler:
+          NOP
+          RTI
+
+        main:
+          LD R0, #<vblank_handler
+          ST R0, [$0132]
+          LD R0, #>vblank_handler
+          ST R0, [$0133]
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.symbolTable['vblank_handler']).toBe(0x8000);
+
+        // LD R0, #<vblank_handler
+        expect(result.segments[0].data[6]).toBe(0x00);
+
+        // LD R0, #>vblank_handler (after ST instruction)
+        expect(result.segments[0].data[13]).toBe(0x80);
+      });
+
+      it('should not interfere with comparison operators', () => {
+        const code = `
+          .define A 10
+          .define B 20
+          LD R0, #(A < B)
+          LD R1, #(B > A)
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(1); // 10 < 20 is true
+        expect(result.segments[0].data[5]).toBe(1); // 20 > 10 is true
+      });
+
+      it('should not interfere with shift operators', () => {
+        const code = `
+          LD R0, #(128 >> 4)
+          LD R1, #(2 << 3)
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments[0].data[2]).toBe(8);  // 128 >> 4
+        expect(result.segments[0].data[5]).toBe(16); // 2 << 3
+      });
+
+      it('should work with complex expressions', () => {
+        const code = `
+          .define BASE $8000
+          .define OFFSET $0100
+          LD R0, #<(BASE + OFFSET)
+          LD R1, #>(BASE + OFFSET)
+        `;
+        const result = assemble(code);
+        expect(result.errors).toHaveLength(0);
+        // 0x8000 + 0x0100 = 0x8100
+        expect(result.segments[0].data[2]).toBe(0x00); // Low byte
+        expect(result.segments[0].data[5]).toBe(0x81); // High byte
+      });
+    });
+  });
+
   describe('Integration Tests', () => {
     it('should assemble a complete program', () => {
       const code = `

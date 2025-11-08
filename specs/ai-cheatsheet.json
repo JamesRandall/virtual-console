@@ -695,22 +695,33 @@
       "operators": {
         "arithmetic": ["+", "-", "*", "/", "%"],
         "bitwise": ["&", "|", "^", "~", "<<", ">>"],
+        "byte_extraction": {
+          "<": "Low byte (unary, extract bits 0-7)",
+          ">": "High byte (unary, extract bits 8-15)",
+          "note": "< and > are unary when used as prefix, binary for comparisons"
+        },
         "comparison": ["==", "!=", "<", ">", "<=", ">="],
         "logical": ["&&", "||", "!"]
       },
       "precedence_order": [
         "() parentheses",
-        "~, !, unary -",
+        "<, >, ~, !, unary - (unary operators)",
         "*, /, %",
         "+, -",
         "<<, >>",
-        "<, >, <=, >=",
+        "<, >, <=, >= (comparison, binary)",
         "==, !=",
         "&",
         "^",
         "|",
         "&&",
         "||"
+      ],
+      "byte_extraction_examples": [
+        "LD R0, #<sprite_data     ; Load low byte of sprite_data address",
+        "LD R1, #>sprite_data     ; Load high byte of sprite_data address",
+        "LD R2, #<(BASE + 256)    ; Low byte of expression",
+        "LD R3, #>(BASE + 256)    ; High byte of expression"
       ]
     },
     "escape_sequences": {
@@ -752,15 +763,28 @@
         "  ST R1, [$0B00]"
       ]
     },
+    "load_16bit_address": {
+      "description": "Load 16-bit address into register pair using < and > operators",
+      "code": [
+        "; Load address of sprite_data into R2:R3 (high:low)",
+        "LD R2, #>sprite_data    ; High byte",
+        "LD R3, #<sprite_data    ; Low byte",
+        "; Can now use [R2:R3] to access sprite_data",
+        "LD R0, [R2:R3]          ; Load first byte of sprite_data"
+      ],
+      "note": "The < operator extracts low byte (bits 0-7), > extracts high byte (bits 8-15)"
+    },
     "zero_page_pointer_setup": {
       "description": "Setup pointer at $80 to $C000",
       "code": [
-        "LD R0, #$00",
+        ".define TARGET_ADDR $C000",
+        "LD R0, #<TARGET_ADDR",
         "ST R0, [$80]    ; Store low byte",
-        "LD R0, #$C0",
+        "LD R0, #>TARGET_ADDR",
         "ST R0, [$81]    ; Store high byte",
         "LD R1, [$80]    ; Now use pointer"
-      ]
+      ],
+      "note": "Can also use literal bytes: #$00 and #$C0, but < and > operators make intent clearer"
     },
     "vblank_polling": {
       "description": "Wait for VBlank (simple)",

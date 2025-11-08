@@ -306,6 +306,28 @@ function evaluateExpression(expr: string, symbols: SymbolTable, currentAddress: 
     throw new Error(`Undefined symbol: ${match}`);
   });
 
+  // Handle unary < (low byte) and > (high byte) operators
+  // These extract bytes from 16-bit addresses
+  // Match < or > at start, after operators, or after opening parenthesis
+  // We need to be careful not to match << or >> or comparison operators
+
+  // Strategy: Replace unary < and > with expressions that extract the byte
+  // Unary < or > appears at: start of string, after '(' or after operators
+  // We look for < or > followed by a number or parenthesis, but not by < > = (which would be <<, >>, <=, >=)
+
+  // First pass: mark unary operators with placeholders to avoid confusion with binary operators
+  expr = expr.replace(/(^|[+\-*\/%&|^(,])\s*<\s*(?![<=])/g, '$1§LOW§');
+  expr = expr.replace(/(^|[+\-*\/%&|^(,])\s*>\s*(?![>=])/g, '$1§HIGH§');
+
+  // Now process the placeholders
+  // §LOW§ or §HIGH§ followed by either:
+  // - A number: \d+
+  // - A parenthesized expression: \([^)]+\)
+  expr = expr.replace(/§LOW§(\d+)/g, '(($1)&255)');
+  expr = expr.replace(/§LOW§(\([^)]+\))/g, '(($1)&255)');
+  expr = expr.replace(/§HIGH§(\d+)/g, '((($1)>>8)&255)');
+  expr = expr.replace(/§HIGH§(\([^)]+\))/g, '((($1)>>8)&255)');
+
   try {
     // Evaluate the expression using a safe eval-like approach
     return evaluateMathExpression(expr);
