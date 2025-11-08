@@ -42,8 +42,8 @@ Fast access memory for pointers, frequently accessed variables, and temporary st
 | 0x0103 | SCANLINE_CURRENT | Current scanline (read-only) |
 | 0x0104 | SPRITE_ENABLE | Sprite system enable/disable |
 | 0x0105 | SPRITE_COUNT | Number of active sprites |
-| 0x0106 | CONTROLLER_1 | Controller 1 button state (read-only) |
-| 0x0107 | CONTROLLER_2 | Controller 2 button state (read-only) |
+| 0x0106 | Reserved | Reserved (legacy controller register) |
+| 0x0107 | Reserved | Reserved (legacy controller register) |
 | 0x0108 | COLLISION_FLAGS | Collision status flags (read-only) |
 | 0x0109 | COLLISION_COUNT | Number of collision entries (read-only) |
 | 0x010A | COLLISION_MODE | Collision detection mode control |
@@ -64,7 +64,11 @@ Fast access memory for pointers, frequently accessed variables, and temporary st
 | 0x0133 | VBLANK_VEC_HI | VBlank interrupt handler address (high byte) |
 | 0x0134 | SCANLINE_VEC_LO | Scanline interrupt handler address (low byte) |
 | 0x0135 | SCANLINE_VEC_HI | Scanline interrupt handler address (high byte) |
-| 0x0136-0x01FF | Reserved | Additional hardware registers |
+| 0x0136 | CONTROLLER_1_BUTTONS | Controller 1 main buttons (read-only) |
+| 0x0137 | CONTROLLER_1_EXTENDED | Controller 1 extended buttons (read-only) |
+| 0x0138 | CONTROLLER_2_BUTTONS | Controller 2 main buttons (read-only) |
+| 0x0139 | CONTROLLER_2_EXTENDED | Controller 2 extended buttons (read-only) |
+| 0x013A-0x01FF | Reserved | Additional hardware registers |
 
 **256 bytes**
 
@@ -372,10 +376,11 @@ vblank_handler:
 - Interrupts match real console hardware (NES, SNES, Game Boy, Genesis)
 - Polling is simpler for beginners or simple applications
 
-#### Controller Button Layout (CONTROLLER_1 / CONTROLLER_2)
+#### Controller Button Layout
 
-Each controller register is a single byte with bits representing button states (1 = pressed, 0 = released):
+Each controller has two registers for button states (1 = pressed, 0 = released):
 
+**CONTROLLER_X_BUTTONS (0x0136 for P1, 0x0138 for P2) - Main Buttons:**
 ```
 Bit 7: Up
 Bit 6: Down
@@ -387,19 +392,39 @@ Bit 1: Button C
 Bit 0: Button D
 ```
 
+**CONTROLLER_X_EXTENDED (0x0137 for P1, 0x0139 for P2) - Extended Buttons:**
+```
+Bit 7-4: Reserved
+Bit 3: Left Shoulder (L)
+Bit 2: Right Shoulder (R)
+Bit 1: Start
+Bit 0: Options
+```
+
 **Example usage:**
 ```assembly
-LD R0, [$0106]   ; Read controller 1
+; Check D-pad and face buttons
+LD R0, [$0136]   ; Read controller 1 main buttons
 AND R0, #$80     ; Mask bit 7 (Up)
 BRNZ player_up   ; Branch if Up is pressed
 
-LD R0, [$0106]   ; Read controller 1
+LD R0, [$0136]   ; Read controller 1 main buttons
 AND R0, #$08     ; Mask bit 3 (Button A)
 BRNZ fire_weapon ; Branch if A is pressed
+
+; Check extended buttons
+LD R0, [$0137]   ; Read controller 1 extended buttons
+AND R0, #$02     ; Mask bit 1 (Start)
+BRNZ pause_game  ; Branch if Start is pressed
+
+LD R0, [$0137]   ; Read controller 1 extended buttons
+AND R0, #$08     ; Mask bit 3 (Left Shoulder)
+BRNZ shield_up   ; Branch if L button is pressed
 ```
 
 **Convenience constants:**
 ```
+; Main buttons (0x0136/0x0138)
 CTRL_UP     = $80  ; 0b10000000
 CTRL_DOWN   = $40  ; 0b01000000
 CTRL_LEFT   = $20  ; 0b00100000
@@ -408,7 +433,15 @@ CTRL_A      = $08  ; 0b00001000
 CTRL_B      = $04  ; 0b00000100
 CTRL_C      = $02  ; 0b00000010
 CTRL_D      = $01  ; 0b00000001
+
+; Extended buttons (0x0137/0x0139)
+CTRL_L      = $08  ; 0b00001000
+CTRL_R      = $04  ; 0b00000100
+CTRL_START  = $02  ; 0b00000010
+CTRL_OPT    = $01  ; 0b00000001
 ```
+
+**Legacy Note:** Registers 0x0106-0x0107 are reserved for backward compatibility with older code. New code should use the registers at 0x0136-0x0139.
 
 ---
 
