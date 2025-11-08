@@ -395,8 +395,8 @@ Bit 0: Button D
 **CONTROLLER_X_EXTENDED (0x0137 for P1, 0x0139 for P2) - Extended Buttons:**
 ```
 Bit 7-4: Reserved
-Bit 3: Left Shoulder (L)
-Bit 2: Right Shoulder (R)
+Bit 3: Left Shoulder (LB)
+Bit 2: Right Shoulder (RB)
 Bit 1: Start
 Bit 0: Options
 ```
