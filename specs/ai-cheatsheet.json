@@ -378,8 +378,6 @@
             "SCANLINE_CURRENT": {"addr": "0x0103", "desc": "Current scanline (read-only)"},
             "SPRITE_ENABLE": {"addr": "0x0104", "desc": "Sprite system enable/disable"},
             "SPRITE_COUNT": {"addr": "0x0105", "desc": "Number of active sprites"},
-            "CONTROLLER_1": {"addr": "0x0106", "desc": "Controller 1 state", "bits": "UDLRABCD"},
-            "CONTROLLER_2": {"addr": "0x0107", "desc": "Controller 2 state"},
             "COLLISION_FLAGS": {"addr": "0x0108", "desc": "Collision status flags"},
             "COLLISION_COUNT": {"addr": "0x0109", "desc": "Collision entry count"},
             "COLLISION_MODE": {"addr": "0x010A", "desc": "Collision detection mode"},
@@ -394,7 +392,11 @@
             "TILE_ANIM_FRAME": {"addr": "0x0113", "desc": "Global animation frame counter"},
             "INT_STATUS": {"addr": "0x0114", "desc": "Interrupt status (W1C)", "bits": {"0": "VBlank", "1": "Scanline"}},
             "INT_ENABLE": {"addr": "0x0115", "desc": "Interrupt enable", "bits": {"0": "VBlank", "1": "Scanline"}},
-            "AUDIO_MASTER": {"addr": "0x0128", "desc": "Master audio enable + volume"}
+            "AUDIO_MASTER": {"addr": "0x0128", "desc": "Master audio enable + volume"},
+            "CONTROLLER_1_BUTTONS": {"addr": "0x0136", "desc": "Controller 1 main buttons", "bits": "UDLRABCD"},
+            "CONTROLLER_1_EXTENDED": {"addr": "0x0137", "desc": "Controller 1 extended buttons", "bits": "LR SO (LB, RB, Start, Options)"},
+            "CONTROLLER_2_BUTTONS": {"addr": "0x0138", "desc": "Controller 2 main buttons", "bits": "UDLRABCD"},
+            "CONTROLLER_2_EXTENDED": {"addr": "0x0139", "desc": "Controller 2 extended buttons", "bits": "LR SO"}
           }
         },
         "palette_ram": {
@@ -454,25 +456,52 @@
       "framebuffer_location": "Top-aligned, ending at 0xFFFF"
     },
     "controller_buttons": {
-      "bit_mapping": {
-        "7": "Up (0x80)",
-        "6": "Down (0x40)",
-        "5": "Left (0x20)",
-        "4": "Right (0x10)",
-        "3": "A (0x08)",
-        "2": "B (0x04)",
-        "1": "C (0x02)",
-        "0": "D (0x01)"
+      "main_buttons_register": {
+        "address_p1": "0x0136",
+        "address_p2": "0x0138",
+        "bit_mapping": {
+          "7": "Up (0x80)",
+          "6": "Down (0x40)",
+          "5": "Left (0x20)",
+          "4": "Right (0x10)",
+          "3": "A (0x08)",
+          "2": "B (0x04)",
+          "1": "C (0x02)",
+          "0": "D (0x01)"
+        },
+        "constants": {
+          "CTRL_UP": "0x80",
+          "CTRL_DOWN": "0x40",
+          "CTRL_LEFT": "0x20",
+          "CTRL_RIGHT": "0x10",
+          "CTRL_A": "0x08",
+          "CTRL_B": "0x04",
+          "CTRL_C": "0x02",
+          "CTRL_D": "0x01"
+        }
       },
-      "constants": {
-        "CTRL_UP": "0x80",
-        "CTRL_DOWN": "0x40",
-        "CTRL_LEFT": "0x20",
-        "CTRL_RIGHT": "0x10",
-        "CTRL_A": "0x08",
-        "CTRL_B": "0x04",
-        "CTRL_C": "0x02",
-        "CTRL_D": "0x01"
+      "extended_buttons_register": {
+        "address_p1": "0x0137",
+        "address_p2": "0x0139",
+        "bit_mapping": {
+          "3": "LB / Left Shoulder (0x08)",
+          "2": "RB / Right Shoulder (0x04)",
+          "1": "Start (0x02)",
+          "0": "Options (0x01)"
+        },
+        "constants": {
+          "CTRL_LB": "0x08",
+          "CTRL_RB": "0x04",
+          "CTRL_START": "0x02",
+          "CTRL_OPTIONS": "0x01"
+        }
+      },
+      "input_sources": {
+        "dpad": "Buttons 12-15 on gamepad",
+        "left_thumbstick": "Axes 0-1 with 0.25 deadzone (behaves like D-pad)",
+        "face_buttons": "Buttons 0-3 on gamepad",
+        "shoulder_buttons": "Buttons 4-5 on gamepad",
+        "menu_buttons": "Buttons 8-9 on gamepad"
       }
     },
     "audio_channels": {
@@ -776,12 +805,20 @@
     "controller_input": {
       "description": "Check controller buttons",
       "code": [
-        "LD R0, [$0106]     ; Read controller 1",
+        "; Check main buttons (D-pad and face buttons)",
+        "LD R0, [$0136]     ; Read controller 1 main buttons",
         "AND R0, #$80       ; Check Up button",
         "BRNZ player_up",
-        "LD R0, [$0106]",
+        "LD R0, [$0136]",
         "AND R0, #$08       ; Check A button",
-        "BRNZ fire_weapon"
+        "BRNZ fire_weapon",
+        "; Check extended buttons (shoulders and menu)",
+        "LD R0, [$0137]     ; Read controller 1 extended buttons",
+        "AND R0, #$08       ; Check LB (left shoulder)",
+        "BRNZ shield_up",
+        "LD R0, [$0137]",
+        "AND R0, #$02       ; Check Start button",
+        "BRNZ pause_game"
       ]
     },
     "collision_check": {

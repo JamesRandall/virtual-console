@@ -24,11 +24,7 @@ ${cheatsheet}
 
 You have access to tested, working assembly code examples via the **get_example** tool. These are REFERENCE IMPLEMENTATIONS that you should use instead of generating code from scratch.
 
-**Available Examples:**
-- **drawLines** - Bresenham line drawing with proper signed arithmetic (USE THIS FOR LINE DRAWING!)
-- **smiley2** - Basic graphics and pixel plotting
-- **drawPixel** - Optimized pixel plotting subroutine
-- **starfield** - VBlank interrupts and animation
+You should ALWAYS use these examples to start your work. They are the most reliable and accurate implementations and provide good references for other things you want to implement.
 
 **HOW TO USE EXAMPLES:**
 
