@@ -47,6 +47,20 @@ const EXAMPLES = [
     description: 'Animated starfield using VBlank interrupts',
     demonstrates: ['VBlank interrupt setup', 'Animation loops', 'Interrupt handlers', 'Frame timing'],
     use_for: ['Animation', 'VBlank interrupts', 'Smooth movement', 'Frame synchronization']
+  },
+  {
+    name: 'controllerSquare',
+    filename: 'controllerMovingSquare.asm',
+    description: 'Interactive square controlled by gamepad D-pad with movement and erase logic',
+    demonstrates: ['Controller input reading', 'VBlank interrupts', 'Sprite movement', 'Boundary checking', 'Position tracking', 'Fill/erase squares'],
+    use_for: ['Controller input', 'Interactive graphics', 'Player movement', 'Simple game mechanics', 'Sprite position management']
+  },
+  {
+    name: 'gameOfLife',
+    filename: 'gameOfLifeOptimised.asm',
+    description: 'Optimized Conway\'s Game of Life - only redraws changed cells for performance',
+    demonstrates: ['Cellular automaton', 'Double buffering grids', 'Neighbor counting', 'Change tracking', 'Optimized rendering', 'Game state management'],
+    use_for: ['Complex game logic', 'Grid-based games', 'Performance optimization', 'State tracking', 'Efficient redraw patterns']
   }
 ];
 

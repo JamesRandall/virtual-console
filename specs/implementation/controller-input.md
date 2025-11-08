@@ -13,6 +13,8 @@ I want to add game pad controller support to the console. You will find the spec
 
 The left thumbstick of the controller should behave in the same way as the d-pad - but allow a deadzone so that tiny movements of it don't result in a change in the register.
 
+Updates should be triggered from our render loop at 60Hz.
+
 Mappings should be as follows:
 
 B12 or l-stick up - up

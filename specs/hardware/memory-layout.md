@@ -35,15 +35,15 @@ Fast access memory for pointers, frequently accessed variables, and temporary st
 ### Hardware Registers (0x0100-0x01FF)
 
 | Address | Register | Description |
-|---------|----------|-------------|
+|---------|----------|------------|
 | 0x0100 | BANK_REG | Banking register (write bank number 0-255 to switch upper 32K) |
 | 0x0101 | VIDEO_MODE | Video mode select (0-3) |
 | 0x0102 | SCANLINE_INT | Scanline interrupt trigger line |
 | 0x0103 | SCANLINE_CURRENT | Current scanline (read-only) |
 | 0x0104 | SPRITE_ENABLE | Sprite system enable/disable |
 | 0x0105 | SPRITE_COUNT | Number of active sprites |
-| 0x0106 | Reserved | Reserved (legacy controller register) |
-| 0x0107 | Reserved | Reserved (legacy controller register) |
+| 0x0106 | Reserved | Reserved |
+| 0x0107 | Reserved | Reserved |
 | 0x0108 | COLLISION_FLAGS | Collision status flags (read-only) |
 | 0x0109 | COLLISION_COUNT | Number of collision entries (read-only) |
 | 0x010A | COLLISION_MODE | Collision detection mode control |
