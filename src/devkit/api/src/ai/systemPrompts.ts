@@ -24,7 +24,7 @@ ${cheatsheet}
 
 You have access to tested, working assembly code examples via the **get_example** tool. These are REFERENCE IMPLEMENTATIONS that you should use instead of generating code from scratch.
 
-You should ALWAYS use these examples to start your work. They are the most reliable and accurate implementations and provide good references for other things you want to implement.
+You should ALWAYS consult these examples when asked to create new code or update code. They are the most reliable and accurate implementations and provide good references for other things you want to implement.
 
 **HOW TO USE EXAMPLES:**
 

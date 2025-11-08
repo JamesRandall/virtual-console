@@ -61,6 +61,20 @@ const EXAMPLES = [
     description: 'Optimized Conway\'s Game of Life - only redraws changed cells for performance',
     demonstrates: ['Cellular automaton', 'Double buffering grids', 'Neighbor counting', 'Change tracking', 'Optimized rendering', 'Game state management'],
     use_for: ['Complex game logic', 'Grid-based games', 'Performance optimization', 'State tracking', 'Efficient redraw patterns']
+  },
+  {
+    name: 'spaceInvaderOptimised',
+    filename: 'drawSpaceInvaderOptimised.asm',
+    description: 'Optimized 8x8 bitmap drawing with inlined pixel plotting to avoid CALL overhead',
+    demonstrates: ['Bitmap rendering', 'Inline optimization', 'Pixel plotting', 'Performance optimization', '16-bit address arithmetic', 'Nibble packing'],
+    use_for: ['Sprite drawing', 'Performance-critical graphics', 'Understanding inline optimization', 'Bitmap data structures']
+  },
+  {
+    name: 'drawDigits',
+    filename: 'drawDigits.asm',
+    description: 'Drawing numeric digits 0-9 using bitmap lookup table with pointer arithmetic',
+    demonstrates: ['Digit rendering', 'Lookup tables', 'Pointer arithmetic', 'Bitmap arrays', '16-bit address calculation', 'Reusable subroutines'],
+    use_for: ['Score display', 'Text rendering', 'Number display', 'UI elements', 'Learning pointer arithmetic']
   }
 ];
 
