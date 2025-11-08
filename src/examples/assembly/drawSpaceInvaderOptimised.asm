@@ -5,23 +5,21 @@
   LD R0,#64
   LD R1,#64
   LD R2,#2
-  ;CALL draw_pixel
-  ;INC R1
-  ;CALL draw_pixel
-  ;INC R1
-  ;CALL draw_pixel
-  ;INC R1
-  ;CALL draw_pixel
-  ;INC R1
-  ;CALL draw_pixel
+  LD R3,#<space_invader
+  LD R4,#>space_invader
+
   CALL draw_bitmap
 
 infiniteloop:
   JMP infiniteloop
 
+; OPTIMIZED draw_bitmap routine
+; Key optimization: Inline the pixel drawing to avoid CALL overhead
 ; Inputs: R0 = X coordinate (0-255)
 ;         R1 = Y coordinate (0-159)
 ;         R2 = color (palette index 0-15)
+;         R3 = bitmap lo
+;         R4 = bitmap hi
 draw_bitmap:
 .define CURRENT_X SCRATCH
 .define STARTING_X SCRATCH+6
@@ -34,30 +32,107 @@ draw_bitmap:
   ST R0,CURRENT_X ; current x
   ST R0,STARTING_X ; starting x
   ST R1,CURRENT_Y ; y
-  ADD R1,#7
+  ADD R1,#8
   ST R1,END_Y ; end y
   ST R2,COLOUR ; colour
 
   ; bitmap source
-  LD R4,#<bitmap_data
-  LD R5,#>bitmap_data
-  ST R4,BITMAP_LO ; bitmap lo
-  ST R5,BITMAP_HI ; bitmap hi
+  ST R3,BITMAP_LO ; bitmap lo
+  ST R4,BITMAP_HI ; bitmap hi
 
   .row_loop:
-  LD R5,[$84]
+  LD R5,[$84]       ; Load bitmap byte for this row
+
   .inner_loop:
   ; check see if the first bit is set, if not skip
   MOV R3,R5
   AND R3,#$80
-  BRZ .next_column
+  BRZ .next_column_far
+  JMP .draw_it
 
-  ; draw the pixel if the bit is set
+.next_column_far:
+  JMP .next_column
+
+.draw_it:
+  ; INLINED PIXEL DRAWING - instead of CALL draw_pixel
+  ; Save registers we'll use
+  PUSH R5
+
+  ; Load coordinates and color
   LD R0,CURRENT_X
   LD R1,CURRENT_Y
   LD R2,COLOUR
-  CALL draw_pixel
-  
+
+  ; Bounds check Y
+  CMP R1, #160
+  BRC .skip_draw
+
+  ; Calculate address: 0xB000 + (Y * 128) + (X / 2)
+  LD R3, #0          ; R3 = high byte of offset
+  MOV R4, R1         ; R4 = low byte (Y value)
+
+  ; Shift R3:R4 left by 7 positions (multiply Y by 128)
+  SHL R4
+  ROL R3
+  SHL R4
+  ROL R3
+  SHL R4
+  ROL R3
+  SHL R4
+  ROL R3
+  SHL R4
+  ROL R3
+  SHL R4
+  ROL R3
+  SHL R4
+  ROL R3
+
+  ; Add X/2 to the low byte
+  PUSH R0            ; Save X
+  SHR R0             ; R0 = X / 2
+  ADD R4, R0         ; Add to low byte
+  POP R0             ; Restore X
+  BRC .carry_inline
+  JMP .no_carry_inline
+
+.carry_inline:
+  INC R3             ; Propagate carry to high byte
+
+.no_carry_inline:
+  ; Add framebuffer base address (0xB000) to high byte
+  ADD R3, #$B0
+
+  ; Load the current byte at this address
+  PUSH R0            ; Save X again
+  LD R0, [R3:R4]     ; R0 now has framebuffer byte
+
+  ; Check if X is even or odd (in saved X on stack, need to reload)
+  POP R5             ; R5 = X coordinate
+  PUSH R5            ; Keep it on stack
+  AND R5, #1
+  BRNZ .odd_pixel_inline
+
+  ; Even pixel: modify high nibble
+  AND R0, #$0F       ; Clear high nibble
+  SHL R2, #4         ; Shift color to high nibble
+  OR R0, R2          ; Combine
+  JMP .write_byte_inline
+
+.odd_pixel_inline:
+  ; Odd pixel: modify low nibble
+  AND R0, #$F0       ; Clear low nibble
+  AND R2, #$0F       ; Ensure color is only in low nibble
+  OR R0, R2          ; Combine
+
+.write_byte_inline:
+  ST R0, [R3:R4]     ; Write back to framebuffer
+  POP R0             ; Clean up stack (discard saved X)
+
+.skip_draw:
+  ; Restore bitmap byte
+  POP R5
+  ; END INLINED PIXEL DRAWING
+
   ; move on to the next column by incrementing current x and shifting the bit
   ; pattern left - if this value becomes 0 (no bits set) then we know we need
   ; to move to the next row
@@ -67,7 +142,8 @@ draw_bitmap:
   ST R0,CURRENT_X
   SHL R5
   CMP R5,#0
-  BRNZ .inner_loop
+  BRZ .next_row
+  JMP .inner_loop
 
   .next_row:
   ; move back to starting x
@@ -96,88 +172,6 @@ draw_bitmap:
   .done:
 
   RET
-
-
-; Subroutine: Draw pixel at (X, Y) with color
-; Inputs: R0 = X coordinate (0-255)
-;         R1 = Y coordinate (0-159)
-;         R2 = color (palette index 0-15)
-draw_pixel:
-    PUSH R0
-    PUSH R1
-    PUSH R2
-    PUSH R3
-    PUSH R4
-    PUSH R5
-
-    ; Bounds check Y
-    CMP R1, #160
-    BRC .exit          ; Exit if Y >= 160
-
-    ; Calculate address: 0xB000 + (Y * 128) + (X / 2)
-    LD R3, #0          ; R3 = high byte of offset
-    MOV R4, R1         ; R4 = low byte (Y value)
-
-    ; Shift R3:R4 left by 7 positions (multiply Y by 128)
-    SHL R4
-    ROL R3
-    SHL R4
-    ROL R3
-    SHL R4
-    ROL R3
-    SHL R4
-    ROL R3
-    SHL R4
-    ROL R3
-    SHL R4
-    ROL R3
-    SHL R4
-    ROL R3
-
-    ; Add X/2 to the low byte
-    MOV R5, R0         ; Copy X to R5
-    SHR R5             ; R5 = X / 2
-    ADD R4, R5         ; Add to low byte
-    BRC .carry
-    JMP .no_carry
-
-.carry:
-    INC R3             ; Propagate carry to high byte
-
-.no_carry:
-    ; Add framebuffer base address (0xB000) to high byte
-    ADD R3, #$B0
-
-    ; Load the current byte at this address
-    LD R5, [R3:R4]
-
-    ; Check if X is even or odd
-    AND R0, #1
-    BRNZ .odd_pixel
-
-    ; Even pixel: modify high nibble
-    AND R5, #$0F       ; Clear high nibble
-    SHL R2, #4         ; Shift color to high nibble
-    OR R5, R2          ; Combine
-    JMP .write_byte
-
-.odd_pixel:
-    ; Odd pixel: modify low nibble
-    AND R5, #$F0       ; Clear low nibble
-    AND R2, #$0F       ; Ensure color is only in low nibble
-    OR R5, R2          ; Combine
-
-.write_byte:
-    ST R5, [R3:R4]
-
-.exit:
-    POP R5
-    POP R4
-    POP R3
-    POP R2
-    POP R1
-    POP R0
-    RET
 
 ; Subroutine: Clear screen to color 0
 ; Uses register pairs to iterate through framebuffer
@@ -216,11 +210,7 @@ clear_screen:
     POP R0
     RET
 
-; Bitmap data
-digit_bitmaps:
-    .word bitmap_data
-
-bitmap_data:
+space_invader:
     ; Space Invader sprite (8x8)
     .byte 0b00011000  ; Row 1:    **
     .byte 0b00111100  ; Row 2:   ****

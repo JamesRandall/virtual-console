@@ -58,9 +58,6 @@ draw_bitmap:
   LD R2,COLOUR
   CALL draw_pixel
   
-  ; move on to the next column by incrementing current x and shifting the bit
-  ; pattern left - if this value becomes 0 (no bits set) then we know we need
-  ; to move to the next row
   .next_column:
   LD R0,CURRENT_X
   INC R0
@@ -70,19 +67,15 @@ draw_bitmap:
   BRNZ .inner_loop
 
   .next_row:
-  ; move back to starting x
-  LD R0,STARTING_X
+  LD R0,STARTING_X ; move back to starting x
   ST R0,CURRENT_X
-  ; move the y / row on 1
-  LD R0,CURRENT_Y
+  LD R0,CURRENT_Y ; move the y / row on 1
   INC R0
   ST R0,CURRENT_Y
-  ; if the current row has reached the last row we know we're done
   LD R1,END_Y
   CMP R0,R1
   BRZ .done
-  ; Add 1 to the 16-bit address at $84:$85 to point at the next
-  ; byte - the next row - in the source
+  ; Add 1 to the 16-bit address at $84:$85
   LD R2, BITMAP_LO      ; Load low byte
   INC R2            ; Increment low byte
   ST R2, BITMAP_LO      ; Store back
@@ -94,7 +87,7 @@ draw_bitmap:
   JMP .row_loop
 
   .done:
-
+  
   RET
 
 

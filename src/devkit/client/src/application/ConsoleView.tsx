@@ -14,6 +14,7 @@ export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
   // State
   const [viewSize] = useState({ width: 256, height: 160 });
   const [error, setError] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<1 | 2 | 4 | 8>(2); // Default zoom level
 
   // Initialize WebGPU renderer
   useEffect(() => {
@@ -126,16 +127,39 @@ export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
   }
 
   return (
-    <div className="h-full w-full bg-zinc-900 flex items-center justify-center">
-      <canvas
-        ref={canvasRef}
-        className="border border-zinc-700"
-        style={{
-          imageRendering: 'pixelated',
-        }}
-        width={viewSize.width}
-        height={viewSize.height}
-      />
+    <div className="h-full w-full bg-zinc-900 flex flex-col">
+      <div className="flex-1 flex items-center justify-center">
+        <canvas
+          ref={canvasRef}
+          className="border border-zinc-700"
+          style={{
+            imageRendering: 'pixelated',
+            transform: `scale(${zoom})`,
+            transformOrigin: 'center',
+          }}
+          width={viewSize.width}
+          height={viewSize.height}
+        />
+      </div>
+
+      {/* Zoom controls */}
+      <div className="flex items-center justify-center pb-4 relative z-10">
+        <div className="flex rounded overflow-hidden border border-white/20 bg-zinc-800">
+          {([1, 2, 4, 8] as const).map((zoomLevel) => (
+            <button
+              key={zoomLevel}
+              onClick={() => setZoom(zoomLevel)}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${
+                zoom === zoomLevel
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700'
+              } ${zoomLevel !== 8 ? 'border-r border-white/20' : ''}`}
+            >
+              ×{zoomLevel}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
