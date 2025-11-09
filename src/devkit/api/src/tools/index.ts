@@ -75,6 +75,13 @@ const EXAMPLES = [
     description: 'Drawing numeric digits 0-9 using bitmap lookup table with pointer arithmetic',
     demonstrates: ['Digit rendering', 'Lookup tables', 'Pointer arithmetic', 'Bitmap arrays', '16-bit address calculation', 'Reusable subroutines'],
     use_for: ['Score display', 'Text rendering', 'Number display', 'UI elements', 'Learning pointer arithmetic']
+  },
+  {
+    name: 'pong',
+    filename: 'pong.asm',
+    description: 'Complete Pong game with player vs AI, score tracking, and physics-based paddle collisions',
+    demonstrates: ['Game loop architecture', 'AI opponent logic', 'Collision detection', 'Score tracking', 'XOR sprite drawing', 'VBlank interrupts', 'Controller input', 'Ball physics', 'Paddle bounce angles', 'State management'],
+    use_for: ['Complete game reference', 'AI implementation', 'Game physics', 'Collision systems', 'Score display', 'Two-player games', 'Learning game architecture']
   }
 ];
 
