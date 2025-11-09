@@ -1,4 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faExpand } from '@fortawesome/free-solid-svg-icons';
 import { useVirtualConsole } from '../consoleIntegration/virtualConsole';
 import { createWebGPURenderer, type WebGPURenderer } from '../consoleIntegration/webgpuRendering';
 import { useDevkitStore } from '../stores/devkitStore';
@@ -10,11 +12,13 @@ export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<WebGPURenderer | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // State
   const [viewSize] = useState({ width: 256, height: 160 });
   const [error, setError] = useState<string | null>(null);
-  const [zoom, setZoom] = useState<1 | 2 | 4 | 8>(2); // Default zoom level
+  const [zoom, setZoom] = useState<1 | 2 | 4 | 8 | 'fit'>('fit'); // Default zoom level
+  const [fitScale, setFitScale] = useState(1);
 
   // Initialize WebGPU renderer
   useEffect(() => {
@@ -56,6 +60,39 @@ export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
       rendererRef.current.setVisible(isActive);
     }
   }, [isActive]);
+
+  // Calculate fit-to-container scale
+  useEffect(() => {
+    if (zoom !== 'fit') return;
+
+    const updateFitScale = () => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      const containerRect = container.getBoundingClientRect();
+      // Account for padding (p-2 = 0.5rem = 8px on each side, so 16px total)
+      const padding = 16;
+      const availableWidth = containerRect.width - padding;
+      const availableHeight = containerRect.height - padding;
+
+      const scaleX = availableWidth / viewSize.width;
+      const scaleY = availableHeight / viewSize.height;
+      const scale = Math.min(scaleX, scaleY, 8); // Cap at 8x to match max zoom
+
+      setFitScale(Math.max(0.5, scale)); // Min scale of 0.5x
+    };
+
+    updateFitScale();
+
+    const resizeObserver = new ResizeObserver(updateFitScale);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [zoom, viewSize.width, viewSize.height]);
 
   // Canvas capture event listener for AI tool
   useEffect(() => {
@@ -126,15 +163,17 @@ export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
     );
   }
 
+  const currentScale = zoom === 'fit' ? fitScale : zoom;
+
   return (
     <div className="h-full w-full bg-zinc-900 flex flex-col">
-      <div className="flex-1 flex items-center justify-center">
+      <div ref={containerRef} className="flex-1 flex items-center justify-center">
         <canvas
           ref={canvasRef}
           className="border border-zinc-700"
           style={{
             imageRendering: 'pixelated',
-            transform: `scale(${zoom})`,
+            transform: `scale(${currentScale})`,
             transformOrigin: 'center',
           }}
           width={viewSize.width}
@@ -143,7 +182,7 @@ export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
       </div>
 
       {/* Zoom controls */}
-      <div className="flex items-center justify-center pb-4 relative z-10">
+      <div className="flex items-center justify-center pb-4 relative z-10 gap-2">
         <div className="flex rounded overflow-hidden border border-white/20 bg-zinc-800">
           {([1, 2, 4, 8] as const).map((zoomLevel) => (
             <button
@@ -159,6 +198,19 @@ export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
             </button>
           ))}
         </div>
+
+        {/* Fit to container button */}
+        <button
+          onClick={() => setZoom('fit')}
+          className={`px-4 py-2 text-sm font-medium transition-colors rounded border border-white/20 ${
+            zoom === 'fit'
+              ? 'bg-blue-600 text-white'
+              : 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700'
+          }`}
+          title="Fit to container"
+        >
+          <FontAwesomeIcon icon={faExpand} />
+        </button>
       </div>
     </div>
   );

@@ -130,8 +130,10 @@ main:
     LD R0, #0           ; 0 = AI serves (left direction)
     CALL reset_ball
 
-    ; Draw initial ball (using XOR)
-    ;CALL draw_ball_xor
+    ; Draw initial ball using XOR (first time, no erase needed)
+    LD R0, [BALL_X]
+    LD R1, [BALL_Y]
+    CALL xor_ball
 
     ; Clear any pending interrupt flags
     LD R0, #$FF
@@ -538,18 +540,13 @@ vblank_handler:
 .ai_paddle_no_change:
 
     ; === Update Ball ===
-    ; Erase ball at OLD position using XOR
-    LD R0, [OLD_BALL_X]     ; Load OLD position
-    LD R1, [OLD_BALL_Y]     ; Load OLD position
+    ; CORRECT XOR ORDER:
+    ; 1. XOR at current position to ERASE it
+    LD R0, [BALL_X]
+    LD R1, [BALL_Y]
     CALL xor_ball
 
-    ; Save current position as old (before updating)
-    LD R0, [BALL_X]
-    ST R0, [OLD_BALL_X]
-    LD R0, [BALL_Y]
-    ST R0, [OLD_BALL_Y]
-
-    ; Update ball position
+    ; 2. Update ball position
     LD R0, [BALL_X]
     LD R1, [BALL_VX]
     ADD R0, R1
@@ -708,11 +705,6 @@ vblank_handler:
 .player_score_ok:
     ST R0, [PLAYER_SCORE]
 
-    ; Draw ball at old position - removes it
-    LD R0, [OLD_BALL_X]
-    LD R1, [OLD_BALL_Y]
-    CALL xor_ball
-
     ; Redraw center line (in case ball erased parts)
     CALL draw_center_line
 
@@ -726,6 +718,11 @@ vblank_handler:
     ; Reset ball position (this sets both BALL and OLD positions)
     LD R0, #0           ; AI serves (ball goes left)
     CALL reset_ball
+
+    ; Draw the new ball at its serve position
+    LD R0, [BALL_X]
+    LD R1, [BALL_Y]
+    CALL xor_ball
 
     JMP .done
 
@@ -741,11 +738,6 @@ vblank_handler:
 .ai_score_ok:
     ST R0, [AI_SCORE]
 
-    ; Draw ball at old position - removes it
-    LD R0, [OLD_BALL_X]
-    LD R1, [OLD_BALL_Y]
-    CALL xor_ball
-
     ; Redraw center line (in case ball erased parts)
     CALL draw_center_line
 
@@ -760,10 +752,15 @@ vblank_handler:
     LD R0, #1           ; Player serves (ball goes right)
     CALL reset_ball
 
+    ; Draw the new ball at its serve position
+    LD R0, [BALL_X]
+    LD R1, [BALL_Y]
+    CALL xor_ball
+
     JMP .done
 
 .draw_ball_now:
-    ; Draw ball at new position using XOR
+    ; 3. XOR at new position to DRAW it
     LD R0, [BALL_X]
     LD R1, [BALL_Y]
     CALL xor_ball
