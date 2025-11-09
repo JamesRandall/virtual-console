@@ -13,7 +13,8 @@ import {
     ASSEMBLER_LANGUAGE_ID,
 } from "./assemblerLanguageSpecification.ts";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {faHammer} from "@fortawesome/free-solid-svg-icons";
+import {faHammer, faImage} from "@fortawesome/free-solid-svg-icons";
+import {ImageGenerator} from "../components/ImageGenerator";
 
 const DEFAULT_PROGRAM = `
   .org $B80
@@ -52,6 +53,7 @@ export function EditorContainer() {
     // Local state
     const [editorContent, setEditorContent] = useState(DEFAULT_PROGRAM);
     const [assemblyError, setAssemblyError] = useState<string | null>(null);
+    const [isImageGeneratorOpen, setIsImageGeneratorOpen] = useState(false);
 
     // Refs
     const monacoRef = useRef<Monaco | null>(null);
@@ -366,11 +368,29 @@ export function EditorContainer() {
         validateCode(code);
     }, [validateCode, sourceMap.length, setCodeChangedSinceAssembly]);
 
+    const handleGenerateFromImage = useCallback((assemblyCode: string) => {
+        // Set the generated code in the editor
+        if (editorRef.current) {
+            const model = editorRef.current.getModel();
+            if (model) {
+                model.setValue(assemblyCode);
+                setEditorContent(assemblyCode);
+                // Validate the generated code
+                validateCode(assemblyCode);
+            }
+        }
+    }, [validateCode]);
+
     // Determine if we should show the warning banner
     const showWarningBanner = codeChangedSinceAssembly && breakpointLines.size > 0 && sourceMap.length > 0;
 
     // Render
     return <div className="flex flex-col h-full w-full bg-zinc-800">
+        <ImageGenerator
+            isOpen={isImageGeneratorOpen}
+            onClose={() => setIsImageGeneratorOpen(false)}
+            onGenerate={handleGenerateFromImage}
+        />
         <div className="flex-1 min-h-0 overflow-hidden relative">
             {/* Warning banner for out-of-sync breakpoints */}
             {showWarningBanner && (
@@ -399,8 +419,16 @@ export function EditorContainer() {
         </div>
         <div className="flex justify-end gap-4 p-4 border-t border-zinc-300 items-center text-zinc-200 flex-shrink-0">
             <button
+                onClick={() => setIsImageGeneratorOpen(true)}
+                className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded"
+                title="Convert image to assembly"
+            >
+                <FontAwesomeIcon icon={faImage} />
+            </button>
+            <button
                 onClick={handleAssemble}
                 className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded"
+                title="Assemble code"
             >
                 <FontAwesomeIcon icon={faHammer} />
             </button>
