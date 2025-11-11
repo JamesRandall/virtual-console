@@ -206,18 +206,34 @@ async function processImage(file: File): Promise<{
             // Find best 16-color palette
             const palette = findBestPalette(imageData);
 
-            // Convert image to palette indices (one per byte - draw_pixel will handle packing)
+            // Convert image to palette indices and pack as 4bpp (2 pixels per byte)
             const pixelData: number[] = [];
             for (let y = 0; y < height; y++) {
-                for (let x = 0; x < width; x++) {
-                    const i = (y * width + x) * 4;
-                    const rgb: [number, number, number] = [
-                        imageData.data[i],
-                        imageData.data[i + 1],
-                        imageData.data[i + 2]
+                for (let x = 0; x < width; x += 2) {
+                    // Get even pixel (high nibble)
+                    const i1 = (y * width + x) * 4;
+                    const rgb1: [number, number, number] = [
+                        imageData.data[i1],
+                        imageData.data[i1 + 1],
+                        imageData.data[i1 + 2]
                     ];
-                    const paletteIndex = findClosestPaletteIndex(rgb, palette);
-                    pixelData.push(paletteIndex);
+                    const paletteIndex1 = findClosestPaletteIndex(rgb1, palette);
+
+                    // Get odd pixel (low nibble) - use black if at edge
+                    let paletteIndex2 = 0;
+                    if (x + 1 < width) {
+                        const i2 = (y * width + x + 1) * 4;
+                        const rgb2: [number, number, number] = [
+                            imageData.data[i2],
+                            imageData.data[i2 + 1],
+                            imageData.data[i2 + 2]
+                        ];
+                        paletteIndex2 = findClosestPaletteIndex(rgb2, palette);
+                    }
+
+                    // Pack: high nibble (even pixel) | low nibble (odd pixel)
+                    const packedByte = (paletteIndex1 << 4) | paletteIndex2;
+                    pixelData.push(packedByte);
                 }
             }
 
@@ -259,8 +275,10 @@ function generateAssembly(
     lines.push('  ; Clear screen to black');
     lines.push('  CALL clear_screen');
     lines.push('');
-    lines.push('  ; Draw centered image');
-    lines.push('  LD R0, #' + Math.floor((TARGET_WIDTH - width) / 2) + ' ; Center X');
+    lines.push('  ; Draw centered image (X must be even for 4bpp packing)');
+    const centerX = Math.floor((TARGET_WIDTH - width) / 2);
+    const alignedCenterX = centerX - (centerX % 2); // Ensure even X position
+    lines.push('  LD R0, #' + alignedCenterX + ' ; Center X (aligned to even)');
     lines.push('  LD R1, #' + Math.floor((TARGET_HEIGHT - height) / 2) + ' ; Center Y');
     lines.push('  CALL draw_bitmap');
     lines.push('');
@@ -320,7 +338,7 @@ function generateAssembly(
     lines.push('  RET');
     lines.push('');
 
-    // Draw bitmap subroutine
+    // Draw bitmap subroutine (works with packed 4bpp data)
     lines.push('draw_bitmap:');
     lines.push('.define START_X SCRATCH');
     lines.push('.define CURRENT_X SCRATCH+1');
@@ -345,25 +363,25 @@ function generateAssembly(
     lines.push('  ADD R1, #' + width);
     lines.push('  ST R1, END_X');
     lines.push('');
-    lines.push('  LD R4, #<bitmap');
-    lines.push('  LD R5, #>bitmap');
-    lines.push('  ST R4, BITMAP_LO');
-    lines.push('  ST R5, BITMAP_HI');
+    lines.push('  LD R4, #>bitmap');
+    lines.push('  LD R5, #<bitmap');
+    lines.push('  ST R4, BITMAP_HI');
+    lines.push('  ST R5, BITMAP_LO');
     lines.push('');
     lines.push('.row_loop:');
     lines.push('  LD R0, START_X');
     lines.push('  ST R0, CURRENT_X');
     lines.push('');
     lines.push('.col_loop:');
-    lines.push('  ; Load palette index from bitmap');
+    lines.push('  ; Load packed byte from bitmap');
     lines.push('  LD R4, BITMAP_HI');
     lines.push('  LD R5, BITMAP_LO');
     lines.push('  LD R2, [R4:R5]');
     lines.push('');
-    lines.push('  ; Draw pixel');
+    lines.push('  ; Draw two pixels (packed in R2)');
     lines.push('  LD R0, CURRENT_X');
     lines.push('  LD R1, CURRENT_Y');
-    lines.push('  CALL draw_pixel');
+    lines.push('  CALL draw_packed_pixels');
     lines.push('');
     lines.push('  ; Increment bitmap pointer');
     lines.push('  LD R2, BITMAP_LO');
@@ -375,8 +393,9 @@ function generateAssembly(
     lines.push('  ST R3, BITMAP_HI');
     lines.push('.no_carry:');
     lines.push('');
-    lines.push('  ; Next column');
+    lines.push('  ; Next column (increment by 2 since we drew 2 pixels)');
     lines.push('  LD R0, CURRENT_X');
+    lines.push('  INC R0');
     lines.push('  INC R0');
     lines.push('  ST R0, CURRENT_X');
     lines.push('  LD R1, END_X');
@@ -402,7 +421,72 @@ function generateAssembly(
     lines.push('  RET');
     lines.push('');
 
-    // Draw pixel subroutine (from examples)
+    // Draw packed pixels subroutine
+    // Inputs: R0 = X coordinate (must be even: 0, 2, 4, etc.)
+    //         R1 = Y coordinate
+    //         R2 = packed byte (high nibble = pixel at X, low nibble = pixel at X+1)
+    // Writes the packed byte directly to framebuffer at (X, Y)
+    lines.push('draw_packed_pixels:');
+    lines.push('  PUSH R0');
+    lines.push('  PUSH R1');
+    lines.push('  PUSH R2');
+    lines.push('  PUSH R3');
+    lines.push('  PUSH R4');
+    lines.push('  PUSH R5');
+    lines.push('');
+    lines.push('  ; Bounds check Y');
+    lines.push('  CMP R1, #160');
+    lines.push('  BRC .exit_packed');
+    lines.push('');
+    lines.push('  ; Calculate framebuffer address: 0xB000 + (Y * 128) + (X / 2)');
+    lines.push('  ; Since X is even, X/2 is just X >> 1');
+    lines.push('  LD R3, #0');
+    lines.push('  MOV R4, R1');
+    lines.push('');
+    lines.push('  ; Multiply Y by 128 (shift left 7 times)');
+    lines.push('  SHL R4');
+    lines.push('  ROL R3');
+    lines.push('  SHL R4');
+    lines.push('  ROL R3');
+    lines.push('  SHL R4');
+    lines.push('  ROL R3');
+    lines.push('  SHL R4');
+    lines.push('  ROL R3');
+    lines.push('  SHL R4');
+    lines.push('  ROL R3');
+    lines.push('  SHL R4');
+    lines.push('  ROL R3');
+    lines.push('  SHL R4');
+    lines.push('  ROL R3');
+    lines.push('');
+    lines.push('  ; Add X/2 to the offset');
+    lines.push('  MOV R5, R0');
+    lines.push('  SHR R5');
+    lines.push('  ADD R4, R5');
+    lines.push('  BRC .carry_packed');
+    lines.push('  JMP .no_carry_packed');
+    lines.push('');
+    lines.push('.carry_packed:');
+    lines.push('  INC R3');
+    lines.push('');
+    lines.push('.no_carry_packed:');
+    lines.push('  ; Add framebuffer base (0xB000)');
+    lines.push('  ADD R3, #$B0');
+    lines.push('');
+    lines.push('  ; Write packed byte directly to framebuffer');
+    lines.push('  ST R2, [R3:R4]');
+    lines.push('');
+    lines.push('.exit_packed:');
+    lines.push('  POP R5');
+    lines.push('  POP R4');
+    lines.push('  POP R3');
+    lines.push('  POP R2');
+    lines.push('  POP R1');
+    lines.push('  POP R0');
+    lines.push('  RET');
+    lines.push('');
+
+    // Draw pixel subroutine (from examples) - kept for reference but not used for bitmap
     lines.push('draw_pixel:');
     lines.push('  PUSH R0');
     lines.push('  PUSH R1');
@@ -529,17 +613,34 @@ export function ImageGenerator({isOpen, onClose, onGenerate}: ImageGeneratorProp
         // Create ImageData to render
         const imageData = ctx.createImageData(debugData.width, debugData.height);
 
-        // Convert palette indices back to RGB using the palette
+        // Unpack 4bpp data and convert to RGB
+        let pixelIndex = 0;
         for (let i = 0; i < debugData.pixelData.length; i++) {
-            const paletteIndex = debugData.pixelData[i];
-            const masterPaletteIndex = debugData.palette[paletteIndex];
-            const rgb = RGB_PALETTE[masterPaletteIndex];
+            const packedByte = debugData.pixelData[i];
 
-            const pixelIndex = i * 4;
-            imageData.data[pixelIndex] = rgb[0];     // R
-            imageData.data[pixelIndex + 1] = rgb[1]; // G
-            imageData.data[pixelIndex + 2] = rgb[2]; // B
-            imageData.data[pixelIndex + 3] = 255;    // A
+            // Extract high nibble (even pixel)
+            const paletteIndex1 = (packedByte >> 4) & 0x0F;
+            const masterPaletteIndex1 = debugData.palette[paletteIndex1];
+            const rgb1 = RGB_PALETTE[masterPaletteIndex1];
+
+            imageData.data[pixelIndex * 4] = rgb1[0];
+            imageData.data[pixelIndex * 4 + 1] = rgb1[1];
+            imageData.data[pixelIndex * 4 + 2] = rgb1[2];
+            imageData.data[pixelIndex * 4 + 3] = 255;
+            pixelIndex++;
+
+            // Extract low nibble (odd pixel) - only if not past width
+            if (pixelIndex % debugData.width !== 0) {
+                const paletteIndex2 = packedByte & 0x0F;
+                const masterPaletteIndex2 = debugData.palette[paletteIndex2];
+                const rgb2 = RGB_PALETTE[masterPaletteIndex2];
+
+                imageData.data[pixelIndex * 4] = rgb2[0];
+                imageData.data[pixelIndex * 4 + 1] = rgb2[1];
+                imageData.data[pixelIndex * 4 + 2] = rgb2[2];
+                imageData.data[pixelIndex * 4 + 3] = 255;
+                pixelIndex++;
+            }
         }
 
         ctx.putImageData(imageData, 0, 0);
