@@ -231,13 +231,13 @@ Define one or more bytes of data.
 
 ### 4.3 .word / .dw - Define Word(s)
 
-Define one or more 16-bit words (little-endian).
+Define one or more 16-bit words (big-endian).
 
 **Syntax:** `.word value [, value, ...]`
 
 **Examples:**
 ```assembly
-.word $1234                 ; Stored as: $34 $12
+.word $1234                 ; Stored as: $12 $34
 .word $ABCD, $1234
 .dw $C000                   ; .dw is alias
 .word sprite_table          ; Can use labels
@@ -520,10 +520,10 @@ main:
     LD R3, #<sprite_data            ; Low byte ($00)
 
     ; Setup interrupt vector
-    LD R0, #<vblank_handler
-    ST R0, [$0132]                  ; VBLANK_VEC_LO
     LD R0, #>vblank_handler
-    ST R0, [$0133]                  ; VBLANK_VEC_HI
+    ST R0, [$0132]                  ; VBLANK_VEC_HI
+    LD R0, #<vblank_handler
+    ST R0, [$0133]                  ; VBLANK_VEC_LO
 
     ; Can be used in expressions
     .define BASE_ADDR $8000

@@ -301,12 +301,12 @@ Interrupt handler addresses are stored in hardware registers in the hardware reg
 
 | Register | Address | Description |
 |----------|---------|-------------|
-| VBLANK_VEC_LO | 0x0132 | VBlank interrupt handler address (low byte) |
-| VBLANK_VEC_HI | 0x0133 | VBlank interrupt handler address (high byte) |
-| SCANLINE_VEC_LO | 0x0134 | Scanline interrupt handler address (low byte) |
-| SCANLINE_VEC_HI | 0x0135 | Scanline interrupt handler address (high byte) |
+| VBLANK_VEC_HI | 0x0132 | VBlank interrupt handler address (high byte) |
+| VBLANK_VEC_LO | 0x0133 | VBlank interrupt handler address (low byte) |
+| SCANLINE_VEC_HI | 0x0134 | Scanline interrupt handler address (high byte) |
+| SCANLINE_VEC_LO | 0x0135 | Scanline interrupt handler address (low byte) |
 
-**Vector format**: 16-bit address stored little-endian (low byte first, then high byte)
+**Vector format**: 16-bit address stored big-endian (high byte first, then low byte)
 
 **Typical game loop (polling approach - simple but inefficient):**
 ```assembly
@@ -335,10 +335,10 @@ main_loop:
 ; Setup (run once at startup)
 setup:
   ; Install VBlank interrupt handler
-  LD R0, #<vblank_handler
-  ST R0, [$0132]           ; VBLANK_VEC_LO
   LD R0, #>vblank_handler
-  ST R0, [$0133]           ; VBLANK_VEC_HI
+  ST R0, [$0132]           ; VBLANK_VEC_HI
+  LD R0, #<vblank_handler
+  ST R0, [$0133]           ; VBLANK_VEC_LO
 
   ; Enable VBlank interrupts
   LD R0, #$01

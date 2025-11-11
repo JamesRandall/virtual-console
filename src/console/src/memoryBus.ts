@@ -68,19 +68,19 @@ export class MemoryBus {
   }
 
   /**
-   * Read a 16-bit value from memory (little-endian)
+   * Read a 16-bit value from memory (big-endian)
    *
    * @param address - 16-bit memory address (0x0000 - 0xFFFE)
    * @returns The 16-bit value at the specified address
    */
   read16(address: number): number {
-    const low = this.read8(address);
-    const high = this.read8(address + 1);
+    const high = this.read8(address);
+    const low = this.read8(address + 1);
     return (high << 8) | low;
   }
 
   /**
-   * Write a 16-bit value to memory (little-endian)
+   * Write a 16-bit value to memory (big-endian)
    *
    * @param address - 16-bit memory address (0x0000 - 0xFFFE)
    * @param value - 16-bit value to write
@@ -89,10 +89,10 @@ export class MemoryBus {
     if (value < 0 || value > 0xFFFF) {
       throw new Error(`Invalid 16-bit value: 0x${value.toString(16)}`);
     }
-    const low = value & 0xFF;
     const high = (value >> 8) & 0xFF;
-    this.write8(address, low);
-    this.write8(address + 1, high);
+    const low = value & 0xFF;
+    this.write8(address, high);
+    this.write8(address + 1, low);
   }
 
   /**

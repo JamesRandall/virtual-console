@@ -13,8 +13,8 @@
 .define FRAMEBUFFER_START $B000
 .define INT_STATUS $0114
 .define INT_ENABLE $0115
-.define VBLANK_VEC_LO $0132
-.define VBLANK_VEC_HI $0133
+.define VBLANK_VEC_HI $0132
+.define VBLANK_VEC_LO $0133
 
 ; Colors
 .define COLOR_BLACK 0
@@ -61,10 +61,10 @@ main:
     ST R0, [INT_STATUS]
 
     ; Install VBlank interrupt vector
-    LD R0, #(vblank_handler & $FF)
-    ST R0, [VBLANK_VEC_LO]
     LD R0, #(vblank_handler >> 8)
     ST R0, [VBLANK_VEC_HI]
+    LD R0, #(vblank_handler & $FF)
+    ST R0, [VBLANK_VEC_LO]
 
     ; Enable VBlank interrupt
     LD R0, #$01

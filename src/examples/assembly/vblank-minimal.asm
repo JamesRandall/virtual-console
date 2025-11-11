@@ -12,10 +12,10 @@ main:
     ST R0, [$0114]           ; Clear INT_STATUS
 
     ; Install VBlank interrupt vector pointing to handler
-    LD R0, #(vblank_handler & $FF)
-    ST R0, [$0132]           ; VBLANK_VEC_LO
     LD R0, #(vblank_handler >> 8)
-    ST R0, [$0133]           ; VBLANK_VEC_HI
+    ST R0, [$0132]           ; VBLANK_VEC_HI
+    LD R0, #(vblank_handler & $FF)
+    ST R0, [$0133]           ; VBLANK_VEC_LO
 
     ; Initialize counter at $0B00 to zero
     LD R0, #0

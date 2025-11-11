@@ -820,8 +820,8 @@ function encodeInstruction(
       bytes.push(imm & 0xFF);
     } else if (mode === MODE_ABSOLUTE && value !== undefined) {
       const addr = evaluateExpression(value, symbols, currentAddress);
-      bytes.push(addr & 0xFF); // Low byte
       bytes.push((addr >> 8) & 0xFF); // High byte
+      bytes.push(addr & 0xFF); // Low byte
     } else if (mode === MODE_ZERO_PAGE && value !== undefined) {
       const addr = evaluateExpression(value, symbols, currentAddress);
       if (addr > 0xFF) {
@@ -1068,8 +1068,8 @@ function pass2(
         for (const val of values) {
           try {
             const word = evaluateExpression(val, symbols, currentAddress);
-            segmentBytes.push(word & 0xFF); // Low byte
             segmentBytes.push((word >> 8) & 0xFF); // High byte
+            segmentBytes.push(word & 0xFF); // Low byte
             currentAddress += 2;
           } catch (error) {
             errors.push({

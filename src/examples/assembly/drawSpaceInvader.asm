@@ -27,8 +27,8 @@ draw_bitmap:
 .define STARTING_X SCRATCH+6
 .define CURRENT_Y SCRATCH+1
 .define END_Y SCRATCH+2
-.define BITMAP_LO SCRATCH+4
-.define BITMAP_HI SCRATCH+5
+.define BITMAP_HI SCRATCH+4
+.define BITMAP_LO SCRATCH+5
 .define COLOUR SCRATCH+3
 
   ST R0,CURRENT_X ; current x
@@ -38,11 +38,11 @@ draw_bitmap:
   ST R1,END_Y ; end y
   ST R2,COLOUR ; colour
 
-  ; bitmap source
-  LD R4,#<bitmap_data
-  LD R5,#>bitmap_data
-  ST R4,BITMAP_LO ; bitmap lo
-  ST R5,BITMAP_HI ; bitmap hi
+  ; bitmap source (big-endian: high byte at lower address)
+  LD R4,#>bitmap_data
+  LD R5,#<bitmap_data
+  ST R4,BITMAP_HI ; bitmap hi at $84
+  ST R5,BITMAP_LO ; bitmap lo at $85
 
   .row_loop:
   LD R5,[$84]
@@ -76,6 +76,7 @@ draw_bitmap:
   CMP R0,R1
   BRZ .done
   ; Add 1 to the 16-bit address at $84:$85
+  ; Note: In big-endian, BITMAP_HI is at $84, BITMAP_LO is at $85
   LD R2, BITMAP_LO      ; Load low byte
   INC R2            ; Increment low byte
   ST R2, BITMAP_LO      ; Store back

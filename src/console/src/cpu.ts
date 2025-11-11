@@ -306,9 +306,9 @@ export class CPU {
   private resolveAddress(mode: number, srcReg: number): number {
     switch (mode) {
       case MODE_ABSOLUTE: {
-        // Absolute: read 16-bit address
-        const low = this.fetchByte();
+        // Absolute: read 16-bit address (big-endian: high byte first)
         const high = this.fetchByte();
+        const low = this.fetchByte();
         return (high << 8) | low;
       }
       case MODE_ZERO_PAGE: {
@@ -688,11 +688,11 @@ export class CPU {
         throw new Error(`Invalid mode for CALL: ${mode} at PC 0x${this.pc.toString(16)}`);
     }
 
-    // Push return address (current PC)
-    const high = (this.pc >> 8) & 0xFF;
+    // Push return address (current PC) - low byte first, then high byte
     const low = this.pc & 0xFF;
-    this.push(high);
+    const high = (this.pc >> 8) & 0xFF;
     this.push(low);
+    this.push(high);
 
     this.pc = addr;
     this.cycles += 4;
@@ -741,16 +741,16 @@ export class CPU {
   }
 
   private execRET(): void {
-    const low = this.pop();
     const high = this.pop();
+    const low = this.pop();
     this.pc = (high << 8) | low;
     this.cycles += 3;
   }
 
   private execRTI(): void {
     // Pop return address (reverse order of push)
-    const low = this.pop();   // Last pushed (PC low)
-    const high = this.pop();  // Second pushed (PC high)
+    const high = this.pop();  // Last pushed (PC high)
+    const low = this.pop();   // Second pushed (PC low)
     this.pc = (high << 8) | low;
 
     // Pop status register (first pushed, last popped)
@@ -858,11 +858,11 @@ export class CPU {
     // Push status register to stack
     this.push(this.status);
 
-    // Push PC to stack (high byte, then low byte)
-    const pcHigh = (this.pc >> 8) & 0xFF;
+    // Push PC to stack (low byte first, then high byte)
     const pcLow = this.pc & 0xFF;
-    this.push(pcHigh);
+    const pcHigh = (this.pc >> 8) & 0xFF;
     this.push(pcLow);
+    this.push(pcHigh);
 
     // Clear I flag to disable further interrupts during handler
     this.setFlag(FLAG_I, false);

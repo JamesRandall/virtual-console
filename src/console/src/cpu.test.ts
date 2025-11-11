@@ -157,7 +157,7 @@ describe('CPU', () => {
     describe('Absolute mode', () => {
       it('should load value from absolute address', () => {
         bus.write8(0xC000, 0x99);
-        const bytecode = [...encodeInstruction(OP_LD, MODE_ABSOLUTE, 1, 0), 0x00, 0xC0];
+        const bytecode = [...encodeInstruction(OP_LD, MODE_ABSOLUTE, 1, 0), 0xC0, 0x00];
         const cycles = setupAndExecute(bus, cpu, bytecode);
 
         expect(cpu.getRegister(1)).toBe(0x99);
@@ -208,7 +208,7 @@ describe('CPU', () => {
     describe('Absolute mode', () => {
       it('should store register value to absolute address', () => {
         cpu.setRegister(1, 0x88);
-        const bytecode = [...encodeInstruction(OP_ST, MODE_ABSOLUTE, 1, 0), 0x00, 0xB0];
+        const bytecode = [...encodeInstruction(OP_ST, MODE_ABSOLUTE, 1, 0), 0xB0, 0x00];
         const cycles = setupAndExecute(bus, cpu, bytecode);
 
         expect(bus.read8(0xB000)).toBe(0x88);
@@ -218,7 +218,7 @@ describe('CPU', () => {
       it('should not affect status flags', () => {
         cpu.setRegister(0, 0x00);
         const initialStatus = cpu.getStatus();
-        const bytecode = [...encodeInstruction(OP_ST, MODE_ABSOLUTE, 0, 0), 0x50, 0xA0];
+        const bytecode = [...encodeInstruction(OP_ST, MODE_ABSOLUTE, 0, 0), 0xA0, 0x50];
         setupAndExecute(bus, cpu, bytecode);
 
         expect(cpu.getStatus()).toBe(initialStatus);
@@ -586,7 +586,7 @@ describe('CPU', () => {
   describe('JMP - Jump', () => {
     describe('Absolute mode', () => {
       it('should jump to absolute address', () => {
-        const bytecode = [...encodeInstruction(OP_JMP, MODE_ABSOLUTE, 0, 0), 0x34, 0x12];
+        const bytecode = [...encodeInstruction(OP_JMP, MODE_ABSOLUTE, 0, 0), 0x12, 0x34];
         const cycles = setupAndExecute(bus, cpu, bytecode);
 
         expect(cpu.getProgramCounter()).toBe(0x1234);
@@ -725,7 +725,7 @@ describe('CPU', () => {
     describe('Absolute mode', () => {
       it('should push return address and jump', () => {
         cpu.setStackPointer(0x7FFF);
-        const bytecode = [...encodeInstruction(OP_CALL, MODE_ABSOLUTE, 0, 0), 0x00, 0x20];
+        const bytecode = [...encodeInstruction(OP_CALL, MODE_ABSOLUTE, 0, 0), 0x20, 0x00];
         const startPC = 0x1000;
         const cycles = setupAndExecute(bus, cpu, bytecode, startPC);
 
@@ -733,9 +733,10 @@ describe('CPU', () => {
         expect(cycles).toBe(4);
 
         // Check stack - return address should be startPC + 4 (after CALL instruction)
+        // Stack pushes: low byte first, then high byte
         expect(cpu.getStackPointer()).toBe(0x7FFD);
-        expect(bus.read8(0x7FFF)).toBe(0x10); // High byte of return address
-        expect(bus.read8(0x7FFE)).toBe(0x04); // Low byte of return address
+        expect(bus.read8(0x7FFF)).toBe(0x04); // Low byte of return address (pushed first)
+        expect(bus.read8(0x7FFE)).toBe(0x10); // High byte of return address (pushed second)
       });
     });
 
@@ -759,8 +760,8 @@ describe('CPU', () => {
     describe('RET - Return from Subroutine', () => {
       it('should pop return address and jump', () => {
         cpu.setStackPointer(0x7FFD);
-        bus.write8(0x7FFE, 0x34); // Low byte
-        bus.write8(0x7FFF, 0x12); // High byte
+        bus.write8(0x7FFE, 0x12); // High byte (popped first)
+        bus.write8(0x7FFF, 0x34); // Low byte (popped second)
 
         const bytecode = [OP_EXT << 4 | MODE_REGISTER << 1, EXT_RET]; // EXT opcode + RET sub-opcode
         const cycles = setupAndExecute(bus, cpu, bytecode);
@@ -774,15 +775,16 @@ describe('CPU', () => {
     describe('RTI - Return from Interrupt', () => {
       it('should pop status and return address', () => {
         // Setup stack as if interrupt was dispatched
-        // Interrupt dispatch pushes: Status, PC high, PC low (in that order)
+        // Interrupt dispatch pushes: Status, PC low, PC high (in that order)
+        // RTI pops in reverse: PC high, PC low, Status
         // So stack should have (from top to bottom):
-        //   [0x7FFF] = Status (first pushed)
-        //   [0x7FFE] = PC high (second pushed)
-        //   [0x7FFD] = PC low (last pushed)
+        //   [0x7FFF] = Status (first pushed, last popped)
+        //   [0x7FFE] = PC low (second pushed, second popped)
+        //   [0x7FFD] = PC high (last pushed, first popped)
         cpu.setStackPointer(0x7FFC);
         bus.write8(0x7FFF, 0x83); // Status with C, Z, N flags set (first pushed)
-        bus.write8(0x7FFE, 0x78); // High byte of PC (second pushed)
-        bus.write8(0x7FFD, 0x56); // Low byte of PC (last pushed)
+        bus.write8(0x7FFE, 0x56); // Low byte of PC (second pushed)
+        bus.write8(0x7FFD, 0x78); // High byte of PC (last pushed)
 
         const bytecode = [OP_EXT << 4 | MODE_REGISTER << 1, EXT_RTI]; // EXT opcode + RTI sub-opcode
         const cycles = setupAndExecute(bus, cpu, bytecode);
@@ -983,20 +985,20 @@ describe('CPU', () => {
       const statusBeforeInterrupt = cpu.getStatus();
       const pcBeforeInterrupt = cpu.getProgramCounter();
 
-      // Push status, PC high, PC low (as dispatchInterrupt does)
+      // Push status, PC low, PC high (as dispatchInterrupt does)
       const push = (value: number) => {
         bus.write8(cpu.getStackPointer(), value & 0xFF);
         cpu.setStackPointer((cpu.getStackPointer() - 1) & 0xFFFF);
       };
 
       push(statusBeforeInterrupt);
-      push((pcBeforeInterrupt >> 8) & 0xFF);
       push(pcBeforeInterrupt & 0xFF);
+      push((pcBeforeInterrupt >> 8) & 0xFF);
 
       // Verify stack contents
       expect(bus.read8(0x7FFF)).toBe(statusBeforeInterrupt); // Status
-      expect(bus.read8(0x7FFE)).toBe(0x10); // PC high
-      expect(bus.read8(0x7FFD)).toBe(0x00); // PC low
+      expect(bus.read8(0x7FFE)).toBe(0x00); // PC low
+      expect(bus.read8(0x7FFD)).toBe(0x10); // PC high
       expect(cpu.getStackPointer()).toBe(0x7FFC);
 
       // Now execute RTI
@@ -1022,7 +1024,7 @@ describe('CPU', () => {
         // ADD R0, R1
         ...encodeInstruction(OP_ADD, MODE_REGISTER, 0, 1),
         // ST R0, [$2000]
-        ...encodeInstruction(OP_ST, MODE_ABSOLUTE, 0, 0), 0x00, 0x20,
+        ...encodeInstruction(OP_ST, MODE_ABSOLUTE, 0, 0), 0x20, 0x00,
       ];
 
       for (let i = 0; i < program.length; i++) {
@@ -1045,7 +1047,7 @@ describe('CPU', () => {
       // Main program
       const main = [
         // CALL $2000
-        ...encodeInstruction(OP_CALL, MODE_ABSOLUTE, 0, 0), 0x00, 0x20,
+        ...encodeInstruction(OP_CALL, MODE_ABSOLUTE, 0, 0), 0x20, 0x00,
       ];
 
       // Subroutine at $2000

@@ -79,8 +79,8 @@ describe('Assembler', () => {
       expect(result.segments[0].data).toEqual(new Uint8Array([
         (OP_LD << 4) | (MODE_ABSOLUTE << 1),
         (0 << 5) | (0 << 2),
-        0x34, // Low byte
-        0x12  // High byte
+        0x12, // High byte
+        0x34  // Low byte
       ]));
     });
 
@@ -282,18 +282,18 @@ describe('Assembler', () => {
     });
 
     describe('.word / .dw', () => {
-      it('should define words in little-endian', () => {
+      it('should define words in big-endian', () => {
         const code = '.word $1234';
         const result = assemble(code);
         expect(result.errors).toHaveLength(0);
-        expect(result.segments[0].data).toEqual(new Uint8Array([0x34, 0x12]));
+        expect(result.segments[0].data).toEqual(new Uint8Array([0x12, 0x34]));
       });
 
       it('should define multiple words', () => {
         const code = '.word $ABCD, $1234';
         const result = assemble(code);
         expect(result.errors).toHaveLength(0);
-        expect(result.segments[0].data).toEqual(new Uint8Array([0xCD, 0xAB, 0x34, 0x12]));
+        expect(result.segments[0].data).toEqual(new Uint8Array([0xAB, 0xCD, 0x12, 0x34]));
       });
     });
 
@@ -503,10 +503,10 @@ describe('Assembler', () => {
         const code = `.word (256 >> 1)`;
         const result = assemble(code);
         expect(result.errors).toHaveLength(0);
-        // 256 >> 1 = 128 = 0x80
-        // Little-endian: low byte first
-        expect(result.segments[0].data[0]).toBe(0x80);
-        expect(result.segments[0].data[1]).toBe(0x00);
+        // 256 >> 1 = 128 = 0x0080
+        // Big-endian: high byte first
+        expect(result.segments[0].data[0]).toBe(0x00);
+        expect(result.segments[0].data[1]).toBe(0x80);
       });
     });
 
@@ -647,8 +647,9 @@ describe('Assembler', () => {
         const result = assemble(code);
         expect(result.errors).toHaveLength(0);
         // JMP is at $1000, target is $1000 + 5 = $1005
-        expect(result.segments[0].data[2]).toBe(0x05);
-        expect(result.segments[0].data[3]).toBe(0x10);
+        // Big-endian: high byte first
+        expect(result.segments[0].data[2]).toBe(0x10);
+        expect(result.segments[0].data[3]).toBe(0x05);
       });
 
       it('should evaluate expressions in label context', () => {
@@ -916,9 +917,9 @@ describe('Assembler', () => {
         const result = assemble(code);
         expect(result.errors).toHaveLength(0);
         // Low byte of 0xABCD is 0xCD
-        // Little-endian: 0xCD, 0x00
-        expect(result.segments[0].data[0]).toBe(0xCD);
-        expect(result.segments[0].data[1]).toBe(0x00);
+        // .word 0x00CD in big-endian: 0x00, 0xCD
+        expect(result.segments[0].data[0]).toBe(0x00);
+        expect(result.segments[0].data[1]).toBe(0xCD);
       });
     });
 
@@ -966,9 +967,9 @@ describe('Assembler', () => {
         const result = assemble(code);
         expect(result.errors).toHaveLength(0);
         // High byte of 0xABCD is 0xAB
-        // Little-endian: 0xAB, 0x00
-        expect(result.segments[0].data[0]).toBe(0xAB);
-        expect(result.segments[0].data[1]).toBe(0x00);
+        // .word 0x00AB in big-endian: 0x00, 0xAB
+        expect(result.segments[0].data[0]).toBe(0x00);
+        expect(result.segments[0].data[1]).toBe(0xAB);
       });
     });
 

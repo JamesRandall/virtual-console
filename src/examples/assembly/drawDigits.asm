@@ -5,8 +5,8 @@
   LD R0,#64
   LD R1,#64
   LD R2,#1
-  LD R3,#<number_1
-  LD R4,#>number_1
+  LD R3,#>number_1
+  LD R4,#<number_1
 
   CALL draw_bitmap
 
@@ -51,21 +51,23 @@ draw_digit:
   SHL R3
   ; R3 now has the offset (0, 8, 16, 24, ... 72)
 
-  ; Load base address of number_0
-  LD R4, #>number_0   ; High byte
+  ; Save offset BEFORE loading base address (otherwise we'll overwrite it!)
   MOV R5, R3          ; Save offset in R5
-  LD R3, #<number_0   ; Low byte
+
+  ; Load base address of number_0
+  LD R3, #>number_0   ; High byte
+  LD R4, #<number_0   ; Low byte
 
   ; Add offset to the 16-bit base address
-  ADD R3, R5          ; Add offset to low byte
+  ADD R4, R5          ; Add offset to low byte
   BRC .digit_carry
   JMP .digit_no_carry
 
 .digit_carry:
-  INC R4              ; Propagate carry to high byte
+  INC R3              ; Propagate carry to high byte
 
 .digit_no_carry:
-  ; Now R3:R4 has the pointer to the correct digit bitmap
+  ; Now R3:R4 has the pointer to the correct digit bitmap (high:low)
   ; Restore X, Y, color and call draw_bitmap
   LD R0, DIGIT_X
   LD R1, DIGIT_Y
@@ -80,15 +82,15 @@ draw_digit:
 ; Inputs: R0 = X coordinate (0-255)
 ;         R1 = Y coordinate (0-159)
 ;         R2 = color (palette index 0-15)
-;         R3 = bitmap lo
-;         R4 = bitmap hi
+;         R3 = bitmap hi (high byte)
+;         R4 = bitmap lo (low byte)
 draw_bitmap:
 .define CURRENT_X SCRATCH
 .define STARTING_X SCRATCH+6
 .define CURRENT_Y SCRATCH+1
 .define END_Y SCRATCH+2
-.define BITMAP_LO SCRATCH+4
-.define BITMAP_HI SCRATCH+5
+.define BITMAP_HI SCRATCH+4
+.define BITMAP_LO SCRATCH+5
 .define COLOUR SCRATCH+3
 
   ST R0,CURRENT_X ; current x
@@ -98,9 +100,9 @@ draw_bitmap:
   ST R1,END_Y ; end y
   ST R2,COLOUR ; colour
 
-  ; bitmap source
-  ST R3,BITMAP_LO ; bitmap lo
-  ST R4,BITMAP_HI ; bitmap hi
+  ; bitmap source (R3:R4 = high:low)
+  ST R3,BITMAP_HI ; bitmap hi
+  ST R4,BITMAP_LO ; bitmap lo
 
   .row_loop:
   LD R5,[$84]       ; Load bitmap byte for this row
@@ -221,6 +223,7 @@ draw_bitmap:
   BRZ .done
   ; Add 1 to the 16-bit address at $84:$85 to point at the next
   ; byte - the next row - in the source
+  ; Note: In big-endian zero page, BITMAP_HI is at $84, BITMAP_LO is at $85
   LD R2, BITMAP_LO      ; Load low byte
   INC R2            ; Increment low byte
   ST R2, BITMAP_LO      ; Store back

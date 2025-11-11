@@ -147,10 +147,10 @@ Use a zero page location (0x00-0xFF) as a pointer to a 16-bit address.
 **Usage Pattern**:
 ```assembly
 ; Setup pointer at $80-$81 pointing to $C000
-LD R0, #$00
-ST R0, [$80]     ; Store low byte
 LD R0, #$C0
-ST R0, [$81]     ; Store high byte
+ST R0, [$80]     ; Store high byte
+LD R0, #$00
+ST R0, [$81]     ; Store low byte
 
 ; Now use the pointer
 LD R1, [$80]     ; Load from $C000
@@ -402,8 +402,8 @@ Push return address to stack and jump.
 | Reg Pair | `CALL [Rs:Rt]` | Push PC, jump to [Rs:Rt] | 1 |
 
 **Operation**:
-1. Push PC high byte to [SP], decrement SP
-2. Push PC low byte to [SP], decrement SP
+1. Push PC low byte to [SP], decrement SP
+2. Push PC high byte to [SP], decrement SP
 3. PC = target address
 
 #### RET - Return
@@ -416,8 +416,8 @@ Pop return address from stack and jump.
 **Bytes**: 1
 
 **Operation**:
-1. Increment SP, pop low byte to PC
-2. Increment SP, pop high byte to PC
+1. Increment SP, pop high byte to PC
+2. Increment SP, pop low byte to PC
 
 ---
 
@@ -582,7 +582,7 @@ The 3-bit **mode** field determines addressing mode and instruction length:
 |------|------|------|--------|--------|--------|-------------|
 | 000 | Immediate | IMM | 3 bytes | imm8 | - | Load immediate value |
 | 001 | Register | REG | 2 bytes | - | - | Register-to-register |
-| 010 | Absolute | ABS | 4 bytes | addr_low | addr_high | 16-bit address |
+| 010 | Absolute | ABS | 4 bytes | addr_high | addr_low | 16-bit address |
 | 011 | Zero Page | ZP | 3 bytes | zp_addr | - | Zero page indirect |
 | 100 | ZP Indexed | ZPX | 3 bytes | zp_addr | - | Zero page + index |
 | 101 | Reg Pair | RPR | 2 bytes | - | - | Register pair indirect |
@@ -627,10 +627,10 @@ Src:    xxx (unused)
 
 Byte 1: [0010][010][0] = 0x24
 Byte 2: [001][000][00] = 0x20
-Byte 3: 0x00 (address low byte)
-Byte 4: 0xC0 (address high byte)
+Byte 3: 0xC0 (address high byte)
+Byte 4: 0x00 (address low byte)
 
-Encoded: 24 20 00 C0
+Encoded: 24 20 C0 00
 ```
 
 #### Example 4: `LD R4, [$80+R0]` (Zero page indexed)
@@ -741,12 +741,12 @@ Interrupt handler addresses are stored in hardware registers:
 
 | Register | Address | Description |
 |----------|---------|-------------|
-| VBLANK_VEC_LO | 0x0132 | VBlank handler address (low byte) |
-| VBLANK_VEC_HI | 0x0133 | VBlank handler address (high byte) |
-| SCANLINE_VEC_LO | 0x0134 | Scanline handler address (low byte) |
-| SCANLINE_VEC_HI | 0x0135 | Scanline handler address (high byte) |
+| VBLANK_VEC_HI | 0x0132 | VBlank handler address (high byte) |
+| VBLANK_VEC_LO | 0x0133 | VBlank handler address (low byte) |
+| SCANLINE_VEC_HI | 0x0134 | Scanline handler address (high byte) |
+| SCANLINE_VEC_LO | 0x0135 | Scanline handler address (low byte) |
 
-**Vector format**: 16-bit address stored little-endian (low byte, then high byte)
+**Vector format**: 16-bit address stored big-endian (high byte, then low byte)
 
 ### 8.3 Interrupt Enable Control
 
@@ -759,11 +759,11 @@ Interrupts fire when **all three** conditions are met:
 **Example setup:**
 ```assembly
 ; Install VBlank handler
-LD R0, #<vblank_handler    ; Low byte of handler address
-ST R0, [$0132]             ; VBLANK_VEC_LO
-
 LD R0, #>vblank_handler    ; High byte of handler address
-ST R0, [$0133]             ; VBLANK_VEC_HI
+ST R0, [$0132]             ; VBLANK_VEC_HI
+
+LD R0, #<vblank_handler    ; Low byte of handler address
+ST R0, [$0133]             ; VBLANK_VEC_LO
 
 ; Enable VBlank interrupts
 LD R0, #$01                ; Bit 0 = VBlank
@@ -778,8 +778,8 @@ When all enable conditions are met and an interrupt fires:
 
 1. **CPU finishes current instruction**
 2. **Push status register to stack** (preserves all flags including I)
-3. **Push PC high byte to stack**
-4. **Push PC low byte to stack**
+3. **Push PC low byte to stack**
+4. **Push PC high byte to stack**
 5. **Clear I flag** (automatically disables further interrupts)
 6. **Read handler address** from interrupt vector (0x0132-0x0133 for VBlank)
 7. **Jump to handler address**
@@ -794,8 +794,8 @@ When all enable conditions are met and an interrupt fires:
 - Execute RTI to return
 
 **RTI (Return from Interrupt) sequence:**
-1. **Pop PC low byte from stack**
-2. **Pop PC high byte from stack**
+1. **Pop PC high byte from stack**
+2. **Pop PC low byte from stack**
 3. **Pop status register from stack** (restores I flag, re-enables interrupts)
 4. **Resume execution** at interrupted location
 
@@ -838,10 +838,10 @@ main_loop:
 ; Setup (run once at startup)
 setup:
   ; Install VBlank handler
-  LD R0, #<vblank_handler
-  ST R0, [$0132]           ; VBLANK_VEC_LO
   LD R0, #>vblank_handler
-  ST R0, [$0133]           ; VBLANK_VEC_HI
+  ST R0, [$0132]           ; VBLANK_VEC_HI
+  LD R0, #<vblank_handler
+  ST R0, [$0133]           ; VBLANK_VEC_LO
 
   ; Enable VBlank interrupts
   LD R0, #$01
@@ -922,19 +922,19 @@ loop:
 
 ```assembly
 ; Increment 16-bit counter at $0B00-$0B01
-LD R0, [$0B01]     ; Load low byte
-LD R1, [$0B00]     ; Load high byte
+LD R0, [$0B00]     ; Load high byte
+LD R1, [$0B01]     ; Load low byte
 
-ADD R0, #1         ; Increment low
+ADD R1, #1         ; Increment low
 BRC carry_set      ; If carry, increment high
 JMP store
 
 carry_set:
-  ADD R1, #1       ; Increment high
+  ADD R0, #1       ; Increment high
 
 store:
-  ST R0, [$0B01]   ; Store low
-  ST R1, [$0B00]   ; Store high
+  ST R0, [$0B00]   ; Store high
+  ST R1, [$0B01]   ; Store low
 ```
 
 ### 9.3 Subroutine Call

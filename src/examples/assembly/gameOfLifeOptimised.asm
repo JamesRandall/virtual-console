@@ -14,8 +14,8 @@
 .define PALETTE_RAM $0200
 .define INT_STATUS $0114
 .define INT_ENABLE $0115
-.define VBLANK_VEC_LO $0132
-.define VBLANK_VEC_HI $0133
+.define VBLANK_VEC_HI $0132
+.define VBLANK_VEC_LO $0133
 .define COLOR_WHITE 1
 .define COLOR_DARK_GRAY 3
 .define GRID_SIZE 16
@@ -39,10 +39,10 @@ main:
     CALL draw_grid_full
     LD R0, #$FF
     ST R0, [INT_STATUS]
-    LD R0, #(vblank_handler & $FF)
-    ST R0, [VBLANK_VEC_LO]
     LD R0, #(vblank_handler >> 8)
     ST R0, [VBLANK_VEC_HI]
+    LD R0, #(vblank_handler & $FF)
+    ST R0, [VBLANK_VEC_LO]
     LD R0, #$01
     ST R0, [INT_ENABLE]
     SEI
