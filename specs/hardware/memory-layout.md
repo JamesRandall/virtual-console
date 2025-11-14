@@ -47,15 +47,7 @@ Fast access memory for pointers, frequently accessed variables, and temporary st
 | 0x0108 | COLLISION_FLAGS | Collision status flags (read-only) |
 | 0x0109 | COLLISION_COUNT | Number of collision entries (read-only) |
 | 0x010A | COLLISION_MODE | Collision detection mode control |
-| 0x010B | TILEMAP_ENABLE | Enable tilemap rendering |
-| 0x010C | TILEMAP_BANK | Bank containing tile graphics |
-| 0x010D | TILEMAP_X_SCROLL | X scroll offset (0-255) |
-| 0x010E | TILEMAP_Y_SCROLL | Y scroll offset (0-255) |
-| 0x010F | TILEMAP_WIDTH | Tilemap width in tiles |
-| 0x0110 | TILEMAP_HEIGHT | Tilemap height in tiles |
-| 0x0111 | TILEMAP_ADDR_LO | Tilemap data address low byte |
-| 0x0112 | TILEMAP_ADDR_HI | Tilemap data address high byte |
-| 0x0113 | TILE_ANIM_FRAME | Global tile animation frame counter |
+| 0x010B-0x0113 | Reserved | Reserved for future use |
 | 0x0114 | INT_STATUS | Interrupt status flags (read/write to clear) |
 | 0x0115 | INT_ENABLE | Interrupt enable control |
 | 0x0116-0x0128 | Audio Registers | 4-channel audio system (see Audio Registers) |
@@ -68,7 +60,18 @@ Fast access memory for pointers, frequently accessed variables, and temporary st
 | 0x0137 | CONTROLLER_1_EXTENDED | Controller 1 extended buttons (read-only) |
 | 0x0138 | CONTROLLER_2_BUTTONS | Controller 2 main buttons (read-only) |
 | 0x0139 | CONTROLLER_2_EXTENDED | Controller 2 extended buttons (read-only) |
-| 0x013A-0x01FF | Reserved | Additional hardware registers |
+| 0x013A-0x013C | Reserved | Reserved for future use |
+| 0x013D | TILEMAP_ENABLE | Tilemap control flags |
+| 0x013E | TILEMAP_GRAPHICS_BANK | Bank containing tile graphics |
+| 0x013F | TILEMAP_X_SCROLL | X scroll offset (0-255) |
+| 0x0140 | TILEMAP_Y_SCROLL | Y scroll offset (0-255) |
+| 0x0141 | TILEMAP_WIDTH | Tilemap width in tiles |
+| 0x0142 | TILEMAP_HEIGHT | Tilemap height in tiles |
+| 0x0143 | TILEMAP_DATA_BANK | Bank containing tilemap data |
+| 0x0144 | TILEMAP_ADDR_HI | Tilemap data address high byte |
+| 0x0145 | TILEMAP_ADDR_LO | Tilemap data address low byte |
+| 0x0146 | TILE_ANIM_FRAME | Global tile animation frame counter |
+| 0x0147-0x01FF | Reserved | Additional hardware registers |
 
 **256 bytes**
 
@@ -109,23 +112,32 @@ Fast access memory for pointers, frequently accessed variables, and temporary st
 
 #### Tilemap Registers
 
-**TILEMAP_ENABLE (0x010B)**
-- 0 = Disabled, 1 = Enabled
+**TILEMAP_ENABLE (0x013D)**
+- Bit 0: Enable tilemap (0=disabled, 1=enabled)
+- Bit 1: Horizontal wrap (0=clamp, 1=wrap)
+- Bit 2: Vertical wrap (0=clamp, 1=wrap)
+- Bit 3: Priority mode (0=all behind sprites, 1=per-tile priority)
+- Bits 7-4: Reserved
 
-**TILEMAP_BANK (0x010C)**
-- Bank number containing tile graphics (0-255)
+**TILEMAP_GRAPHICS_BANK (0x013E)**
+- Bank number containing tile graphics/pixel data (0-255)
+- Convention: Banks 16-31 for tile graphics
 
-**TILEMAP_X_SCROLL / TILEMAP_Y_SCROLL (0x010D-0x010E)**
+**TILEMAP_X_SCROLL / TILEMAP_Y_SCROLL (0x013F-0x0140)**
 - Scroll offset in pixels (0-255)
 
-**TILEMAP_WIDTH / TILEMAP_HEIGHT (0x010F-0x0110)**
+**TILEMAP_WIDTH / TILEMAP_HEIGHT (0x0141-0x0142)**
 - Dimensions of tilemap in tiles (e.g., 128×128)
 
-**TILEMAP_ADDR (0x0111-0x0112)**
-- 16-bit pointer to tilemap data
-- Can point to bankable memory or lower 32K
+**TILEMAP_DATA_BANK (0x0143)**
+- Bank number containing tilemap data (2-byte tile entries)
 
-**TILE_ANIM_FRAME (0x0113)**
+**TILEMAP_ADDR (0x0144-0x0145)**
+- 16-bit address (big-endian: high byte, then low byte)
+- Points to tilemap data within TILEMAP_DATA_BANK
+- Typically 0x8000 (start of bankable region)
+
+**TILE_ANIM_FRAME (0x0146)**
 - Global animation frame counter (0-255)
 - Auto-increments each frame or every N frames
 - Used by hardware to select animated tile frames
