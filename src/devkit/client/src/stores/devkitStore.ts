@@ -16,7 +16,19 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+export interface OpenFile {
+  path: string;      // Relative path from project root (e.g., "src/main.asm")
+  content: string;
+  isDirty: boolean;  // Has unsaved changes
+}
+
 interface DevkitState {
+  // Project state
+  currentProjectHandle: FileSystemDirectoryHandle | null;
+  currentProjectName: string | null;
+  openFiles: OpenFile[];
+  activeFilePath: string | null;
+  projectTreeVersion: number; // Increment to force tree refresh
   // Console state
   isConsoleRunning: boolean;
 
@@ -67,10 +79,24 @@ interface DevkitState {
   clearChatHistory: () => void;
   setChatConnected: (connected: boolean) => void;
   setAiThinking: (thinking: boolean) => void;
+
+  // Project actions
+  setProject: (handle: FileSystemDirectoryHandle | null, name: string | null) => void;
+  openFile: (path: string, content: string) => void;
+  closeFile: (path: string) => void;
+  setActiveFile: (path: string | null) => void;
+  updateFileContent: (path: string, content: string) => void;
+  markFileDirty: (path: string, isDirty: boolean) => void;
+  refreshProjectTree: () => void;
 }
 
 export const useDevkitStore = create<DevkitState>((set) => ({
   // Initial state
+  currentProjectHandle: null,
+  currentProjectName: null,
+  openFiles: [],
+  activeFilePath: null,
+  projectTreeVersion: 0,
   isConsoleRunning: false,
   firstRowAddress: 0x0000,
   viewSize: 0x0214,
@@ -185,4 +211,69 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   setChatConnected: (connected: boolean) => set({ isChatConnected: connected }),
 
   setAiThinking: (thinking: boolean) => set({ isAiThinking: thinking }),
+
+  // Project actions
+  setProject: (handle: FileSystemDirectoryHandle | null, name: string | null) => set({
+    currentProjectHandle: handle,
+    currentProjectName: name,
+    openFiles: [],
+    activeFilePath: null,
+    projectTreeVersion: 0,
+  }),
+
+  openFile: (path: string, content: string) => set((state) => {
+    // Check if file is already open
+    const existingFile = state.openFiles.find(f => f.path === path);
+    if (existingFile) {
+      // Just set it as active
+      return { activeFilePath: path };
+    }
+
+    // Add new file
+    return {
+      openFiles: [...state.openFiles, { path, content, isDirty: false }],
+      activeFilePath: path,
+    };
+  }),
+
+  closeFile: (path: string) => set((state) => {
+    const newOpenFiles = state.openFiles.filter(f => f.path !== path);
+    let newActiveFile = state.activeFilePath;
+
+    // If we're closing the active file, switch to another open file
+    if (state.activeFilePath === path) {
+      if (newOpenFiles.length > 0) {
+        // Find the index of the closed file
+        const closedIndex = state.openFiles.findIndex(f => f.path === path);
+        // Try to activate the file to the right, or the one to the left
+        const newIndex = closedIndex < newOpenFiles.length ? closedIndex : closedIndex - 1;
+        newActiveFile = newOpenFiles[newIndex]?.path || null;
+      } else {
+        newActiveFile = null;
+      }
+    }
+
+    return {
+      openFiles: newOpenFiles,
+      activeFilePath: newActiveFile,
+    };
+  }),
+
+  setActiveFile: (path: string | null) => set({ activeFilePath: path }),
+
+  updateFileContent: (path: string, content: string) => set((state) => ({
+    openFiles: state.openFiles.map(f =>
+      f.path === path ? { ...f, content } : f
+    ),
+  })),
+
+  markFileDirty: (path: string, isDirty: boolean) => set((state) => ({
+    openFiles: state.openFiles.map(f =>
+      f.path === path ? { ...f, isDirty } : f
+    ),
+  })),
+
+  refreshProjectTree: () => set((state) => ({
+    projectTreeVersion: state.projectTreeVersion + 1,
+  })),
 }));
