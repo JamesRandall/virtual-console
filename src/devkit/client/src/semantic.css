@@ -1,0 +1,421 @@
+/**
+ * Virtual Console DevKit Semantic CSS Classes
+ *
+ * These classes use Tailwind's @apply directive to create semantic,
+ * reusable class names with the 'dk-' prefix.
+ */
+
+/* ============================================================================
+   BACKGROUND COLORS
+   ========================================================================== */
+
+.dk-bg-primary {
+  @apply bg-zinc-800;
+}
+
+.dk-bg-secondary {
+  @apply bg-zinc-900;
+}
+
+.dk-bg-elevated {
+  @apply bg-zinc-700;
+}
+
+.dk-bg-hover {
+  @apply bg-zinc-600;
+}
+
+/* ============================================================================
+   BORDER COLORS
+   ========================================================================== */
+
+.dk-border-primary {
+  @apply border-zinc-700;
+}
+
+.dk-border-subtle {
+  @apply border-zinc-800;
+}
+
+/* Common border utilities */
+.dk-border-t {
+  @apply border-t border-zinc-700;
+}
+
+.dk-border-b {
+  @apply border-b border-zinc-700;
+}
+
+.dk-border-r {
+  @apply border-r border-zinc-700;
+}
+
+.dk-border-l {
+  @apply border-l border-zinc-700;
+}
+
+.dk-border-all {
+  @apply border border-zinc-700;
+}
+
+/* ============================================================================
+   TEXT COLORS
+   ========================================================================== */
+
+.dk-text-primary {
+  @apply text-zinc-200;
+}
+
+.dk-text-secondary {
+  @apply text-zinc-400;
+}
+
+.dk-text-tertiary {
+  @apply text-zinc-500;
+}
+
+.dk-text-muted {
+  @apply text-zinc-600;
+}
+
+.dk-text-mono-primary {
+  @apply text-zinc-300;
+}
+
+.dk-text-mono-secondary {
+  @apply text-zinc-500;
+}
+
+.dk-text-mono-muted {
+  @apply text-zinc-600;
+}
+
+/* Accent colors */
+.dk-text-success {
+  @apply text-green-400;
+}
+
+.dk-text-danger {
+  @apply text-red-400;
+}
+
+.dk-text-danger-strong {
+  @apply text-red-600;
+}
+
+.dk-text-warning {
+  @apply text-amber-500;
+}
+
+/* ============================================================================
+   TYPOGRAPHY HIERARCHY
+   ========================================================================== */
+
+.dk-page-title {
+  @apply text-xl font-semibold text-zinc-100;
+}
+
+.dk-section-header {
+  @apply text-sm font-semibold text-zinc-200;
+}
+
+.dk-subsection-header {
+  @apply text-sm font-medium text-zinc-200;
+}
+
+.dk-body-text {
+  @apply text-sm text-zinc-200;
+}
+
+.dk-secondary-text {
+  @apply text-xs text-zinc-400;
+}
+
+.dk-tertiary-text {
+  @apply text-xs text-zinc-500;
+}
+
+/* Monospace typography */
+.dk-mono {
+  @apply font-mono text-sm;
+}
+
+.dk-mono-small {
+  @apply font-mono text-xs;
+}
+
+/* ============================================================================
+   SPACING - PADDING
+   ========================================================================== */
+
+.dk-padding-large {
+  @apply p-6;
+}
+
+.dk-padding-standard {
+  @apply p-4;
+}
+
+.dk-padding-compact {
+  @apply px-3 py-2;
+}
+
+.dk-padding-tight {
+  @apply p-2;
+}
+
+.dk-padding-minimal {
+  @apply px-2 py-1;
+}
+
+/* ============================================================================
+   SPACING - GAPS
+   ========================================================================== */
+
+.dk-gap-large {
+  @apply gap-6;
+}
+
+.dk-gap-standard {
+  @apply gap-4;
+}
+
+.dk-gap-compact {
+  @apply gap-3;
+}
+
+.dk-gap-small {
+  @apply gap-2;
+}
+
+.dk-gap-tight {
+  @apply gap-1;
+}
+
+.dk-gap-minimal {
+  @apply gap-1.5;
+}
+
+/* ============================================================================
+   BUTTONS
+   ========================================================================== */
+
+.dk-btn-base {
+  @apply rounded transition-colors;
+}
+
+.dk-btn-primary {
+  @apply flex items-center gap-1.5 px-3 py-1.5 bg-zinc-600 hover:bg-zinc-700 text-white text-sm font-medium rounded transition-colors;
+}
+
+.dk-btn-secondary {
+  @apply px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-sm rounded transition-colors;
+}
+
+.dk-btn-icon {
+  @apply px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-400 hover:text-zinc-200 text-sm rounded transition-colors;
+}
+
+.dk-btn-danger {
+  @apply px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors;
+}
+
+.dk-btn-text {
+  @apply text-zinc-400 hover:text-zinc-200 text-xs transition-colors;
+}
+
+.dk-btn-disabled {
+  @apply disabled:bg-zinc-400 disabled:cursor-not-allowed disabled:text-zinc-600;
+}
+
+/* ============================================================================
+   PANELS
+   ========================================================================== */
+
+.dk-panel {
+  @apply p-4 bg-zinc-800;
+}
+
+.dk-panel-bordered-t {
+  @apply p-4 bg-zinc-800 border-t border-zinc-700;
+}
+
+.dk-panel-bordered-b {
+  @apply p-4 bg-zinc-800 border-b border-zinc-700;
+}
+
+.dk-panel-bordered {
+  @apply p-4 bg-zinc-800 border border-zinc-700;
+}
+
+.dk-panel-compact {
+  @apply px-3 py-2 bg-zinc-800 border-b border-zinc-700;
+}
+
+/* ============================================================================
+   TOOLBARS
+   ========================================================================== */
+
+.dk-toolbar-app {
+  @apply flex items-center justify-between px-4 py-2 bg-zinc-800 border-b border-zinc-700;
+}
+
+.dk-toolbar-section {
+  @apply flex items-center gap-3 px-3 py-2 bg-zinc-800 border-b border-zinc-700;
+}
+
+.dk-toolbar-debug {
+  @apply flex justify-between items-center p-4 bg-zinc-800 border-t border-zinc-700;
+}
+
+/* ============================================================================
+   TABS
+   ========================================================================== */
+
+.dk-tab-container {
+  @apply flex border-b border-zinc-700 bg-zinc-800 overflow-x-auto;
+}
+
+.dk-tab-active {
+  @apply px-3 py-2 text-sm font-medium text-white bg-zinc-700 border-r border-zinc-700;
+}
+
+.dk-tab-inactive {
+  @apply px-3 py-2 text-sm font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 border-r border-zinc-700 transition-colors;
+}
+
+/* ============================================================================
+   FORMS
+   ========================================================================== */
+
+.dk-input {
+  @apply px-3 py-2 bg-zinc-700 border border-zinc-600 rounded text-zinc-200 text-sm focus:outline-none focus:border-zinc-500;
+}
+
+.dk-label {
+  @apply text-sm text-zinc-400;
+}
+
+.dk-input-group {
+  @apply flex items-center gap-2;
+}
+
+/* ============================================================================
+   DIALOGS
+   ========================================================================== */
+
+.dk-dialog-backdrop {
+  @apply fixed inset-0 z-50 flex items-center justify-center bg-black/50;
+}
+
+.dk-dialog-container {
+  @apply bg-zinc-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col;
+}
+
+.dk-dialog-header {
+  @apply flex items-center justify-between p-6 border-b border-zinc-700;
+}
+
+.dk-dialog-content {
+  @apply p-6 overflow-y-auto flex-1;
+}
+
+/* ============================================================================
+   CONTEXT MENUS
+   ========================================================================== */
+
+.dk-menu-container {
+  @apply bg-zinc-700 border border-zinc-600 rounded shadow-lg py-1 z-50;
+}
+
+.dk-menu-item {
+  @apply w-full px-4 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-600 flex items-center gap-2 transition-colors;
+}
+
+.dk-menu-item-danger {
+  @apply w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-zinc-600 flex items-center gap-2 transition-colors;
+}
+
+/* ============================================================================
+   TREE VIEWS
+   ========================================================================== */
+
+.dk-tree-node {
+  @apply flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-zinc-700 transition-colors;
+}
+
+.dk-tree-node-selected {
+  @apply flex items-center gap-2 px-2 py-1 cursor-pointer bg-zinc-600;
+}
+
+/* ============================================================================
+   LAYOUT PATTERNS
+   ========================================================================== */
+
+.dk-layout-full-height {
+  @apply h-full flex flex-col;
+}
+
+.dk-layout-grow {
+  @apply flex-1 min-h-0 overflow-auto;
+}
+
+.dk-layout-header {
+  @apply flex items-center justify-between px-3 py-2 border-b border-zinc-700;
+}
+
+/* ============================================================================
+   INFO DISPLAYS
+   ========================================================================== */
+
+.dk-info-container {
+  @apply flex gap-4;
+}
+
+.dk-info-item {
+  @apply flex gap-1;
+}
+
+.dk-info-label {
+  @apply text-zinc-500;
+}
+
+.dk-info-value {
+  @apply text-zinc-300;
+}
+
+/* ============================================================================
+   ICON WITH TEXT
+   ========================================================================== */
+
+.dk-icon-text {
+  @apply flex items-center gap-1.5;
+}
+
+/* ============================================================================
+   FOCUS STATES
+   ========================================================================== */
+
+.dk-focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 focus:ring-offset-zinc-800;
+}
+
+.dk-focus-border {
+  @apply focus:outline-none focus:border-zinc-500;
+}
+
+/* ============================================================================
+   COMMON UTILITIES
+   ========================================================================== */
+
+.dk-transition {
+  @apply transition-colors;
+}
+
+.dk-rounded {
+  @apply rounded;
+}
+
+.dk-shadow {
+  @apply shadow-xl;
+}

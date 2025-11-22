@@ -11,11 +11,9 @@ Key source and specifications for the virtual console "hardware" can be found in
 
 ## CSS and Styling
 
-* Use Tailwind CSS (already included in the project) to style components.
-* For white and gray shades prefer the zinc set of colors.
-* Danger should be indicated with *-red-600.
-* Where custom CSS and styling is required the component local .css files.
-* Avoid using the style attribute where possible.
+Consult the style guide here:
+
+    ./styleguide.md
 
 ## State
 
