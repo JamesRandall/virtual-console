@@ -22,7 +22,16 @@ export interface OpenFile {
   isDirty: boolean;  // Has unsaved changes
 }
 
+export type AppMode = 'edit' | 'debug';
+
 interface DevkitState {
+  // App mode state
+  appMode: AppMode;
+
+  // Panel visibility state
+  showProjectExplorer: boolean;
+  showChat: boolean;
+
   // Project state
   currentProjectHandle: FileSystemDirectoryHandle | null;
   currentProjectName: string | null;
@@ -80,6 +89,15 @@ interface DevkitState {
   setChatConnected: (connected: boolean) => void;
   setAiThinking: (thinking: boolean) => void;
 
+  // App mode actions
+  setAppMode: (mode: AppMode) => void;
+
+  // Panel visibility actions
+  toggleProjectExplorer: () => void;
+  toggleChat: () => void;
+  setShowProjectExplorer: (show: boolean) => void;
+  setShowChat: (show: boolean) => void;
+
   // Project actions
   setProject: (handle: FileSystemDirectoryHandle | null, name: string | null) => void;
   openFile: (path: string, content: string) => void;
@@ -92,6 +110,9 @@ interface DevkitState {
 
 export const useDevkitStore = create<DevkitState>((set) => ({
   // Initial state
+  appMode: 'edit',
+  showProjectExplorer: true,  // Visible by default in edit mode
+  showChat: true,             // Visible by default
   currentProjectHandle: null,
   currentProjectName: null,
   openFiles: [],
@@ -211,6 +232,19 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   setChatConnected: (connected: boolean) => set({ isChatConnected: connected }),
 
   setAiThinking: (thinking: boolean) => set({ isAiThinking: thinking }),
+
+  // App mode actions
+  setAppMode: (mode: AppMode) => set((state) => ({
+    appMode: mode,
+    // Hide project explorer by default when entering debug mode
+    showProjectExplorer: mode === 'debug' ? false : state.showProjectExplorer,
+  })),
+
+  // Panel visibility actions
+  toggleProjectExplorer: () => set((state) => ({ showProjectExplorer: !state.showProjectExplorer })),
+  toggleChat: () => set((state) => ({ showChat: !state.showChat })),
+  setShowProjectExplorer: (show: boolean) => set({ showProjectExplorer: show }),
+  setShowChat: (show: boolean) => set({ showChat: show }),
 
   // Project actions
   setProject: (handle: FileSystemDirectoryHandle | null, name: string | null) => set({

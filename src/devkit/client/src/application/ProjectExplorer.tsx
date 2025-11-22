@@ -17,6 +17,7 @@ import { NewFileDialog } from '../components/NewFileDialog';
 import { DeleteFileDialog } from '../components/DeleteFileDialog';
 import { readFile, createFile, deleteFile, canDeleteFile } from '../services/fileSystemService';
 import type { ProjectStructure } from '../services/fileSystemService';
+import { saveProjectHandle, getProjectHandle, verifyHandlePermission } from '../services/projectPersistence';
 
 interface FileNode {
   id: string;
@@ -61,16 +62,52 @@ export function ProjectExplorer() {
   // Load project on mount if not already loaded
   useEffect(() => {
     const loadProjectFromStorage = async () => {
-      if (!currentProjectHandle) {
-        // Check if there's a stored project handle
-        // Note: FileSystemHandle cannot be stored in localStorage directly
-        // We'll show the project dialog on first load
+      if (currentProjectHandle) {
+        // Already have a project loaded
+        return;
+      }
+
+      try {
+        // Try to retrieve the saved project handle from IndexedDB
+        const storedProject = await getProjectHandle();
+
+        if (!storedProject) {
+          // No saved project, show dialog
+          setIsProjectDialogOpen(true);
+          return;
+        }
+
+        // Verify we still have permission to access the handle
+        const hasPermission = await verifyHandlePermission(storedProject.handle);
+
+        if (!hasPermission) {
+          console.log('Permission denied for stored project');
+          setIsProjectDialogOpen(true);
+          return;
+        }
+
+        // Verify the handle is still valid by trying to access it
+        try {
+          // Try to read the directory to verify it still exists and is accessible
+          // @ts-ignore - entries() is supported but not in all type definitions
+          const iterator = storedProject.handle.entries();
+          await iterator.next(); // Just check if we can read it
+
+          // Successfully restored project
+          console.log('Restored project from IndexedDB:', storedProject.name);
+          setProject(storedProject.handle, storedProject.name);
+        } catch (error) {
+          console.error('Stored project handle is invalid:', error);
+          setIsProjectDialogOpen(true);
+        }
+      } catch (error) {
+        console.error('Error loading project from storage:', error);
         setIsProjectDialogOpen(true);
       }
     };
 
     loadProjectFromStorage();
-  }, [currentProjectHandle]);
+  }, [currentProjectHandle, setProject]);
 
   // Measure tree container height
   useEffect(() => {
@@ -192,10 +229,16 @@ export function ProjectExplorer() {
 
   // Event handlers
   const handleProjectSelected = useCallback(
-    (project: ProjectStructure) => {
+    async (project: ProjectStructure) => {
       setProject(project.directoryHandle, project.name);
-      // Store project name in localStorage for next session
-      localStorage.setItem('lastProjectName', project.name);
+
+      // Store project handle in IndexedDB for next session
+      try {
+        await saveProjectHandle(project.name, project.directoryHandle);
+        console.log('Project saved to IndexedDB:', project.name);
+      } catch (error) {
+        console.error('Error saving project to IndexedDB:', error);
+      }
     },
     [setProject]
   );

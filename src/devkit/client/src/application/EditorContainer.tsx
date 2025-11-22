@@ -13,7 +13,7 @@ import {
     ASSEMBLER_LANGUAGE_ID,
 } from "./assemblerLanguageSpecification.ts";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {faHammer, faImage, faSave} from "@fortawesome/free-solid-svg-icons";
+import {faImage, faSave} from "@fortawesome/free-solid-svg-icons";
 import {ImageGenerator} from "../components/ImageGenerator";
 import {TabStrip, type Tab} from "../components/TabStrip.tsx";
 import {writeFile} from "../services/fileSystemService.ts";
@@ -46,7 +46,6 @@ export function EditorContainer() {
     const virtualConsole = useVirtualConsole();
 
     // Local state
-    const [assemblyError, setAssemblyError] = useState<string | null>(null);
     const [isImageGeneratorOpen, setIsImageGeneratorOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -194,7 +193,7 @@ export function EditorContainer() {
         const mainAsmFile = openFiles.find(f => f.path === 'src/main.asm');
 
         if (!mainAsmFile) {
-            setAssemblyError("main.asm not found");
+            console.error("main.asm not found");
             return { success: false, error: "main.asm not found" };
         }
 
@@ -206,7 +205,7 @@ export function EditorContainer() {
 
             // Check for errors
             if (result.errors.length > 0) {
-                setAssemblyError("assembly error");
+                console.error("Assembly errors:", result.errors);
                 return {
                     success: false,
                     errors: result.errors.map(err => ({
@@ -244,13 +243,11 @@ export function EditorContainer() {
                 console.error("Error updating snapshots:", error);
             });
 
-            // Clear error on success
-            setAssemblyError(null);
+            console.log("Assembly successful");
             return { success: true, programCounter: result.segments[0]?.startAddress ?? 0 };
         } catch (error) {
             console.error("Unexpected error assembling code:", error);
             const errorMessage = error instanceof Error ? error.message : String(error);
-            setAssemblyError("assembly error");
             return { success: false, error: errorMessage };
         }
     }, [openFiles, setSourceMap, setSymbolTable, updateBreakpointAddresses, setCodeChangedSinceAssembly, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
@@ -542,16 +539,6 @@ export function EditorContainer() {
                 >
                     <FontAwesomeIcon icon={faImage} />
                 </button>
-            )}
-            <button
-                onClick={handleAssemble}
-                className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded"
-                title="Assemble code"
-            >
-                <FontAwesomeIcon icon={faHammer} />
-            </button>
-            {assemblyError && (
-                <span className="text-red-600">{assemblyError}</span>
             )}
         </div>
     </div>
