@@ -47,65 +47,52 @@ function findClosestPaletteIndex(rgb: [number, number, number], palette: number[
     return closestIndex;
 }
 
-// Use median cut algorithm to find the best 16 colors for the image
+// Find the best 16 colors by mapping all image colors to system palette first
 function findBestPalette(imageData: ImageData): number[] {
-    // Extract all unique colors from the image
-    const colorCounts = new Map<string, {rgb: [number, number, number], count: number}>();
+    // Map to count how many times each system palette index is the best match
+    const systemPaletteCounts = new Map<number, number>();
 
+    // For each pixel, find the closest system palette color
     for (let i = 0; i < imageData.data.length; i += 4) {
         const r = imageData.data[i];
         const g = imageData.data[i + 1];
         const b = imageData.data[i + 2];
-        const key = `${r},${g},${b}`;
+        const rgb: [number, number, number] = [r, g, b];
 
-        const existing = colorCounts.get(key);
-        if (existing) {
-            existing.count++;
-        } else {
-            colorCounts.set(key, {rgb: [r, g, b], count: 1});
-        }
-    }
-
-    // Sort colors by frequency
-    const sortedColors = Array.from(colorCounts.values())
-        .sort((a, b) => b.count - a.count);
-
-    // For simplicity, use k-means-like approach: pick the most frequent colors
-    // and find their closest matches in the master palette
-    const selectedPaletteIndices = new Set<number>();
-
-    // Always include black (index 253) as the first color
-    selectedPaletteIndices.add(253);
-
-    // Find the best matching palette indices for the most common colors
-    for (const {rgb} of sortedColors) {
-        if (selectedPaletteIndices.size >= 16) break;
-
-        // Find closest palette index
+        // Find closest system palette color
         let minDistance = Infinity;
         let closestIndex = 0;
 
-        for (let i = 0; i < SYSTEM_PALETTE.length; i++) {
-            if (selectedPaletteIndices.has(i)) continue;
-
-            const distance = colorDistance(rgb, SYSTEM_PALETTE[i]);
+        for (let j = 0; j < SYSTEM_PALETTE.length; j++) {
+            const distance = colorDistance(rgb, SYSTEM_PALETTE[j]);
             if (distance < minDistance) {
                 minDistance = distance;
-                closestIndex = i;
+                closestIndex = j;
             }
         }
 
-        selectedPaletteIndices.add(closestIndex);
+        // Increment count for this system palette index
+        systemPaletteCounts.set(closestIndex, (systemPaletteCounts.get(closestIndex) || 0) + 1);
     }
 
-    // Fill remaining slots with commonly useful colors if needed
+    // Sort system palette indices by frequency
+    const sortedIndices = Array.from(systemPaletteCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(entry => entry[0]);
+
+    // Take the top 16 most frequent system palette colors
+    const selectedIndices = sortedIndices.slice(0, 16);
+
+    // If we have fewer than 16 colors, fill with black and white
     const defaultPalette = [253, 255, 6, 61, 127, 37, 224, 9, 64, 130, 52, 229, 149, 60, 170, 237];
     for (const idx of defaultPalette) {
-        if (selectedPaletteIndices.size >= 16) break;
-        selectedPaletteIndices.add(idx);
+        if (selectedIndices.length >= 16) break;
+        if (!selectedIndices.includes(idx)) {
+            selectedIndices.push(idx);
+        }
     }
 
-    return Array.from(selectedPaletteIndices).slice(0, 16);
+    return selectedIndices.slice(0, 16);
 }
 
 // Process image and return debug data
