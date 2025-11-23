@@ -135,6 +135,11 @@ async function processImage(file: File): Promise<{
                 width = Math.round(TARGET_HEIGHT * aspectRatio);
             }
 
+            // Ensure width is even for 4bpp packing (2 pixels per byte)
+            if (width % 2 === 1) {
+                width++;
+            }
+
             // Create canvas and resize image
             const canvas = document.createElement('canvas');
             canvas.width = width;
