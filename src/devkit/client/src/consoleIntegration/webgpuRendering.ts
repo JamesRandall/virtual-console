@@ -6,6 +6,7 @@
  */
 
 import { pollGamepads } from './gamePad';
+import { generateWGSLPaletteArray } from '../../../../console/src/systemPalette';
 
 // Memory layout constants for Mode 0
 const FRAMEBUFFER_START = 0xB000;
@@ -107,59 +108,11 @@ export async function createWebGPURenderer(
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
 
-  // Shader code with embedded 256-color Tailwind palette
+  // Build shader code dynamically with system palette
+  const paletteArrayCode = generateWGSLPaletteArray();
   const shaderCode = `
-// Tailwind 256-color palette (RGB values 0-255)
-const PALETTE: array<vec3f, 256> = array<vec3f, 256>(
-  // red - row 0
-  vec3f(254, 242, 242), vec3f(255, 226, 226), vec3f(255, 201, 201), vec3f(255, 162, 162), vec3f(255, 100, 103), vec3f(255, 57, 66), vec3f(241, 31, 47), vec3f(208, 6, 33), vec3f(173, 0, 27), vec3f(145, 0, 23), vec3f(83, 0, 16),
-  // orange - row 1
-  vec3f(255, 251, 235), vec3f(255, 244, 214), vec3f(255, 232, 176), vec3f(255, 214, 130), vec3f(255, 184, 72), vec3f(255, 161, 46), vec3f(247, 132, 24), vec3f(207, 99, 5), vec3f(169, 74, 1), vec3f(139, 57, 2), vec3f(85, 33, 2),
-  // amber - row 2
-  vec3f(255, 252, 231), vec3f(255, 247, 195), vec3f(254, 237, 150), vec3f(255, 224, 102), vec3f(255, 208, 65), vec3f(255, 188, 51), vec3f(248, 157, 30), vec3f(209, 120, 10), vec3f(173, 93, 3), vec3f(145, 74, 4), vec3f(90, 45, 1),
-  // yellow - row 3
-  vec3f(255, 254, 234), vec3f(254, 252, 197), vec3f(254, 245, 140), vec3f(255, 235, 87), vec3f(255, 222, 54), vec3f(254, 203, 44), vec3f(248, 166, 26), vec3f(209, 125, 6), vec3f(175, 98, 3), vec3f(147, 79, 5), vec3f(92, 49, 3),
-  // lime - row 4
-  vec3f(253, 255, 233), vec3f(247, 255, 199), vec3f(235, 252, 156), vec3f(217, 248, 105), vec3f(194, 240, 64), vec3f(168, 228, 51), vec3f(138, 202, 31), vec3f(111, 168, 12), vec3f(91, 141, 5), vec3f(77, 122, 4), vec3f(49, 84, 2),
-  // green - row 5
-  vec3f(247, 254, 231), vec3f(235, 251, 210), vec3f(214, 246, 178), vec3f(183, 238, 140), vec3f(141, 224, 95), vec3f(105, 209, 76), vec3f(74, 182, 63), vec3f(53, 153, 53), vec3f(38, 128, 45), vec3f(29, 110, 41), vec3f(15, 75, 28),
-  // emerald - row 6
-  vec3f(236, 253, 245), vec3f(212, 250, 230), vec3f(178, 245, 209), vec3f(137, 237, 183), vec3f(89, 224, 152), vec3f(56, 209, 133), vec3f(38, 184, 118), vec3f(27, 157, 107), vec3f(18, 131, 94), vec3f(13, 111, 83), vec3f(6, 76, 59),
-  // teal - row 7
-  vec3f(241, 254, 253), vec3f(205, 251, 250), vec3f(154, 246, 246), vec3f(102, 239, 245), vec3f(53, 226, 239), vec3f(29, 210, 228), vec3f(20, 183, 206), vec3f(14, 156, 180), vec3f(11, 130, 156), vec3f(9, 112, 138), vec3f(6, 81, 104),
-  // cyan - row 8
-  vec3f(237, 254, 255), vec3f(206, 251, 254), vec3f(164, 247, 254), vec3f(113, 240, 254), vec3f(56, 228, 254), vec3f(30, 214, 248), vec3f(22, 189, 225), vec3f(16, 164, 200), vec3f(13, 140, 176), vec3f(10, 121, 157), vec3f(8, 94, 128),
-  // sky - row 9
-  vec3f(241, 251, 255), vec3f(226, 244, 255), vec3f(188, 232, 255), vec3f(138, 218, 255), vec3f(89, 199, 255), vec3f(60, 182, 254), vec3f(42, 157, 230), vec3f(28, 133, 202), vec3f(19, 113, 177), vec3f(14, 97, 156), vec3f(9, 73, 122),
-  // blue - row 10
-  vec3f(239, 246, 255), vec3f(222, 235, 255), vec3f(192, 219, 255), vec3f(151, 199, 255), vec3f(109, 173, 255), vec3f(81, 151, 255), vec3f(62, 130, 247), vec3f(50, 112, 223), vec3f(40, 92, 191), vec3f(33, 77, 166), vec3f(22, 53, 123),
-  // indigo - row 11
-  vec3f(239, 243, 255), vec3f(225, 231, 255), vec3f(200, 211, 255), vec3f(166, 184, 255), vec3f(128, 152, 255), vec3f(103, 127, 254), vec3f(84, 106, 240), vec3f(72, 90, 216), vec3f(60, 73, 187), vec3f(50, 61, 163), vec3f(32, 38, 118),
-  // violet - row 12
-  vec3f(246, 245, 255), vec3f(238, 235, 254), vec3f(224, 218, 254), vec3f(199, 193, 255), vec3f(170, 159, 255), vec3f(146, 131, 254), vec3f(129, 110, 246), vec3f(115, 94, 228), vec3f(99, 78, 204), vec3f(85, 63, 179), vec3f(61, 41, 139),
-  // purple - row 13
-  vec3f(251, 245, 255), vec3f(245, 234, 255), vec3f(233, 218, 255), vec3f(215, 195, 255), vec3f(188, 164, 254), vec3f(167, 139, 250), vec3f(150, 118, 241), vec3f(133, 98, 224), vec3f(116, 79, 202), vec3f(100, 62, 179), vec3f(72, 40, 142),
-  // fuchsia - row 14
-  vec3f(253, 244, 255), vec3f(250, 232, 255), vec3f(243, 216, 255), vec3f(232, 193, 254), vec3f(217, 162, 254), vec3f(205, 138, 254), vec3f(192, 117, 248), vec3f(175, 96, 231), vec3f(155, 75, 207), vec3f(136, 56, 183), vec3f(105, 36, 146),
-  // pink - row 15
-  vec3f(254, 243, 255), vec3f(252, 232, 254), vec3f(246, 215, 254), vec3f(238, 191, 254), vec3f(227, 160, 254), vec3f(219, 137, 254), vec3f(207, 118, 248), vec3f(190, 97, 230), vec3f(170, 75, 207), vec3f(151, 56, 183), vec3f(115, 35, 142),
-  // rose - row 16
-  vec3f(254, 242, 249), vec3f(252, 231, 243), vec3f(251, 213, 235), vec3f(250, 189, 225), vec3f(246, 156, 211), vec3f(244, 133, 201), vec3f(238, 112, 189), vec3f(224, 88, 171), vec3f(204, 66, 151), vec3f(183, 46, 131), vec3f(142, 24, 100),
-  // pink - row 17
-  vec3f(255, 242, 246), vec3f(255, 228, 236), vec3f(254, 208, 224), vec3f(252, 182, 209), vec3f(249, 147, 189), vec3f(246, 122, 175), vec3f(239, 101, 162), vec3f(222, 78, 143), vec3f(197, 56, 121), vec3f(176, 37, 104), vec3f(134, 19, 77),
-  // slate - row 18
-  vec3f(252, 249, 251), vec3f(247, 243, 248), vec3f(239, 236, 244), vec3f(225, 223, 237), vec3f(186, 186, 214), vec3f(147, 148, 187), vec3f(115, 117, 163), vec3f(93, 96, 146), vec3f(68, 73, 125), vec3f(49, 54, 109), vec3f(30, 33, 82),
-  // gray - row 19
-  vec3f(252, 252, 253), vec3f(248, 249, 251), vec3f(241, 243, 247), vec3f(227, 231, 239), vec3f(187, 193, 209), vec3f(146, 153, 178), vec3f(115, 123, 151), vec3f(93, 102, 133), vec3f(68, 76, 107), vec3f(50, 58, 87), vec3f(30, 36, 65),
-  // zinc - row 20
-  vec3f(252, 252, 253), vec3f(249, 249, 251), vec3f(240, 240, 245), vec3f(228, 228, 235), vec3f(187, 188, 201), vec3f(146, 147, 166), vec3f(113, 114, 137), vec3f(92, 93, 118), vec3f(66, 67, 91), vec3f(49, 50, 70), vec3f(33, 34, 51),
-  // neutral - row 21
-  vec3f(252, 252, 253), vec3f(250, 250, 250), vec3f(241, 241, 241), vec3f(229, 229, 229), vec3f(189, 189, 189), vec3f(148, 148, 148), vec3f(113, 113, 113), vec3f(93, 93, 93), vec3f(66, 66, 66), vec3f(49, 49, 49), vec3f(35, 35, 35),
-  // stone - row 22
-  vec3f(252, 252, 251), vec3f(250, 250, 249), vec3f(241, 241, 239), vec3f(229, 229, 226), vec3f(189, 189, 185), vec3f(148, 148, 143), vec3f(115, 115, 109), vec3f(94, 94, 88), vec3f(66, 66, 61), vec3f(52, 52, 47), vec3f(35, 35, 31),
-  // black/white - row 23
-  vec3f(0, 0, 0), vec3f(0, 0, 0), vec3f(255, 255, 255)
-);
+// Tailwind 256-color palette (RGB values 0-255) - Generated from systemPalette.ts
+${paletteArrayCode}
 
 struct VertexOutput {
   @builtin(position) position: vec4f,

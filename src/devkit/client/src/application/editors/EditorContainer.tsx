@@ -7,8 +7,9 @@ import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {faImage, faSave} from "@fortawesome/free-solid-svg-icons";
 import {ImageGenerator} from "../../components/ImageGenerator.tsx";
 import {TabStrip, type Tab} from "../../components/TabStrip.tsx";
-import {writeFile} from "../../services/fileSystemService.ts";
+import {writeFile, writeBinaryFile} from "../../services/fileSystemService.ts";
 import {AssemblyEditor} from "./assembly/AssemblyEditor.tsx";
+import {PaletteEditor} from "./palette/PaletteEditor.tsx";
 
 export function EditorContainer() {
     // Zustand store hooks
@@ -28,12 +29,14 @@ export function EditorContainer() {
     // Local state
     const [isImageGeneratorOpen, setIsImageGeneratorOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [showPaletteIndexes, setShowPaletteIndexes] = useState(true);
 
     // Get the active file
     const activeFile = openFiles.find(f => f.path === activeFilePath);
 
-    // Check if active file is .asm
+    // Check file types
     const isAsmFile = activeFilePath?.endsWith('.asm') ?? false;
+    const isPbinFile = activeFilePath?.endsWith('.pbin') ?? false;
 
     // Event handlers
     const handleSaveFile = useCallback(async () => {
@@ -44,7 +47,19 @@ export function EditorContainer() {
         setIsSaving(true);
 
         try {
-            await writeFile(currentProjectHandle, activeFilePath, activeFile.content);
+            // For .pbin files, content is stored as a base64-encoded string
+            // For other files, it's plain text
+            if (isPbinFile) {
+                // Decode base64 back to binary
+                const binaryString = atob(activeFile.content);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                await writeBinaryFile(currentProjectHandle, activeFilePath, bytes);
+            } else {
+                await writeFile(currentProjectHandle, activeFilePath, activeFile.content);
+            }
             markFileDirty(activeFilePath, false);
         } catch (error) {
             console.error('Error saving file:', error);
@@ -52,7 +67,7 @@ export function EditorContainer() {
         } finally {
             setIsSaving(false);
         }
-    }, [activeFile, currentProjectHandle, activeFilePath, markFileDirty]);
+    }, [activeFile, currentProjectHandle, activeFilePath, isPbinFile, markFileDirty]);
 
     const handleContentChange = useCallback((content: string) => {
         if (!activeFilePath) {
@@ -156,33 +171,58 @@ export function EditorContainer() {
                     filePath={activeFilePath || ''}
                     onChange={handleContentChange}
                 />
+            ) : isPbinFile ? (
+                <PaletteEditor
+                    filePath={activeFilePath || ''}
+                    content={activeFile?.content || ''}
+                    showIndexes={showPaletteIndexes}
+                    onShowIndexesChange={setShowPaletteIndexes}
+                />
             ) : (
                 <div className="flex flex-col h-full items-center justify-center text-zinc-400">
                     <p>This file type is not editable yet.</p>
-                    <p className="text-sm mt-2">Only .asm files can be edited in the Monaco editor.</p>
+                    <p className="text-sm mt-2">Only .asm and .pbin files can be edited.</p>
                 </div>
             )}
         </div>
 
         {/* Toolbar */}
-        <div className="flex justify-end dk-gap-compact px-3 py-1.5 dk-border-t items-center dk-text-primary flex-shrink-0">
-            <button
-                onClick={handleSaveFile}
-                disabled={!activeFile?.isDirty || isSaving}
-                className="dk-btn-icon dk-btn-disabled border border-transparent"
-                title="Save file"
-            >
-                <FontAwesomeIcon icon={faSave} />
-            </button>
-            {isAsmFile && (
+        <div className="flex justify-between dk-gap-compact px-3 py-1.5 dk-border-t items-center dk-text-primary flex-shrink-0">
+            {/* Left side - palette options */}
+            <div className="flex items-center dk-gap-compact">
+                {isPbinFile && (
+                    <label className="flex items-center dk-gap-compact cursor-pointer dk-text-secondary">
+                        <input
+                            type="checkbox"
+                            checked={showPaletteIndexes}
+                            onChange={(e) => setShowPaletteIndexes(e.target.checked)}
+                            className="cursor-pointer"
+                        />
+                        <span className="text-sm">Show palette indexes</span>
+                    </label>
+                )}
+            </div>
+
+            {/* Right side - action buttons */}
+            <div className="flex dk-gap-compact">
                 <button
-                    onClick={() => setIsImageGeneratorOpen(true)}
-                    className="dk-btn-icon border border-transparent"
-                    title="Convert image to assembly"
+                    onClick={handleSaveFile}
+                    disabled={!activeFile?.isDirty || isSaving}
+                    className="dk-btn-icon dk-btn-disabled border border-transparent"
+                    title="Save file"
                 >
-                    <FontAwesomeIcon icon={faImage} />
+                    <FontAwesomeIcon icon={faSave} />
                 </button>
-            )}
+                {isAsmFile && (
+                    <button
+                        onClick={() => setIsImageGeneratorOpen(true)}
+                        className="dk-btn-icon border border-transparent"
+                        title="Convert image to assembly"
+                    >
+                        <FontAwesomeIcon icon={faImage} />
+                    </button>
+                )}
+            </div>
         </div>
     </div>
 }

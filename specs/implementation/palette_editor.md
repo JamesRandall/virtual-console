@@ -54,5 +54,6 @@ The editor should have the following features:
 * Make use of a vertical split pane - the top half representing the pbin being edited and the bottom half showing the system palette (making use of our source of truth)
 * We should show all "palette blocks" being edited (64 blocks of 16 colours for 4bpp modes, 4 blocks of 256 colours for 8bpp modes - read the mode from config.json) with a demarkation between them so it is clear they are different palette blocks
 * We should use drag and drop to allow the user to drag a colour from the system palette into the palette block, setting the index in the block
+* We should be able to drag and drop between our palette blocks
 * We need a save feature that saves the block back to our .pbin file
 

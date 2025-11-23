@@ -8,14 +8,16 @@ import {
   faFileCode,
   faImage,
   faMap,
+  faPalette,
   faPlus,
   faTrash,
 } from '@fortawesome/free-solid-svg-icons';
 import { useDevkitStore } from '../../stores/devkitStore.ts';
+import type { ProjectConfig } from '../../stores/devkitStore.ts';
 import { ProjectDialog } from '../ProjectDialog.tsx';
 import { NewFileDialog } from './NewFileDialog.tsx';
 import { DeleteFileDialog } from './DeleteFileDialog.tsx';
-import { readFile, createFile, deleteFile, canDeleteFile } from '../../services/fileSystemService.ts';
+import { readFile, readBinaryFile, createFile, deleteFile, canDeleteFile } from '../../services/fileSystemService.ts';
 import type { ProjectStructure } from '../../services/fileSystemService.ts';
 import { saveProjectHandle, getProjectHandle, verifyHandlePermission } from '../../services/projectPersistence.ts';
 
@@ -38,6 +40,7 @@ export function ProjectExplorer() {
   const currentProjectName = useDevkitStore((state) => state.currentProjectName);
   const projectTreeVersion = useDevkitStore((state) => state.projectTreeVersion);
   const setProject = useDevkitStore((state) => state.setProject);
+  const setProjectConfig = useDevkitStore((state) => state.setProjectConfig);
   const openFile = useDevkitStore((state) => state.openFile);
   const refreshProjectTree = useDevkitStore((state) => state.refreshProjectTree);
 
@@ -96,6 +99,18 @@ export function ProjectExplorer() {
           // Successfully restored project
           console.log('Restored project from IndexedDB:', storedProject.name);
           setProject(storedProject.handle, storedProject.name);
+
+          // Load config.json
+          try {
+            const configContent = await readFile(storedProject.handle, 'config.json');
+            const config: ProjectConfig = JSON.parse(configContent);
+            setProjectConfig(config);
+            console.log('Loaded project config:', config);
+          } catch (error) {
+            console.error('Error loading config.json:', error);
+            // Config is required, so show error
+            alert('Failed to load config.json. This file is required for the project.');
+          }
         } catch (error) {
           console.error('Stored project handle is invalid:', error);
           setIsProjectDialogOpen(true);
@@ -107,7 +122,7 @@ export function ProjectExplorer() {
     };
 
     loadProjectFromStorage();
-  }, [currentProjectHandle, setProject]);
+  }, [currentProjectHandle, setProject, setProjectConfig]);
 
   // Measure tree container height
   useEffect(() => {
@@ -220,6 +235,8 @@ export function ProjectExplorer() {
         return faImage;
       case 'mbin':
         return faMap;
+      case 'pbin':
+        return faPalette;
       case 'json':
         return faFile;
       default:
@@ -232,6 +249,19 @@ export function ProjectExplorer() {
     async (project: ProjectStructure) => {
       setProject(project.directoryHandle, project.name);
 
+      // Load config.json (required)
+      try {
+        const configContent = await readFile(project.directoryHandle, 'config.json');
+        const config: ProjectConfig = JSON.parse(configContent);
+        setProjectConfig(config);
+        console.log('Loaded project config:', config);
+      } catch (error) {
+        console.error('Error loading config.json:', error);
+        // Config is required, so show error
+        alert('Failed to load config.json. This file is required for the project.');
+        return;
+      }
+
       // Store project handle in IndexedDB for next session
       try {
         await saveProjectHandle(project.name, project.directoryHandle);
@@ -240,7 +270,7 @@ export function ProjectExplorer() {
         console.error('Error saving project to IndexedDB:', error);
       }
     },
-    [setProject]
+    [setProject, setProjectConfig]
   );
 
   const handleNodeDoubleClick = useCallback(
@@ -250,8 +280,21 @@ export function ProjectExplorer() {
       }
 
       try {
-        const content = await readFile(currentProjectHandle, node.id);
-        openFile(node.id, content);
+        // Handle binary files (.pbin) differently
+        if (node.id.endsWith('.pbin')) {
+          const binaryData = await readBinaryFile(currentProjectHandle, node.id);
+          // Convert binary to base64 for storage in openFiles
+          let binary = '';
+          const len = binaryData.byteLength;
+          for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(binaryData[i]);
+          }
+          const base64 = btoa(binary);
+          openFile(node.id, base64);
+        } else {
+          const content = await readFile(currentProjectHandle, node.id);
+          openFile(node.id, content);
+        }
       } catch (error) {
         console.error('Error reading file:', error);
         alert('Failed to open file: ' + (error instanceof Error ? error.message : 'Unknown error'));

@@ -32,6 +32,8 @@ infiniteloop:
 
 const DEFAULT_CARTRIDGE_JSON = '{}';
 
+const DEFAULT_CONFIG_JSON = JSON.stringify({ mode: 0 }, null, 2);
+
 /**
  * Create the standard project folder structure
  */
@@ -41,6 +43,7 @@ async function createProjectStructure(directoryHandle: FileSystemDirectoryHandle
   await directoryHandle.getDirectoryHandle('sprites', { create: true });
   await directoryHandle.getDirectoryHandle('tiles', { create: true });
   await directoryHandle.getDirectoryHandle('maps', { create: true });
+  await directoryHandle.getDirectoryHandle('palettes', { create: true });
 
   // Create main.asm in src folder
   const srcHandle = await directoryHandle.getDirectoryHandle('src', { create: false });
@@ -54,6 +57,20 @@ async function createProjectStructure(directoryHandle: FileSystemDirectoryHandle
   const cartridgeWritable = await cartridgeHandle.createWritable();
   await cartridgeWritable.write(DEFAULT_CARTRIDGE_JSON);
   await cartridgeWritable.close();
+
+  // Create config.json
+  const configHandle = await directoryHandle.getFileHandle('config.json', { create: true });
+  const configWritable = await configHandle.createWritable();
+  await configWritable.write(DEFAULT_CONFIG_JSON);
+  await configWritable.close();
+
+  // Create default.pbin in palettes folder (1024 bytes of zeros)
+  const palettesHandle = await directoryHandle.getDirectoryHandle('palettes', { create: false });
+  const defaultPbinHandle = await palettesHandle.getFileHandle('default.pbin', { create: true });
+  const defaultPbinWritable = await defaultPbinHandle.createWritable();
+  const zeroBuffer = new Uint8Array(1024); // 1024 bytes of zeros
+  await defaultPbinWritable.write(zeroBuffer);
+  await defaultPbinWritable.close();
 }
 
 /**
@@ -71,8 +88,11 @@ async function validateProjectStructure(directoryHandle: FileSystemDirectoryHand
     // Check for cartridge.json
     await directoryHandle.getFileHandle('cartridge.json', { create: false });
 
+    // Check for config.json
+    await directoryHandle.getFileHandle('config.json', { create: false });
+
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -189,6 +209,54 @@ export async function writeFile(
   const fileHandle = await currentHandle.getFileHandle(fileName, { create: true });
   const writable = await fileHandle.createWritable();
   await writable.write(content);
+  await writable.close();
+}
+
+/**
+ * Read a binary file from the project
+ */
+export async function readBinaryFile(
+  directoryHandle: FileSystemDirectoryHandle,
+  path: string
+): Promise<Uint8Array> {
+  const pathParts = path.split('/');
+  let currentHandle: FileSystemDirectoryHandle = directoryHandle;
+
+  // Navigate through directories
+  for (let i = 0; i < pathParts.length - 1; i++) {
+    currentHandle = await currentHandle.getDirectoryHandle(pathParts[i], { create: false });
+  }
+
+  // Get the file
+  const fileName = pathParts[pathParts.length - 1];
+  const fileHandle = await currentHandle.getFileHandle(fileName, { create: false });
+  const file = await fileHandle.getFile();
+  const arrayBuffer = await file.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
+/**
+ * Write binary content to a file
+ */
+export async function writeBinaryFile(
+  directoryHandle: FileSystemDirectoryHandle,
+  path: string,
+  content: Uint8Array
+): Promise<void> {
+  const pathParts = path.split('/');
+  let currentHandle: FileSystemDirectoryHandle = directoryHandle;
+
+  // Navigate through directories
+  for (let i = 0; i < pathParts.length - 1; i++) {
+    currentHandle = await currentHandle.getDirectoryHandle(pathParts[i], { create: false });
+  }
+
+  // Get or create the file
+  const fileName = pathParts[pathParts.length - 1];
+  const fileHandle = await currentHandle.getFileHandle(fileName, { create: true });
+  const writable = await fileHandle.createWritable();
+  // Cast to ArrayBuffer to satisfy TypeScript
+  await writable.write(content.buffer as ArrayBuffer);
   await writable.close();
 }
 

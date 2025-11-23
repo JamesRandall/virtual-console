@@ -24,6 +24,10 @@ export interface OpenFile {
 
 export type AppMode = 'edit' | 'debug';
 
+export interface ProjectConfig {
+  mode: number; // 0-3 for video modes
+}
+
 interface DevkitState {
   // App mode state
   appMode: AppMode;
@@ -35,6 +39,7 @@ interface DevkitState {
   // Project state
   currentProjectHandle: FileSystemDirectoryHandle | null;
   currentProjectName: string | null;
+  projectConfig: ProjectConfig | null;
   openFiles: OpenFile[];
   activeFilePath: string | null;
   projectTreeVersion: number; // Increment to force tree refresh
@@ -100,6 +105,7 @@ interface DevkitState {
 
   // Project actions
   setProject: (handle: FileSystemDirectoryHandle | null, name: string | null) => void;
+  setProjectConfig: (config: ProjectConfig | null) => void;
   openFile: (path: string, content: string) => void;
   closeFile: (path: string) => void;
   setActiveFile: (path: string | null) => void;
@@ -115,6 +121,7 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   showChat: true,             // Visible by default
   currentProjectHandle: null,
   currentProjectName: null,
+  projectConfig: null,
   openFiles: [],
   activeFilePath: null,
   projectTreeVersion: 0,
@@ -250,10 +257,13 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   setProject: (handle: FileSystemDirectoryHandle | null, name: string | null) => set({
     currentProjectHandle: handle,
     currentProjectName: name,
+    projectConfig: null,
     openFiles: [],
     activeFilePath: null,
     projectTreeVersion: 0,
   }),
+
+  setProjectConfig: (config: ProjectConfig | null) => set({ projectConfig: config }),
 
   openFile: (path: string, content: string) => set((state) => {
     // Check if file is already open
