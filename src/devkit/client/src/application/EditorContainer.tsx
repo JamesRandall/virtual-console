@@ -522,11 +522,11 @@ export function EditorContainer() {
         </div>
 
         {/* Toolbar */}
-        <div className="flex justify-end gap-4 p-4 border-t border-zinc-300 items-center text-zinc-200 flex-shrink-0">
+        <div className="flex justify-end dk-gap-compact px-3 py-1.5 dk-border-t items-center dk-text-primary flex-shrink-0">
             <button
                 onClick={handleSaveFile}
                 disabled={!activeFile?.isDirty || isSaving}
-                className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                className="dk-btn-icon dk-btn-disabled border border-transparent"
                 title="Save file"
             >
                 <FontAwesomeIcon icon={faSave} />
@@ -534,7 +534,7 @@ export function EditorContainer() {
             {isAsmFile && (
                 <button
                     onClick={() => setIsImageGeneratorOpen(true)}
-                    className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded"
+                    className="dk-btn-icon border border-transparent"
                     title="Convert image to assembly"
                 >
                     <FontAwesomeIcon icon={faImage} />

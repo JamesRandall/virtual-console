@@ -34,19 +34,19 @@ export function Dialog({isOpen, onClose, title, children}: DialogProps) {
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+            className="dk-dialog-backdrop"
             onClick={handleBackdropClick}
         >
             <div
                 ref={dialogRef}
-                className="bg-zinc-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col"
+                className="dk-dialog-container"
             >
                 {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b border-zinc-700">
-                    <h2 className="text-xl font-semibold text-zinc-100">{title}</h2>
+                <div className="dk-dialog-header">
+                    <h2 className="dk-page-title">{title}</h2>
                     <button
                         onClick={onClose}
-                        className="text-zinc-400 hover:text-zinc-200 transition-colors"
+                        className="dk-text-secondary hover:dk-text-primary dk-transition"
                         aria-label="Close dialog"
                     >
                         <svg
@@ -66,7 +66,7 @@ export function Dialog({isOpen, onClose, title, children}: DialogProps) {
                 </div>
 
                 {/* Content */}
-                <div className="p-6 overflow-y-auto flex-1">
+                <div className="dk-dialog-content">
                     {children}
                 </div>
             </div>

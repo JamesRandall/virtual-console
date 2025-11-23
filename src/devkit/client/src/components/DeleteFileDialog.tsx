@@ -38,9 +38,9 @@ export function DeleteFileDialog({ isOpen, onClose, filePath, onDeleteFile }: De
   // Render
   return (
     <Dialog isOpen={isOpen} onClose={handleClose} title="Delete File">
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col dk-gap-standard">
         {/* Warning message */}
-        <div className="bg-amber-600 text-white px-4 py-3 rounded flex items-start gap-3">
+        <div className="bg-amber-600 text-white dk-padding-standard dk-rounded flex items-start dk-gap-compact">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             className="h-6 w-6 flex-shrink-0"
@@ -57,35 +57,35 @@ export function DeleteFileDialog({ isOpen, onClose, filePath, onDeleteFile }: De
           </svg>
           <div className="flex-1">
             <p className="font-medium">Are you sure you want to delete this file?</p>
-            <p className="text-sm mt-1">This action cannot be undone.</p>
+            <p className="dk-body-text mt-1">This action cannot be undone.</p>
           </div>
         </div>
 
         {/* File path */}
-        <p className="text-zinc-300 text-sm">
-          File: <code className="bg-zinc-700 px-2 py-1 rounded">{filePath}</code>
+        <p className="dk-body-text">
+          File: <code className="dk-bg-elevated dk-padding-tight dk-rounded">{filePath}</code>
         </p>
 
         {/* Error message */}
         {error && (
-          <div className="bg-red-600 text-white px-4 py-2 rounded text-sm">
+          <div className="bg-red-600 text-white dk-padding-standard dk-rounded dk-body-text">
             {error}
           </div>
         )}
 
         {/* Actions */}
-        <div className="flex gap-2 justify-end">
+        <div className="flex dk-gap-small justify-end">
           <button
             onClick={handleClose}
             disabled={isDeleting}
-            className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded disabled:opacity-50"
+            className="dk-btn-secondary dk-btn-disabled"
           >
             Cancel
           </button>
           <button
             onClick={handleDelete}
             disabled={isDeleting}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            className="dk-btn-danger dk-btn-disabled"
           >
             {isDeleting ? 'Deleting...' : 'Delete'}
           </button>

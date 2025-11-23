@@ -55,17 +55,17 @@ export function AiChatPanel() {
   }, [isChatConnected]);
 
   return (
-    <div className="flex flex-col h-full bg-zinc-900 text-zinc-100">
+    <div className="dk-layout-full-height dk-bg-secondary dk-text-primary">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700 bg-zinc-800 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">AI Assistant</h2>
-          <div className="flex items-center gap-1">
+      <div className="dk-layout-header dk-bg-primary flex-shrink-0">
+        <div className="flex items-center dk-gap-small">
+          <h2 className="dk-subsection-header">AI Assistant</h2>
+          <div className="flex items-center dk-gap-tight">
             <FontAwesomeIcon
               icon={faCircle}
               className={`text-xs ${isChatConnected ? 'text-green-500' : 'text-red-500'}`}
             />
-            <span className="text-xs text-zinc-400">
+            <span className="dk-secondary-text">
               {isChatConnected ? 'Connected' : 'Disconnected'}
             </span>
           </div>
@@ -73,10 +73,10 @@ export function AiChatPanel() {
         <button
           onClick={handleNewChat}
           disabled={!isChatConnected}
-          className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 disabled:text-zinc-600 rounded text-sm flex items-center gap-2"
+          className="dk-icon-text dk-body-text disabled:dk-text-muted"
           title="Start new chat"
         >
-          <FontAwesomeIcon icon={faPlus} />
+          <FontAwesomeIcon icon={faPlus} className="text-xs" />
           New Chat
         </button>
       </div>
@@ -139,7 +139,7 @@ export function AiChatPanel() {
       </div>
 
       {/* Input */}
-      <div className="flex items-center gap-2 p-4 border-t border-zinc-700 bg-zinc-800 flex-shrink-0">
+      <div className="flex items-center dk-gap-compact px-3 py-1.5 dk-border-t dk-bg-primary flex-shrink-0">
         <input
           type="text"
           value={inputValue}
@@ -147,12 +147,12 @@ export function AiChatPanel() {
           onKeyPress={handleKeyPress}
           disabled={!isChatConnected || isAiThinking}
           placeholder={isChatConnected ? "Ask me anything..." : "Connecting..."}
-          className="flex-1 px-3 py-2 bg-zinc-700 text-zinc-100 rounded border border-zinc-600 focus:outline-none focus:border-purple-500 disabled:bg-zinc-800 disabled:text-zinc-600"
+          className="flex-1 px-3 py-1 bg-zinc-700 border border-zinc-600 rounded text-zinc-200 text-sm focus:outline-none focus:border-purple-500 disabled:dk-bg-secondary disabled:dk-text-muted"
         />
         <button
           onClick={handleSendMessage}
           disabled={!isChatConnected || !inputValue.trim() || isAiThinking}
-          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-600 text-white rounded flex items-center gap-2"
+          className="dk-btn-icon bg-purple-600 hover:bg-purple-700 disabled:dk-bg-elevated disabled:dk-text-muted text-white border border-transparent"
         >
           <FontAwesomeIcon icon={faPaperPlane} />
         </button>

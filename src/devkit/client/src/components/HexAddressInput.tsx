@@ -81,14 +81,14 @@ export function HexAddressInput({
 
     // Render
     return (
-        <label className="flex items-center gap-2">
-            <span>{label}</span>
+        <label className="dk-input-group">
+            <span className="dk-label">{label}</span>
             <input
                 type="text"
                 value={inputValue}
                 onChange={handleChange}
                 onBlur={handleBlur}
-                className={`font-mono ${width} px-2 py-1 border border-zinc-300 rounded`}
+                className={`dk-mono ${width} dk-padding-minimal border dk-border-primary dk-rounded dk-text-primary`}
             />
         </label>
     );

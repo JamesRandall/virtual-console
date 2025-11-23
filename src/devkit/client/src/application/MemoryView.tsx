@@ -2,7 +2,6 @@ import {useCallback, useMemo, useRef, useEffect} from "react";
 
 import {useDevkitStore} from "../stores/devkitStore.ts";
 
-import {Panel} from "../components/Panel.tsx";
 import {HexAddressInput} from "../components/HexAddressInput.tsx";
 
 const BYTES_PER_ROW = 8;
@@ -108,7 +107,7 @@ export function MemoryView() {
 
     // Render
     return <div className="flex flex-col min-h-0 overflow-hidden">
-        <Panel padding="p-2" border="bottom" className="flex gap-4 items-center">
+        <div className="dk-padding-tight dk-border-b flex dk-gap-standard items-center">
             <HexAddressInput
                 label="Start Address:"
                 value={firstRowAddress}
@@ -122,16 +121,16 @@ export function MemoryView() {
                 alignment={BYTES_PER_ROW}
                 minValue={1}
             />
-        </Panel>
-        <Panel className="font-mono flex-1 overflow-y-auto text-gray-500" innerRef={scrollContainerRef}>
+        </div>
+        <div className="dk-mono flex-1 overflow-y-auto dk-text-mono-secondary dk-padding-standard" ref={scrollContainerRef}>
             {rows.map((row, idx) => (
                 <div key={idx} className="flex gap-8 mb-1">
                     <span>{row.address}</span>
-                    <span className="text-gray-300 flex gap-1">
+                    <span className="dk-text-mono-primary flex dk-gap-tight">
                         {row.bytes.map((byte, byteIdx) => (
                             <span
                                 key={byteIdx}
-                                className={byte.isPC ? 'text-red-600' : ''}
+                                className={byte.isPC ? 'dk-text-danger-strong' : ''}
                             >
                                 {byte.hex}
                             </span>
@@ -141,7 +140,7 @@ export function MemoryView() {
                         {row.ascii.map((char, charIdx) => (
                             <span
                                 key={charIdx}
-                                className={char.isPrintable ? '' : 'text-gray-600'}
+                                className={char.isPrintable ? '' : 'dk-text-mono-muted'}
                             >
                                 {char.char}
                             </span>
@@ -149,6 +148,6 @@ export function MemoryView() {
                     </span>
                 </div>
             ))}
-        </Panel>
+        </div>
     </div>
 }

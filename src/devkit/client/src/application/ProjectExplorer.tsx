@@ -335,17 +335,15 @@ export function ProjectExplorer() {
       <div
         ref={dragHandle}
         style={style}
-        className={`flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-zinc-700 ${
-          node.isSelected ? 'bg-zinc-600' : ''
-        }`}
+        className={node.isSelected ? 'dk-tree-node-selected' : 'dk-tree-node'}
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
       >
         <FontAwesomeIcon
           icon={getIcon(node.data, node.isOpen)}
-          className="w-4 h-4 text-zinc-400"
+          className="w-4 h-4 dk-text-secondary"
         />
-        <span className="text-zinc-200 text-sm">{node.data.name}</span>
+        <span className="dk-body-text">{node.data.name}</span>
       </div>
     );
   };
@@ -353,11 +351,11 @@ export function ProjectExplorer() {
   // Render
   if (!currentProjectHandle) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-zinc-800 text-zinc-400 p-4">
+      <div className="dk-layout-full-height items-center justify-center dk-bg-primary dk-text-secondary dk-padding-standard">
         <p className="mb-4">No project loaded</p>
         <button
           onClick={() => setIsProjectDialogOpen(true)}
-          className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded"
+          className="dk-btn-primary"
         >
           Open or Create Project
         </button>
@@ -371,13 +369,13 @@ export function ProjectExplorer() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-zinc-800">
+    <div className="dk-layout-full-height dk-bg-primary">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-700">
-        <h2 className="text-zinc-200 text-sm font-medium">{currentProjectName}</h2>
+      <div className="dk-layout-header">
+        <h2 className="dk-subsection-header">{currentProjectName}</h2>
         <button
           onClick={() => setIsProjectDialogOpen(true)}
-          className="text-zinc-400 hover:text-zinc-200 text-xs"
+          className="dk-btn-text"
           title="Change project"
         >
           Change
@@ -405,13 +403,13 @@ export function ProjectExplorer() {
       {contextMenu && contextMenu.node && (
         <div
           ref={contextMenuRef}
-          className="fixed bg-zinc-700 border border-zinc-600 rounded shadow-lg py-1 z-50"
+          className="fixed dk-menu-container"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           {contextMenu.node.isDirectory && (
             <button
               onClick={handleCreateFile}
-              className="w-full px-4 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-600 flex items-center gap-2"
+              className="dk-menu-item"
             >
               <FontAwesomeIcon icon={faPlus} className="w-3 h-3" />
               New File
@@ -420,7 +418,7 @@ export function ProjectExplorer() {
           {!contextMenu.node.isDirectory && canDeleteFile(contextMenu.node.id) && (
             <button
               onClick={handleDeleteFile}
-              className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-zinc-600 flex items-center gap-2"
+              className="dk-menu-item-danger"
             >
               <FontAwesomeIcon icon={faTrash} className="w-3 h-3" />
               Delete

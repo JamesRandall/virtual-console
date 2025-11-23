@@ -67,27 +67,19 @@ export function ProjectDialog({ isOpen, onClose, onProjectSelected }: ProjectDia
   // Render
   return (
     <Dialog isOpen={isOpen} onClose={onClose} title="Open or Create Project">
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col dk-gap-standard">
         {/* Mode selection */}
-        <div className="flex gap-2 border-b border-zinc-700 pb-2">
+        <div className="flex dk-gap-small dk-border-b pb-2">
           <button
             onClick={() => handleModeChange('select')}
-            className={`px-4 py-2 rounded ${
-              mode === 'select'
-                ? 'bg-zinc-600 text-white'
-                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-            }`}
+            className={mode === 'select' ? 'dk-btn-primary' : 'dk-btn-secondary'}
             disabled={isLoading}
           >
             Open Existing
           </button>
           <button
             onClick={() => handleModeChange('create')}
-            className={`px-4 py-2 rounded ${
-              mode === 'create'
-                ? 'bg-zinc-600 text-white'
-                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-            }`}
+            className={mode === 'create' ? 'dk-btn-primary' : 'dk-btn-secondary'}
             disabled={isLoading}
           >
             Create New
@@ -96,33 +88,33 @@ export function ProjectDialog({ isOpen, onClose, onProjectSelected }: ProjectDia
 
         {/* Error message */}
         {error && (
-          <div className="bg-red-600 text-white px-4 py-2 rounded">
+          <div className="bg-red-600 text-white dk-padding-standard dk-rounded">
             {error}
           </div>
         )}
 
         {/* Mode-specific content */}
         {mode === 'select' ? (
-          <div className="flex flex-col gap-4">
-            <p className="text-zinc-300 text-sm">
-              Select an existing project folder. It should contain a <code className="bg-zinc-700 px-1 rounded">src</code> folder
-              with a <code className="bg-zinc-700 px-1 rounded">main.asm</code> file.
+          <div className="flex flex-col dk-gap-standard">
+            <p className="dk-body-text">
+              Select an existing project folder. It should contain a <code className="dk-bg-elevated px-1 dk-rounded">src</code> folder
+              with a <code className="dk-bg-elevated px-1 dk-rounded">main.asm</code> file.
             </p>
             <button
               onClick={handleOpenExisting}
               disabled={isLoading}
-              className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              className="dk-btn-primary dk-btn-disabled"
             >
               {isLoading ? 'Opening...' : 'Browse for Project Folder'}
             </button>
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
-            <p className="text-zinc-300 text-sm">
+          <div className="flex flex-col dk-gap-standard">
+            <p className="dk-body-text">
               Create a new project with the standard folder structure.
             </p>
-            <div className="flex flex-col gap-2">
-              <label htmlFor="projectName" className="text-zinc-300 text-sm font-medium">
+            <div className="flex flex-col dk-gap-small">
+              <label htmlFor="projectName" className="dk-subsection-header">
                 Project Name
               </label>
               <input
@@ -136,14 +128,14 @@ export function ProjectDialog({ isOpen, onClose, onProjectSelected }: ProjectDia
                   }
                 }}
                 placeholder="my-awesome-project"
-                className="px-3 py-2 bg-zinc-700 text-white rounded border border-zinc-600 focus:outline-none focus:border-zinc-500"
+                className="dk-input"
                 disabled={isLoading}
               />
             </div>
             <button
               onClick={handleCreateNew}
               disabled={isLoading || !projectName.trim()}
-              className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              className="dk-btn-primary dk-btn-disabled"
             >
               {isLoading ? 'Creating...' : 'Create Project'}
             </button>

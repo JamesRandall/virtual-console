@@ -15,24 +15,24 @@ interface PanelProps {
 
 /**
  * Panel component providing standard padding and borders for consistent UI layout.
- * Uses zinc colors for borders and neutral text colors.
+ * Uses semantic dk-* classes for consistency.
  */
 export function Panel({
     children,
     className = '',
     border = 'none',
-    padding = 'p-4',
+    padding = 'dk-padding-standard',
     innerRef
 }: PanelProps) {
     const borderClasses = {
-        top: 'border-t border-zinc-300',
-        bottom: 'border-b border-zinc-300',
-        all: 'border border-zinc-300',
+        top: 'dk-border-t',
+        bottom: 'dk-border-b',
+        all: 'dk-border-all',
         none: ''
     };
 
     return (
-        <div ref={innerRef} className={`${padding} ${borderClasses[border]} text-zinc-200 ${className}`.trim()}>
+        <div ref={innerRef} className={`${padding} ${borderClasses[border]} dk-text-primary ${className}`.trim()}>
             {children}
         </div>
     );

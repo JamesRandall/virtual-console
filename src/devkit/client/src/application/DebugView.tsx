@@ -38,7 +38,7 @@ export function DebugView() {
 
     // Render
     return (
-        <div className="h-full w-full bg-zinc-800 flex flex-col">
+        <div className="dk-layout-full-height w-full dk-bg-primary">
             {/* Tabs */}
             <TabStrip
                 tabs={TABS}

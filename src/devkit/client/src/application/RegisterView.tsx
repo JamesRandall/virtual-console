@@ -2,8 +2,6 @@ import {useMemo} from "react";
 
 import {useDevkitStore} from "../stores/devkitStore.ts";
 
-import {Panel} from "../components/Panel.tsx";
-
 /**
  * Format a number as an 8-bit hex value
  */
@@ -43,59 +41,59 @@ export function RegisterView() {
     const flags = useMemo(() => extractFlags(cpuSnapshot.statusRegister), [cpuSnapshot.statusRegister]);
 
     // Render
-    return <Panel border="top">
-        <div className="font-mono text-sm">
+    return <div className="dk-panel-bordered-t">
+        <div className="dk-mono">
             {/* Registers Row */}
-            <div className="flex gap-6 mb-3">
-                <div className="flex gap-4">
+            <div className="dk-info-container mb-3">
+                <div className="flex dk-gap-standard">
                     {[0, 1, 2].map((i) => (
-                        <div key={i} className="flex gap-1">
-                            <span className="text-gray-500">R{i}:</span>
-                            <span className="text-gray-300">{toHex8(cpuSnapshot.registers[i])}</span>
+                        <div key={i} className="dk-info-item">
+                            <span className="dk-info-label">R{i}:</span>
+                            <span className="dk-info-value">{toHex8(cpuSnapshot.registers[i])}</span>
                         </div>
                     ))}
                 </div>
-                <div className="flex gap-4">
+                <div className="flex dk-gap-standard">
                     {[3, 4, 5].map((i) => (
-                        <div key={i} className="flex gap-1">
-                            <span className="text-gray-500">R{i}:</span>
-                            <span className="text-gray-300">{toHex8(cpuSnapshot.registers[i])}</span>
+                        <div key={i} className="dk-info-item">
+                            <span className="dk-info-label">R{i}:</span>
+                            <span className="dk-info-value">{toHex8(cpuSnapshot.registers[i])}</span>
                         </div>
                     ))}
                 </div>
             </div>
 
             {/* Special Registers Row */}
-            <div className="flex gap-6 mb-3">
-                <div className="flex gap-1">
-                    <span className="text-gray-500">PC:</span>
-                    <span className="text-gray-300">{toHex16(cpuSnapshot.programCounter)}</span>
+            <div className="dk-info-container mb-3">
+                <div className="dk-info-item">
+                    <span className="dk-info-label">PC:</span>
+                    <span className="dk-info-value">{toHex16(cpuSnapshot.programCounter)}</span>
                 </div>
-                <div className="flex gap-1">
-                    <span className="text-gray-500">SP:</span>
-                    <span className="text-gray-300">{toHex16(cpuSnapshot.stackPointer)}</span>
+                <div className="dk-info-item">
+                    <span className="dk-info-label">SP:</span>
+                    <span className="dk-info-value">{toHex16(cpuSnapshot.stackPointer)}</span>
                 </div>
-                <div className="flex gap-1">
-                    <span className="text-gray-500">Status:</span>
-                    <span className="text-gray-300">{toHex8(cpuSnapshot.statusRegister)}</span>
+                <div className="dk-info-item">
+                    <span className="dk-info-label">Status:</span>
+                    <span className="dk-info-value">{toHex8(cpuSnapshot.statusRegister)}</span>
                 </div>
-                <div className="flex gap-1">
-                    <span className="text-gray-500">Cycles:</span>
-                    <span className="text-gray-300">{cpuSnapshot.cycleCount}</span>
+                <div className="dk-info-item">
+                    <span className="dk-info-label">Cycles:</span>
+                    <span className="dk-info-value">{cpuSnapshot.cycleCount}</span>
                 </div>
             </div>
 
             {/* Flags Row */}
-            <div className="flex gap-4">
-                <span className="text-gray-500">Flags:</span>
-                <div className="flex gap-3">
-                    <span className={flags.C ? 'text-green-400' : 'text-gray-600'}>C</span>
-                    <span className={flags.Z ? 'text-green-400' : 'text-gray-600'}>Z</span>
-                    <span className={flags.I ? 'text-green-400' : 'text-gray-600'}>I</span>
-                    <span className={flags.V ? 'text-green-400' : 'text-gray-600'}>V</span>
-                    <span className={flags.N ? 'text-green-400' : 'text-gray-600'}>N</span>
+            <div className="flex dk-gap-standard">
+                <span className="dk-info-label">Flags:</span>
+                <div className="flex dk-gap-compact">
+                    <span className={flags.C ? 'dk-text-success' : 'dk-text-muted'}>C</span>
+                    <span className={flags.Z ? 'dk-text-success' : 'dk-text-muted'}>Z</span>
+                    <span className={flags.I ? 'dk-text-success' : 'dk-text-muted'}>I</span>
+                    <span className={flags.V ? 'dk-text-success' : 'dk-text-muted'}>V</span>
+                    <span className={flags.N ? 'dk-text-success' : 'dk-text-muted'}>N</span>
                 </div>
             </div>
         </div>
-    </Panel>
+    </div>
 }

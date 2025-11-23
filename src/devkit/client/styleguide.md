@@ -10,8 +10,11 @@ This style guide establishes visual consistency across the Virtual Console DevKi
 
 - **Primary Background**: `bg-zinc-800` - Main application background
 - **Secondary Background**: `bg-zinc-900` - Deep background for contrast
+- **Disabled Background**: `bg-zinc-800` - Disabled button states (darker than active buttons)
 - **Elevated Background**: `bg-zinc-700` - Elevated surfaces (active tabs, selected items)
 - **Hover Background**: `bg-zinc-600` - Hover states for interactive elements
+
+**Note**: A custom `zinc-850` color is available if needed for intermediate shades between zinc-800 and zinc-900.
 
 ### Border Colors
 
@@ -157,8 +160,9 @@ className="text-zinc-400 hover:text-zinc-200 text-xs transition-colors"
 #### Disabled State
 Add to any button:
 ```
-disabled:bg-zinc-400 disabled:cursor-not-allowed disabled:text-zinc-600
+disabled:bg-zinc-800 disabled:cursor-not-allowed disabled:text-zinc-600
 ```
+**Note**: Disabled buttons use `bg-zinc-800` (darker than active buttons which use `bg-zinc-600`/`bg-zinc-700`)
 
 ### Panels
 

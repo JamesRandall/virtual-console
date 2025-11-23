@@ -98,50 +98,48 @@ export function AppToolbar() {
 
   // Render
   return (
-    <div className="flex items-center justify-between px-3 py-1 bg-zinc-800 border-b border-zinc-700">
-      <div className="flex items-center gap-3">
+    <div className="dk-toolbar-app">
+      <div className="flex items-center dk-gap-compact">
         <button
           onClick={toggleProjectExplorer}
-          className={`px-2 py-1 rounded text-sm transition-colors ${
+          className={`dk-btn-icon ${
             showProjectExplorer
-              ? 'bg-zinc-600 text-white'
-              : 'bg-zinc-700 text-zinc-400 hover:text-zinc-200'
+              ? 'dk-bg-hover text-white'
+              : ''
           }`}
           title="Toggle project explorer"
         >
           <FontAwesomeIcon icon={faBars} />
         </button>
-        <h1 className="text-zinc-200 font-semibold text-sm">Virtual Console DevKit</h1>
-        <span className="text-zinc-500 text-xs">
+        <h1 className="dk-section-header">Virtual Console DevKit</h1>
+        <span className="dk-tertiary-text">
           {appMode === 'edit' ? 'Edit Mode' : 'Debug Mode'}
         </span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center dk-gap-small">
         {appMode === 'edit' ? (
           <button
             onClick={handleRun}
-            className="flex items-center gap-1.5 px-3 py-1 bg-zinc-600 hover:bg-zinc-700 text-white rounded text-sm font-medium transition-colors"
+            className="dk-btn-icon"
             title="Assemble and run"
           >
-            <FontAwesomeIcon icon={faPlay} className="text-xs" />
-            Run
+            <FontAwesomeIcon icon={faPlay} />
           </button>
         ) : (
           <button
             onClick={handleStop}
-            className="flex items-center gap-1.5 px-3 py-1 bg-zinc-600 hover:bg-zinc-700 text-white rounded text-sm font-medium transition-colors"
+            className="dk-btn-icon"
             title="Stop and return to editor"
           >
-            <FontAwesomeIcon icon={faStop} className="text-xs" />
-            Stop
+            <FontAwesomeIcon icon={faStop} />
           </button>
         )}
         <button
           onClick={toggleChat}
-          className={`px-2 py-1 rounded text-sm transition-colors ${
+          className={`dk-btn-icon ${
             showChat
-              ? 'bg-zinc-600 text-white'
-              : 'bg-zinc-700 text-zinc-400 hover:text-zinc-200'
+              ? 'dk-bg-hover text-white'
+              : ''
           }`}
           title="Toggle chat"
         >

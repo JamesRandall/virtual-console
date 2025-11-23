@@ -35,7 +35,7 @@ export function TabStrip({ tabs, activeTabId, onTabChange, onTabClose }: TabStri
 
   // Render
   return (
-    <div className="flex border-b border-zinc-700 bg-zinc-800 overflow-x-auto">
+    <div className="dk-tab-container">
       {tabs.map((tab) => {
         const canClose = tab.canClose !== false;
 
@@ -43,22 +43,22 @@ export function TabStrip({ tabs, activeTabId, onTabChange, onTabClose }: TabStri
           <button
             key={tab.id}
             onClick={() => handleTabClick(tab.id)}
-            className={`flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors border-r border-zinc-700 min-w-fit ${
+            className={`${
               activeTabId === tab.id
-                ? 'text-white bg-zinc-700 border-b-2 border-white'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-750'
-            }`}
+                ? 'dk-tab-active'
+                : 'dk-tab-inactive'
+            } flex items-center dk-gap-small min-w-fit`}
           >
-            <span className="flex items-center gap-1">
+            <span className="flex items-center dk-gap-tight">
               {tab.isDirty && (
-                <span className="w-2 h-2 bg-amber-500 rounded-full" title="Unsaved changes" />
+                <span className="w-2 h-2 dk-bg-hover rounded-full" title="Unsaved changes" />
               )}
               {tab.label}
             </span>
             {canClose && onTabClose && (
               <span
                 onClick={(e) => handleCloseClick(e, tab.id)}
-                className="ml-1 hover:bg-zinc-600 rounded px-1 text-zinc-400 hover:text-white"
+                className="ml-1 hover:dk-bg-hover dk-rounded px-1 dk-text-secondary hover:text-white dk-transition"
                 title="Close"
               >
                 ×

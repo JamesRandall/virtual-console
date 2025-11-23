@@ -62,22 +62,22 @@ export function NewFileDialog({ isOpen, onClose, folderPath, onCreateFile }: New
   // Render
   return (
     <Dialog isOpen={isOpen} onClose={handleClose} title="Create New File">
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col dk-gap-standard">
         {/* Info */}
-        <p className="text-zinc-300 text-sm">
-          Creating file in: <code className="bg-zinc-700 px-1 rounded">{folderPath}</code>
+        <p className="dk-body-text">
+          Creating file in: <code className="dk-bg-elevated px-1 dk-rounded">{folderPath}</code>
         </p>
 
         {/* Error message */}
         {error && (
-          <div className="bg-red-600 text-white px-4 py-2 rounded text-sm">
+          <div className="bg-red-600 text-white dk-padding-standard dk-rounded dk-body-text">
             {error}
           </div>
         )}
 
         {/* File name input */}
-        <div className="flex flex-col gap-2">
-          <label htmlFor="fileName" className="text-zinc-300 text-sm font-medium">
+        <div className="flex flex-col dk-gap-small">
+          <label htmlFor="fileName" className="dk-subsection-header">
             File Name
           </label>
           <input
@@ -93,30 +93,30 @@ export function NewFileDialog({ isOpen, onClose, folderPath, onCreateFile }: New
               }
             }}
             placeholder={`myfile${getExpectedExtension()}`}
-            className="px-3 py-2 bg-zinc-700 text-white rounded border border-zinc-600 focus:outline-none focus:border-zinc-500"
+            className="dk-input"
             disabled={isCreating}
             autoFocus
           />
           {getExpectedExtension() && (
-            <p className="text-zinc-400 text-xs">
+            <p className="dk-secondary-text">
               Extension {getExpectedExtension()} will be added automatically if not provided.
             </p>
           )}
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2 justify-end">
+        <div className="flex dk-gap-small justify-end">
           <button
             onClick={handleClose}
             disabled={isCreating}
-            className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded disabled:opacity-50"
+            className="dk-btn-secondary dk-btn-disabled"
           >
             Cancel
           </button>
           <button
             onClick={handleCreate}
             disabled={isCreating || !fileName.trim()}
-            className="px-4 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            className="dk-btn-primary dk-btn-disabled"
           >
             {isCreating ? 'Creating...' : 'Create'}
           </button>

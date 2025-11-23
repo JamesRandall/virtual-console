@@ -225,7 +225,7 @@
 }
 
 .dk-btn-disabled {
-  @apply disabled:bg-zinc-400 disabled:cursor-not-allowed disabled:text-zinc-600;
+  @apply disabled:bg-zinc-800 disabled:cursor-not-allowed disabled:text-zinc-600;
 }
 
 /* ============================================================================
