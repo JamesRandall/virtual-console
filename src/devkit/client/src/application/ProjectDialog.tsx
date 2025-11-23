@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
-import { Dialog } from './Dialog';
-import { openProject, createNewProject } from '../services/fileSystemService';
-import type { ProjectStructure } from '../services/fileSystemService';
+import { Dialog } from '../components/Dialog.tsx';
+import { openProject, createNewProject } from '../services/fileSystemService.ts';
+import type { ProjectStructure } from '../services/fileSystemService.ts';
 
 interface ProjectDialogProps {
   isOpen: boolean;

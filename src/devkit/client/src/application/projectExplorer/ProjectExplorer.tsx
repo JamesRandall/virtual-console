@@ -11,13 +11,13 @@ import {
   faPlus,
   faTrash,
 } from '@fortawesome/free-solid-svg-icons';
-import { useDevkitStore } from '../stores/devkitStore';
-import { ProjectDialog } from '../components/ProjectDialog';
-import { NewFileDialog } from '../components/NewFileDialog';
-import { DeleteFileDialog } from '../components/DeleteFileDialog';
-import { readFile, createFile, deleteFile, canDeleteFile } from '../services/fileSystemService';
-import type { ProjectStructure } from '../services/fileSystemService';
-import { saveProjectHandle, getProjectHandle, verifyHandlePermission } from '../services/projectPersistence';
+import { useDevkitStore } from '../../stores/devkitStore.ts';
+import { ProjectDialog } from '../ProjectDialog.tsx';
+import { NewFileDialog } from './NewFileDialog.tsx';
+import { DeleteFileDialog } from './DeleteFileDialog.tsx';
+import { readFile, createFile, deleteFile, canDeleteFile } from '../../services/fileSystemService.ts';
+import type { ProjectStructure } from '../../services/fileSystemService.ts';
+import { saveProjectHandle, getProjectHandle, verifyHandlePermission } from '../../services/projectPersistence.ts';
 
 interface FileNode {
   id: string;

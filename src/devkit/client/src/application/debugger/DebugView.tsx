@@ -3,10 +3,10 @@ import { DebugToolbar } from "./DebugToolbar.tsx";
 import { MemoryView } from "./MemoryView.tsx";
 import { RegisterView } from "./RegisterView.tsx";
 import { ConsoleView } from "./ConsoleView.tsx";
-import { TabStrip, type Tab } from "../components/TabStrip.tsx";
-import {useDevkitStore} from "../stores/devkitStore.ts";
-import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
-import {updateVirtualConsoleSnapshot} from "../stores/utilities.ts";
+import { TabStrip, type Tab } from "../../components/TabStrip.tsx";
+import {useDevkitStore} from "../../stores/devkitStore.ts";
+import {useVirtualConsole} from "../../consoleIntegration/virtualConsole.tsx";
+import {updateVirtualConsoleSnapshot} from "../../stores/utilities.ts";
 
 type TabId = 'debug' | 'console';
 

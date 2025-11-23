@@ -1,24 +1,23 @@
-import {useState, useCallback, useRef, useEffect} from "react";
+import {useCallback, useRef, useEffect} from "react";
 import {Editor, type Monaco, type OnMount} from "@monaco-editor/react";
 import type * as MonacoEditor from "monaco-editor";
 
-import {useDevkitStore} from "../stores/devkitStore.ts";
-import {updateVirtualConsoleSnapshot} from "../stores/utilities.ts";
-import "./EditorContainer.css";
-
-import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
-import {assemble, type AssemblerError} from "../../../../console/src/assembler.ts";
+import {useDevkitStore} from "../../../stores/devkitStore.ts";
+import {updateVirtualConsoleSnapshot} from "../../../stores/utilities.ts";
+import {useVirtualConsole} from "../../../consoleIntegration/virtualConsole.tsx";
+import {assemble, type AssemblerError} from "../../../../../../console/src/assembler.ts";
 import {
     registerAssemblerLanguage,
     ASSEMBLER_LANGUAGE_ID,
-} from "./assemblerLanguageSpecification.ts";
-import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {faImage, faSave} from "@fortawesome/free-solid-svg-icons";
-import {ImageGenerator} from "../components/ImageGenerator";
-import {TabStrip, type Tab} from "../components/TabStrip.tsx";
-import {writeFile} from "../services/fileSystemService.ts";
+} from "../../assemblerLanguageSpecification.ts";
 
-export function EditorContainer() {
+interface AssemblyEditorProps {
+    content: string;
+    filePath: string;
+    onChange: (content: string) => void;
+}
+
+export function AssemblyEditor({ content, filePath, onChange }: AssemblyEditorProps) {
     // Zustand store hooks
     const updateMemorySnapshot = useDevkitStore((state) => state.updateMemorySnapshot);
     const updateCpuSnapshot = useDevkitStore((state) => state.updateCpuSnapshot);
@@ -30,35 +29,16 @@ export function EditorContainer() {
     const breakpointLines = useDevkitStore((state) => state.breakpointLines);
     const toggleBreakpoint = useDevkitStore((state) => state.toggleBreakpoint);
     const updateBreakpointAddresses = useDevkitStore((state) => state.updateBreakpointAddresses);
-    const codeChangedSinceAssembly = useDevkitStore((state) => state.codeChangedSinceAssembly);
     const setCodeChangedSinceAssembly = useDevkitStore((state) => state.setCodeChangedSinceAssembly);
-
-    // Project state
-    const currentProjectHandle = useDevkitStore((state) => state.currentProjectHandle);
     const openFiles = useDevkitStore((state) => state.openFiles);
-    const activeFilePath = useDevkitStore((state) => state.activeFilePath);
-    const setActiveFile = useDevkitStore((state) => state.setActiveFile);
-    const closeFile = useDevkitStore((state) => state.closeFile);
-    const updateFileContent = useDevkitStore((state) => state.updateFileContent);
-    const markFileDirty = useDevkitStore((state) => state.markFileDirty);
 
     // Virtual console hook
     const virtualConsole = useVirtualConsole();
-
-    // Local state
-    const [isImageGeneratorOpen, setIsImageGeneratorOpen] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
 
     // Refs
     const monacoRef = useRef<Monaco | null>(null);
     const editorRef = useRef<MonacoEditor.editor.IStandaloneCodeEditor | null>(null);
     const decorationsCollectionRef = useRef<MonacoEditor.editor.IEditorDecorationsCollection | null>(null);
-
-    // Get the active file
-    const activeFile = openFiles.find(f => f.path === activeFilePath);
-
-    // Check if active file is .asm
-    const isAsmFile = activeFilePath?.endsWith('.asm') ?? false;
 
     // Find the line number for a given program counter address
     const findLineForPC = useCallback((pc: number): number | null => {
@@ -81,7 +61,7 @@ export function EditorContainer() {
 
     // Update gutter decorations based on current PC and breakpoints
     const updateDecorations = useCallback(() => {
-        if (!editorRef.current || !monacoRef.current || !decorationsCollectionRef.current || !isAsmFile) {
+        if (!editorRef.current || !monacoRef.current || !decorationsCollectionRef.current) {
             return;
         }
 
@@ -121,26 +101,26 @@ export function EditorContainer() {
         }
 
         decorationsCollection.set(newDecorations);
-    }, [isConsoleRunning, cpuSnapshot.programCounter, findLineForPC, breakpointLines, isAsmFile]);
+    }, [isConsoleRunning, cpuSnapshot.programCounter, findLineForPC, breakpointLines]);
 
     // Update decorations when CPU state changes
     useEffect(() => {
         updateDecorations();
     }, [updateDecorations]);
 
-    // Update editor content when active file changes
+    // Update editor content when content prop changes
     useEffect(() => {
-        if (editorRef.current && activeFile) {
+        if (editorRef.current) {
             const model = editorRef.current.getModel();
-            if (model && model.getValue() !== activeFile.content) {
-                model.setValue(activeFile.content);
+            if (model && model.getValue() !== content) {
+                model.setValue(content);
             }
         }
-    }, [activeFilePath, activeFile]);
+    }, [content]);
 
     // Validation function
     const validateCode = useCallback((code: string) => {
-        if (!monacoRef.current || !editorRef.current || !isAsmFile) {
+        if (!monacoRef.current || !editorRef.current) {
             return;
         }
 
@@ -177,17 +157,9 @@ export function EditorContainer() {
             // If assembler throws an exception, clear markers
             monaco.editor.setModelMarkers(model, ASSEMBLER_LANGUAGE_ID, []);
         }
-    }, [isAsmFile]);
-
-    // Event handlers
-    const handleEditorBeforeMount = useCallback((monaco: Monaco) => {
-        // Store Monaco instance
-        monacoRef.current = monaco;
-
-        // Register the custom assembler language with Monaco before the editor mounts
-        registerAssemblerLanguage(monaco);
     }, []);
 
+    // Handle assembly
     const handleAssemble = useCallback(() => {
         // Assemble main.asm
         const mainAsmFile = openFiles.find(f => f.path === 'src/main.asm');
@@ -251,24 +223,6 @@ export function EditorContainer() {
             return { success: false, error: errorMessage };
         }
     }, [openFiles, setSourceMap, setSymbolTable, updateBreakpointAddresses, setCodeChangedSinceAssembly, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
-
-    const handleSaveFile = useCallback(async () => {
-        if (!activeFile || !currentProjectHandle || !activeFilePath) {
-            return;
-        }
-
-        setIsSaving(true);
-
-        try {
-            await writeFile(currentProjectHandle, activeFilePath, activeFile.content);
-            markFileDirty(activeFilePath, false);
-        } catch (error) {
-            console.error('Error saving file:', error);
-            alert('Failed to save file: ' + (error instanceof Error ? error.message : 'Unknown error'));
-        } finally {
-            setIsSaving(false);
-        }
-    }, [activeFile, currentProjectHandle, activeFilePath, markFileDirty]);
 
     // Set up event listeners for AI tools
     const setupAiToolListeners = useCallback((editor: MonacoEditor.editor.IStandaloneCodeEditor) => {
@@ -349,6 +303,15 @@ export function EditorContainer() {
         };
     }, [handleAssemble]);
 
+    // Event handlers
+    const handleEditorBeforeMount = useCallback((monaco: Monaco) => {
+        // Store Monaco instance
+        monacoRef.current = monaco;
+
+        // Register the custom assembler language with Monaco before the editor mounts
+        registerAssemblerLanguage(monaco);
+    }, []);
+
     const handleEditorMount: OnMount = useCallback((editor) => {
         // Store editor instance
         editorRef.current = editor;
@@ -356,9 +319,9 @@ export function EditorContainer() {
         // Create decorations collection
         decorationsCollectionRef.current = editor.createDecorationsCollection();
 
-        // Add mouse down handler for breakpoint toggling (only for .asm files)
+        // Add mouse down handler for breakpoint toggling
         editor.onMouseDown((e) => {
-            if (!monacoRef.current || !isAsmFile) return;
+            if (!monacoRef.current) return;
 
             // Check if click is in the glyph margin
             if (e.target.type === monacoRef.current.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
@@ -369,10 +332,8 @@ export function EditorContainer() {
             }
         });
 
-        // Validate initial content if it's an .asm file
-        if (activeFile && isAsmFile) {
-            validateCode(activeFile.content);
-        }
+        // Validate initial content
+        validateCode(content);
 
         // Set up AI tool event listeners and store cleanup function
         const cleanup = setupAiToolListeners(editor);
@@ -381,165 +342,35 @@ export function EditorContainer() {
         return () => {
             if (cleanup) cleanup();
         };
-    }, [validateCode, setupAiToolListeners, toggleBreakpoint, isAsmFile, activeFile]);
+    }, [validateCode, setupAiToolListeners, toggleBreakpoint, content]);
 
     const handleEditorChange = useCallback((value: string | undefined) => {
         const code = value || "";
 
-        if (!activeFilePath) {
-            return;
-        }
-
-        // Update the file content in the store
-        updateFileContent(activeFilePath, code);
-
-        // Mark as dirty if content changed
-        const currentFile = openFiles.find(f => f.path === activeFilePath);
-        if (currentFile && currentFile.content !== code) {
-            markFileDirty(activeFilePath, true);
-        }
+        // Notify parent of content change
+        onChange(code);
 
         // Mark code as changed if we have an existing source map (assembly has occurred) and this is main.asm
-        if (sourceMap.length > 0 && activeFilePath === 'src/main.asm') {
+        if (sourceMap.length > 0 && filePath === 'src/main.asm') {
             setCodeChangedSinceAssembly(true);
         }
 
-        // Validate code on change for .asm files
-        if (isAsmFile) {
-            validateCode(code);
-        }
-    }, [activeFilePath, updateFileContent, openFiles, markFileDirty, sourceMap.length, setCodeChangedSinceAssembly, validateCode, isAsmFile]);
+        // Validate code on change
+        validateCode(code);
+    }, [onChange, sourceMap.length, filePath, setCodeChangedSinceAssembly, validateCode]);
 
-    const handleGenerateFromImage = useCallback((assemblyCode: string) => {
-        // Set the generated code in the editor
-        if (editorRef.current && activeFilePath) {
-            const model = editorRef.current.getModel();
-            if (model) {
-                model.setValue(assemblyCode);
-                updateFileContent(activeFilePath, assemblyCode);
-                markFileDirty(activeFilePath, true);
-                // Validate the generated code
-                if (isAsmFile) {
-                    validateCode(assemblyCode);
-                }
-            }
-        }
-    }, [activeFilePath, updateFileContent, markFileDirty, validateCode, isAsmFile]);
-
-    const handleTabChange = useCallback((tabId: string) => {
-        setActiveFile(tabId);
-    }, [setActiveFile]);
-
-    const handleTabClose = useCallback((tabId: string) => {
-        const file = openFiles.find(f => f.path === tabId);
-        if (file?.isDirty) {
-            const shouldClose = confirm(`${file.path} has unsaved changes. Close anyway?`);
-            if (!shouldClose) {
-                return;
-            }
-        }
-        closeFile(tabId);
-    }, [openFiles, closeFile]);
-
-    // Determine if we should show the warning banner
-    const showWarningBanner = codeChangedSinceAssembly && breakpointLines.size > 0 && sourceMap.length > 0;
-
-    // Convert open files to tabs
-    const tabs: Tab[] = openFiles.map(file => ({
-        id: file.path,
-        label: file.path.split('/').pop() || file.path,
-        isDirty: file.isDirty,
-    }));
-
-    // Render
-    if (!currentProjectHandle) {
-        return (
-            <div className="flex flex-col h-full w-full bg-zinc-800 items-center justify-center text-zinc-400">
-                <p>No project loaded. Open or create a project to start editing.</p>
-            </div>
-        );
-    }
-
-    if (openFiles.length === 0) {
-        return (
-            <div className="flex flex-col h-full w-full bg-zinc-800 items-center justify-center text-zinc-400">
-                <p>No files open. Double-click a file in the project explorer to open it.</p>
-            </div>
-        );
-    }
-
-    return <div className="flex flex-col h-full w-full bg-zinc-800">
-        <ImageGenerator
-            isOpen={isImageGeneratorOpen}
-            onClose={() => setIsImageGeneratorOpen(false)}
-            onGenerate={handleGenerateFromImage}
+    return (
+        <Editor
+            height="100%"
+            language={ASSEMBLER_LANGUAGE_ID}
+            value={content}
+            theme="vs-dark"
+            beforeMount={handleEditorBeforeMount}
+            onMount={handleEditorMount}
+            onChange={handleEditorChange}
+            options={{
+                glyphMargin: true,
+            }}
         />
-
-        {/* Tabs */}
-        {tabs.length > 0 && (
-            <TabStrip
-                tabs={tabs}
-                activeTabId={activeFilePath || ''}
-                onTabChange={handleTabChange}
-                onTabClose={handleTabClose}
-            />
-        )}
-
-        {/* Editor */}
-        <div className="flex-1 min-h-0 overflow-hidden relative">
-            {/* Warning banner for out-of-sync breakpoints */}
-            {showWarningBanner && (
-                <div className="absolute top-0 left-0 right-0 z-10 bg-amber-600 text-white px-4 py-2 text-sm flex items-center justify-between shadow-lg">
-                    <div className="flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                        </svg>
-                        <span className="font-medium">Code changed since last assembly</span>
-                        <span>- Breakpoint addresses may be out of sync. Reassemble to update.</span>
-                    </div>
-                </div>
-            )}
-
-            {isAsmFile ? (
-                <Editor
-                    height="100%"
-                    language={ASSEMBLER_LANGUAGE_ID}
-                    value={activeFile?.content || ''}
-                    theme="vs-dark"
-                    beforeMount={handleEditorBeforeMount}
-                    onMount={handleEditorMount}
-                    onChange={handleEditorChange}
-                    options={{
-                        glyphMargin: true,
-                    }}
-                />
-            ) : (
-                <div className="flex flex-col h-full items-center justify-center text-zinc-400">
-                    <p>This file type is not editable yet.</p>
-                    <p className="text-sm mt-2">Only .asm files can be edited in the Monaco editor.</p>
-                </div>
-            )}
-        </div>
-
-        {/* Toolbar */}
-        <div className="flex justify-end dk-gap-compact px-3 py-1.5 dk-border-t items-center dk-text-primary flex-shrink-0">
-            <button
-                onClick={handleSaveFile}
-                disabled={!activeFile?.isDirty || isSaving}
-                className="dk-btn-icon dk-btn-disabled border border-transparent"
-                title="Save file"
-            >
-                <FontAwesomeIcon icon={faSave} />
-            </button>
-            {isAsmFile && (
-                <button
-                    onClick={() => setIsImageGeneratorOpen(true)}
-                    className="dk-btn-icon border border-transparent"
-                    title="Convert image to assembly"
-                >
-                    <FontAwesomeIcon icon={faImage} />
-                </button>
-            )}
-        </div>
-    </div>
+    );
 }

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Dialog } from './Dialog';
+import { Dialog } from '../../components/Dialog.tsx';
 
 interface NewFileDialogProps {
   isOpen: boolean;

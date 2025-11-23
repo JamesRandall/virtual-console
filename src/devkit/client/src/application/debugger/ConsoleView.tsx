@@ -1,9 +1,9 @@
 import { useRef, useEffect, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faExpand } from '@fortawesome/free-solid-svg-icons';
-import { useVirtualConsole } from '../consoleIntegration/virtualConsole';
-import { createWebGPURenderer, type WebGPURenderer } from '../consoleIntegration/webgpuRendering';
-import { useDevkitStore } from '../stores/devkitStore';
+import { useVirtualConsole } from '../../consoleIntegration/virtualConsole.tsx';
+import { createWebGPURenderer, type WebGPURenderer } from '../../consoleIntegration/webgpuRendering.ts';
+import { useDevkitStore } from '../../stores/devkitStore.ts';
 
 export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
   // Virtual console

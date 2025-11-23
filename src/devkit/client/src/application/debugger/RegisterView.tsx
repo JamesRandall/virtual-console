@@ -1,6 +1,6 @@
 import {useMemo} from "react";
 
-import {useDevkitStore} from "../stores/devkitStore.ts";
+import {useDevkitStore} from "../../stores/devkitStore.ts";
 
 /**
  * Format a number as an 8-bit hex value

@@ -1,8 +1,8 @@
 import {useCallback, useMemo, useRef, useEffect} from "react";
 
-import {useDevkitStore} from "../stores/devkitStore.ts";
+import {useDevkitStore} from "../../stores/devkitStore.ts";
 
-import {HexAddressInput} from "../components/HexAddressInput.tsx";
+import {HexAddressInput} from "../../components/HexAddressInput.tsx";
 
 const BYTES_PER_ROW = 8;
 

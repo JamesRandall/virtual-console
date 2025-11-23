@@ -1,9 +1,9 @@
 import {useCallback, useEffect} from "react";
 
-import {useDevkitStore} from "../stores/devkitStore.ts";
-import {updateVirtualConsoleSnapshot} from "../stores/utilities.ts";
+import {useDevkitStore} from "../../stores/devkitStore.ts";
+import {updateVirtualConsoleSnapshot} from "../../stores/utilities.ts";
 
-import {useVirtualConsole} from "../consoleIntegration/virtualConsole.tsx";
+import {useVirtualConsole} from "../../consoleIntegration/virtualConsole.tsx";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {faPlay, faPause, faForward, faCrosshairs, faPowerOff} from "@fortawesome/free-solid-svg-icons";
 

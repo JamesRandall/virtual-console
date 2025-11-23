@@ -1,8 +1,8 @@
 import {Allotment} from "allotment";
-import {DebugView} from "./application/DebugView.tsx";
-import {EditorContainer} from "./application/EditorContainer.tsx";
+import {DebugView} from "./application/debugger/DebugView.tsx";
+import {EditorContainer} from "./application/editors/EditorContainer.tsx";
 import {AiChatPanel} from "./application/AiChatPanel.tsx";
-import {ProjectExplorer} from "./application/ProjectExplorer.tsx";
+import {ProjectExplorer} from "./application/projectExplorer/ProjectExplorer.tsx";
 import {AppToolbar} from "./application/AppToolbar.tsx";
 import {useDevkitStore} from "./stores/devkitStore.ts";
 import "allotment/dist/style.css";
