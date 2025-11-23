@@ -64,12 +64,23 @@ async function createProjectStructure(directoryHandle: FileSystemDirectoryHandle
   await configWritable.write(DEFAULT_CONFIG_JSON);
   await configWritable.close();
 
-  // Create default.pbin in palettes folder (1024 bytes of zeros)
+  // Create default.pbin in palettes folder with retro computer colours
   const palettesHandle = await directoryHandle.getDirectoryHandle('palettes', { create: false });
   const defaultPbinHandle = await palettesHandle.getFileHandle('default.pbin', { create: true });
   const defaultPbinWritable = await defaultPbinHandle.createWritable();
-  const zeroBuffer = new Uint8Array(1024); // 1024 bytes of zeros
-  await defaultPbinWritable.write(zeroBuffer);
+  const paletteBuffer = new Uint8Array(1024); // 1024 bytes, initialized to zeros
+
+  // Block 0 - color indexes - BBC
+  paletteBuffer.set([254, 255, 233, 234, 235, 236, 237, 238, 254, 254, 254, 254, 254, 254, 254, 254], 0);
+  paletteBuffer.set([254, 255, 233, 234, 235, 236, 237, 238, 254, 255, 233, 234, 235, 236, 237, 238], 16);
+
+  // Block 2 - color indexes - Spectrum
+  paletteBuffer.set([254, 255, 220, 221, 222, 223, 224, 225, 254, 226, 227, 228, 229, 230, 231, 232], 32);
+
+  // Block 2 - color indexes - C64
+  paletteBuffer.set([254, 255, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252], 48);
+
+  await defaultPbinWritable.write(paletteBuffer);
   await defaultPbinWritable.close();
 }
 
