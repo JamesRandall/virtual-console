@@ -9,7 +9,7 @@ import {assemble, type AssemblerError} from "../../../../../../console/src/assem
 import {
     registerAssemblerLanguage,
     ASSEMBLER_LANGUAGE_ID,
-} from "../../assemblerLanguageSpecification.ts";
+} from "./assemblerLanguageSpecification.ts";
 
 interface AssemblyEditorProps {
     content: string;
