@@ -1,13 +1,32 @@
+import { useState, useRef, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faChevronLeft, faChevronRight, faBackward, faForward } from '@fortawesome/free-solid-svg-icons';
+import { faChevronLeft, faChevronRight, faBackward, faForward, faTableCells } from '@fortawesome/free-solid-svg-icons';
+import { SpritePicker } from '../../../components/SpritePicker';
+import type { SpritePaletteConfig } from '../../../stores/devkitStore';
 
 interface SpriteSelectorProps {
   selectedIndex: number;
   onSelectIndex: (index: number) => void;
   maxSprites: number;
+  // Props needed for SpritePicker
+  gbinData: Uint8Array | string;
+  paletteData: Uint8Array | null;
+  paletteBlockIndex: number;
+  spritePaletteConfigs?: SpritePaletteConfig[];
 }
 
-export function SpriteSelector({ selectedIndex, onSelectIndex, maxSprites }: SpriteSelectorProps) {
+export function SpriteSelector({
+  selectedIndex,
+  onSelectIndex,
+  maxSprites,
+  gbinData,
+  paletteData,
+  paletteBlockIndex,
+  spritePaletteConfigs,
+}: SpriteSelectorProps) {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   const handlePrevious = () => {
     if (selectedIndex > 0) {
       onSelectIndex(selectedIndex - 1);
@@ -35,8 +54,30 @@ export function SpriteSelector({ selectedIndex, onSelectIndex, maxSprites }: Spr
     }
   };
 
+  const handlePickerSelect = (index: number) => {
+    onSelectIndex(index);
+    setIsDropdownOpen(false);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDropdownOpen]);
+
   return (
-    <div className="flex items-center dk-gap-tight">
+    <div className="flex items-center dk-gap-tight relative" ref={dropdownRef}>
       {/* First button */}
       <button
         onClick={handleFirst}
@@ -92,6 +133,33 @@ export function SpriteSelector({ selectedIndex, onSelectIndex, maxSprites }: Spr
       <span className="dk-tertiary-text text-xs">
         / {maxSprites - 1}
       </span>
+
+      {/* Sprite picker dropdown button */}
+      <button
+        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+        className={`dk-btn-icon ${isDropdownOpen ? 'bg-zinc-600 text-white' : ''}`}
+        title="Open sprite picker"
+      >
+        <FontAwesomeIcon icon={faTableCells} className="text-xs" />
+      </button>
+
+      {/* Dropdown with SpritePicker */}
+      {isDropdownOpen && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl p-3 min-w-[320px]">
+          <SpritePicker
+            gbinData={gbinData}
+            paletteData={paletteData}
+            paletteBlockIndex={paletteBlockIndex}
+            spritePaletteConfigs={spritePaletteConfigs}
+            selectedIndex={selectedIndex}
+            onSelect={handlePickerSelect}
+            spriteCount={maxSprites}
+            initialZoom={2}
+            showTransparency={true}
+            maxHeight={300}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -458,6 +458,10 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
                 selectedIndex={selectedSpriteIndex}
                 onSelectIndex={setSelectedSpriteIndex}
                 maxSprites={SPRITES_PER_GBIN}
+                gbinData={gbinData}
+                paletteData={paletteData}
+                paletteBlockIndex={selectedPaletteBlockIndex}
+                spritePaletteConfigs={spritePaletteConfigs}
               />
             </div>
 
