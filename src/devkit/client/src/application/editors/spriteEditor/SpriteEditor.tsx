@@ -1,10 +1,12 @@
-import { useCallback, useMemo, useState, useEffect } from 'react';
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { useDevkitStore, type SpritePaletteConfig } from '../../../stores/devkitStore';
 import { ToolPalette, type Tool, type Action } from './ToolPalette';
 import { SpriteCanvas } from './SpriteCanvas';
 import { ColorPicker } from './ColorPicker';
 import { SpriteSelector } from './SpriteSelector';
 import { PaletteSelector } from './PaletteSelector';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faUndo, faRedo } from '@fortawesome/free-solid-svg-icons';
 
 interface SpriteEditorProps {
   filePath: string;
@@ -22,6 +24,7 @@ const SPRITE_WIDTH = 16;
 const SPRITE_HEIGHT = 16;
 const BYTES_PER_SPRITE_4BPP = 128; // 16x16 pixels at 4bpp = 128 bytes
 const SPRITES_PER_GBIN = 256;
+const MAX_UNDO_HISTORY = 50; // Maximum number of undo states per sprite
 
 export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
   // Zustand store hooks
@@ -49,6 +52,16 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
   const [spritePaletteConfigs, setSpritePaletteConfigs] = useState<SpritePaletteConfig[]>([]);
   const [configLoaded, setConfigLoaded] = useState(false);
   const gbinName = getGbinName(filePath);
+
+  // Undo/redo state - stores pixel data snapshots per sprite
+  // Using refs to avoid unnecessary re-renders, only the stack lengths trigger UI updates
+  // Each sprite maps to a stack (array) of pixel snapshots, where each snapshot is a 16x16 2D array
+  const undoStackRef = useRef<Map<number, number[][][]>>(new Map());
+  const redoStackRef = useRef<Map<number, number[][][]>>(new Map());
+  const [undoCount, setUndoCount] = useState(0);
+  const [redoCount, setRedoCount] = useState(0);
+  // Track if we've saved undo state for the current drawing operation
+  const hasUndoForCurrentStrokeRef = useRef(false);
 
   // Load palette configs from project config on mount
   useEffect(() => {
@@ -220,8 +233,110 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
     return pixels;
   }, [gbinData, selectedSpriteIndex]);
 
+  // Update undo/redo counts when switching sprites
+  useEffect(() => {
+    const undoStack = undoStackRef.current.get(selectedSpriteIndex) || [];
+    const redoStack = redoStackRef.current.get(selectedSpriteIndex) || [];
+    setUndoCount(undoStack.length);
+    setRedoCount(redoStack.length);
+  }, [selectedSpriteIndex]);
+
+  // Push current sprite state to undo stack
+  const pushUndoState = useCallback(() => {
+    const currentState = spritePixels.map(row => [...row]);
+    const undoStack = undoStackRef.current.get(selectedSpriteIndex) || [];
+    undoStack.push(currentState);
+
+    // Limit stack size
+    if (undoStack.length > MAX_UNDO_HISTORY) {
+      undoStack.shift();
+    }
+
+    undoStackRef.current.set(selectedSpriteIndex, undoStack);
+    setUndoCount(undoStack.length);
+
+    // Clear redo stack when new change is made
+    redoStackRef.current.set(selectedSpriteIndex, []);
+    setRedoCount(0);
+  }, [spritePixels, selectedSpriteIndex]);
+
+  // Apply pixel state to the sprite
+  const applyPixelState = useCallback((pixels: number[][]) => {
+    const newData = new Uint8Array(gbinData);
+    const spriteOffset = selectedSpriteIndex * BYTES_PER_SPRITE_4BPP;
+
+    for (let row = 0; row < SPRITE_HEIGHT; row++) {
+      for (let col = 0; col < SPRITE_WIDTH; col++) {
+        const colorIndex = pixels[row][col];
+        const byteOffset = spriteOffset + row * 8 + Math.floor(col / 2);
+        const currentByte = newData[byteOffset];
+
+        if (col % 2 === 0) {
+          newData[byteOffset] = (currentByte & 0x0F) | ((colorIndex & 0x0F) << 4);
+        } else {
+          newData[byteOffset] = (currentByte & 0xF0) | (colorIndex & 0x0F);
+        }
+      }
+    }
+
+    let binary = '';
+    for (let i = 0; i < newData.length; i++) {
+      binary += String.fromCharCode(newData[i]);
+    }
+    const base64 = btoa(binary);
+
+    updateFileContent(filePath, base64);
+    markFileDirty(filePath, true);
+  }, [gbinData, selectedSpriteIndex, filePath, updateFileContent, markFileDirty]);
+
+  // Undo handler
+  const handleUndo = useCallback(() => {
+    const undoStack = undoStackRef.current.get(selectedSpriteIndex) || [];
+    if (undoStack.length === 0) return;
+
+    // Push current state to redo stack
+    const currentState = spritePixels.map(row => [...row]);
+    const redoStack = redoStackRef.current.get(selectedSpriteIndex) || [];
+    redoStack.push(currentState);
+    redoStackRef.current.set(selectedSpriteIndex, redoStack);
+    setRedoCount(redoStack.length);
+
+    // Pop and apply undo state
+    const previousState = undoStack.pop()!;
+    undoStackRef.current.set(selectedSpriteIndex, undoStack);
+    setUndoCount(undoStack.length);
+
+    applyPixelState(previousState);
+  }, [selectedSpriteIndex, spritePixels, applyPixelState]);
+
+  // Redo handler
+  const handleRedo = useCallback(() => {
+    const redoStack = redoStackRef.current.get(selectedSpriteIndex) || [];
+    if (redoStack.length === 0) return;
+
+    // Push current state to undo stack
+    const currentState = spritePixels.map(row => [...row]);
+    const undoStack = undoStackRef.current.get(selectedSpriteIndex) || [];
+    undoStack.push(currentState);
+    undoStackRef.current.set(selectedSpriteIndex, undoStack);
+    setUndoCount(undoStack.length);
+
+    // Pop and apply redo state
+    const nextState = redoStack.pop()!;
+    redoStackRef.current.set(selectedSpriteIndex, redoStack);
+    setRedoCount(redoStack.length);
+
+    applyPixelState(nextState);
+  }, [selectedSpriteIndex, spritePixels, applyPixelState]);
+
   // Handle pixel changes from the canvas
   const handlePixelChange = useCallback((row: number, col: number, colorIndex: number) => {
+    // Save undo state at the start of each stroke
+    if (!hasUndoForCurrentStrokeRef.current) {
+      pushUndoState();
+      hasUndoForCurrentStrokeRef.current = true;
+    }
+
     const spriteOffset = selectedSpriteIndex * BYTES_PER_SPRITE_4BPP;
     const byteOffset = spriteOffset + row * 8 + Math.floor(col / 2);
 
@@ -247,10 +362,16 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
     // Update file content in store
     updateFileContent(filePath, base64);
     markFileDirty(filePath, true);
-  }, [gbinData, selectedSpriteIndex, filePath, updateFileContent, markFileDirty]);
+  }, [gbinData, selectedSpriteIndex, filePath, updateFileContent, markFileDirty, pushUndoState]);
 
   // Handle bulk pixel changes (for rectangles, circles, lines)
   const handlePixelsChange = useCallback((changes: Array<{ row: number; col: number; colorIndex: number }>) => {
+    // Save undo state before bulk changes
+    if (!hasUndoForCurrentStrokeRef.current) {
+      pushUndoState();
+      hasUndoForCurrentStrokeRef.current = true;
+    }
+
     const newData = new Uint8Array(gbinData);
 
     for (const { row, col, colorIndex } of changes) {
@@ -274,7 +395,12 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
 
     updateFileContent(filePath, base64);
     markFileDirty(filePath, true);
-  }, [gbinData, selectedSpriteIndex, filePath, updateFileContent, markFileDirty]);
+  }, [gbinData, selectedSpriteIndex, filePath, updateFileContent, markFileDirty, pushUndoState]);
+
+  // Called when a drawing operation ends (mouse up)
+  const handleOperationEnd = useCallback(() => {
+    hasUndoForCurrentStrokeRef.current = false;
+  }, []);
 
   // Get the effective color index for the current tool
   const effectiveColorIndex = selectedTool === 'eraser' ? 0 : selectedColorIndex;
@@ -492,6 +618,26 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
               />
               <span className="text-sm">Show transparency</span>
             </label>
+
+            {/* Undo/Redo buttons */}
+            <div className="flex items-center dk-gap-tight">
+              <button
+                onClick={handleUndo}
+                disabled={undoCount === 0}
+                className="dk-btn-icon dk-btn-disabled"
+                title={`Undo (${undoCount})`}
+              >
+                <FontAwesomeIcon icon={faUndo} className="text-xs" />
+              </button>
+              <button
+                onClick={handleRedo}
+                disabled={redoCount === 0}
+                className="dk-btn-icon dk-btn-disabled"
+                title={`Redo (${redoCount})`}
+              >
+                <FontAwesomeIcon icon={faRedo} className="text-xs" />
+              </button>
+            </div>
           </div>
 
           {/* Canvas area */}
@@ -514,6 +660,7 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
               onPastePreviewChange={setPastePreview}
               onCommitPaste={handleCommitPaste}
               onStartMove={handleStartMove}
+              onOperationEnd={handleOperationEnd}
             />
           </div>
         </div>

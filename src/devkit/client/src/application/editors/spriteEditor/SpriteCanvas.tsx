@@ -23,6 +23,8 @@ interface SpriteCanvasProps {
   onCommitPaste: () => void;
   // Move selection callback
   onStartMove: () => void;
+  // Called when a drawing operation ends (for undo tracking)
+  onOperationEnd: () => void;
 }
 
 const SPRITE_WIDTH = 16;
@@ -51,6 +53,7 @@ export function SpriteCanvas({
   onPastePreviewChange,
   onCommitPaste,
   onStartMove,
+  onOperationEnd,
 }: SpriteCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -540,10 +543,15 @@ export function SpriteCanvas({
       }
     }
 
+    // Signal end of operation for undo tracking
+    if (isDrawing) {
+      onOperationEnd();
+    }
+
     setIsDrawing(false);
     setStartPos(null);
     setPreviewPixels([]);
-  }, [isDrawing, startPos, previewPixels, selectedTool, selectedColorIndex, onPixelsChange, isDraggingPaste]);
+  }, [isDrawing, startPos, previewPixels, selectedTool, selectedColorIndex, onPixelsChange, isDraggingPaste, onOperationEnd]);
 
   // Handle mouse leave
   const handleMouseLeave = useCallback(() => {
