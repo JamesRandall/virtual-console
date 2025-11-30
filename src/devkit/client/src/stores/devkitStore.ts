@@ -24,8 +24,18 @@ export interface OpenFile {
 
 export type AppMode = 'edit' | 'debug';
 
+export interface SpritePaletteConfig {
+  palette: string;  // Name of the pbin file (without path/extension)
+  block: number;    // Index of the palette block
+}
+
+export interface SpriteEditorConfig {
+  [gbinName: string]: SpritePaletteConfig[];  // Array indexed by sprite index
+}
+
 export interface ProjectConfig {
   mode: number; // 0-3 for video modes
+  'sprite-editor'?: SpriteEditorConfig;
 }
 
 interface DevkitState {

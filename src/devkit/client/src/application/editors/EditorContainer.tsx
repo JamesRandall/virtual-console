@@ -1,15 +1,22 @@
 import {useState, useCallback} from "react";
 
-import {useDevkitStore} from "../../stores/devkitStore.ts";
+import {useDevkitStore, type SpritePaletteConfig, type ProjectConfig} from "../../stores/devkitStore.ts";
 import "./EditorContainer.css";
 
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {faImage, faSave} from "@fortawesome/free-solid-svg-icons";
 import {ImageGenerator} from "../../components/ImageGenerator.tsx";
 import {TabStrip, type Tab} from "../../components/TabStrip.tsx";
-import {writeFile, writeBinaryFile} from "../../services/fileSystemService.ts";
+import {writeFile, writeBinaryFile, readFile} from "../../services/fileSystemService.ts";
 import {AssemblyEditor} from "./assembly/AssemblyEditor.tsx";
 import {PaletteEditor} from "./palette/PaletteEditor.tsx";
+import {SpriteEditor} from "./spriteEditor/SpriteEditor.tsx";
+
+// Extract gbin name from path (e.g., "sprites/player.gbin" -> "player")
+function getGbinName(filePath: string): string {
+    const fileName = filePath.split('/').pop() || filePath;
+    return fileName.replace('.gbin', '');
+}
 
 export function EditorContainer() {
     // Zustand store hooks
@@ -25,6 +32,7 @@ export function EditorContainer() {
     const closeFile = useDevkitStore((state) => state.closeFile);
     const updateFileContent = useDevkitStore((state) => state.updateFileContent);
     const markFileDirty = useDevkitStore((state) => state.markFileDirty);
+    const setProjectConfig = useDevkitStore((state) => state.setProjectConfig);
 
     // Local state
     const [isImageGeneratorOpen, setIsImageGeneratorOpen] = useState(false);
@@ -37,6 +45,8 @@ export function EditorContainer() {
     // Check file types
     const isAsmFile = activeFilePath?.endsWith('.asm') ?? false;
     const isPbinFile = activeFilePath?.endsWith('.pbin') ?? false;
+    const isGbinFile = activeFilePath?.endsWith('.gbin') ?? false;
+    const isBinaryFile = isPbinFile || isGbinFile;
 
     // Event handlers
     const handleSaveFile = useCallback(async () => {
@@ -47,9 +57,9 @@ export function EditorContainer() {
         setIsSaving(true);
 
         try {
-            // For .pbin files, content is stored as a base64-encoded string
+            // For binary files (.pbin, .gbin), content is stored as a base64-encoded string
             // For other files, it's plain text
-            if (isPbinFile) {
+            if (isBinaryFile) {
                 // Decode base64 back to binary
                 const binaryString = atob(activeFile.content);
                 const bytes = new Uint8Array(binaryString.length);
@@ -57,6 +67,37 @@ export function EditorContainer() {
                     bytes[i] = binaryString.charCodeAt(i);
                 }
                 await writeBinaryFile(currentProjectHandle, activeFilePath, bytes);
+
+                // For gbin files, also save palette configs to config.json
+                if (isGbinFile) {
+                    const gbinName = getGbinName(activeFilePath);
+                    const paletteConfigs = (window as unknown as Record<string, SpritePaletteConfig[]>)[`__spritePaletteConfigs_${gbinName}`];
+
+                    if (paletteConfigs && paletteConfigs.length > 0) {
+                        try {
+                            // Read current config.json (it may have been modified by other editors)
+                            const configContent = await readFile(currentProjectHandle, 'config.json');
+                            const config: ProjectConfig = JSON.parse(configContent);
+
+                            // Initialize sprite-editor section if it doesn't exist
+                            if (!config['sprite-editor']) {
+                                config['sprite-editor'] = {};
+                            }
+
+                            // Update only this gbin's palette configs
+                            config['sprite-editor'][gbinName] = paletteConfigs;
+
+                            // Write back to config.json
+                            await writeFile(currentProjectHandle, 'config.json', JSON.stringify(config, null, 2));
+
+                            // Update the Zustand store so reopening the editor uses the new config
+                            setProjectConfig(config);
+                        } catch (error) {
+                            console.error('Error saving sprite palette config:', error);
+                            // Don't fail the save if config update fails
+                        }
+                    }
+                }
             } else {
                 await writeFile(currentProjectHandle, activeFilePath, activeFile.content);
             }
@@ -67,7 +108,7 @@ export function EditorContainer() {
         } finally {
             setIsSaving(false);
         }
-    }, [activeFile, currentProjectHandle, activeFilePath, isPbinFile, markFileDirty]);
+    }, [activeFile, currentProjectHandle, activeFilePath, isBinaryFile, isGbinFile, markFileDirty, setProjectConfig]);
 
     const handleContentChange = useCallback((content: string) => {
         if (!activeFilePath) {
@@ -178,10 +219,15 @@ export function EditorContainer() {
                     showIndexes={showPaletteIndexes}
                     onShowIndexesChange={setShowPaletteIndexes}
                 />
+            ) : isGbinFile ? (
+                <SpriteEditor
+                    filePath={activeFilePath || ''}
+                    content={activeFile?.content || ''}
+                />
             ) : (
                 <div className="flex flex-col h-full items-center justify-center text-zinc-400">
                     <p>This file type is not editable yet.</p>
-                    <p className="text-sm mt-2">Only .asm and .pbin files can be edited.</p>
+                    <p className="text-sm mt-2">Only .asm, .pbin, and .gbin files can be edited.</p>
                 </div>
             )}
         </div>

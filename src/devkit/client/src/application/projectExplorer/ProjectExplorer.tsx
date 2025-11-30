@@ -280,8 +280,9 @@ export function ProjectExplorer() {
       }
 
       try {
-        // Handle binary files (.pbin) differently
-        if (node.id.endsWith('.pbin')) {
+        // Handle binary files (.pbin, .gbin) differently
+        const isBinaryFile = node.id.endsWith('.pbin') || node.id.endsWith('.gbin');
+        if (isBinaryFile) {
           const binaryData = await readBinaryFile(currentProjectHandle, node.id);
           // Convert binary to base64 for storage in openFiles
           let binary = '';
