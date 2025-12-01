@@ -23,6 +23,7 @@ let isRunning = false;
 let lastTimestamp = 0;
 let accumulatedCycles = 0;
 let breakpointAddresses: Set<number> = new Set();
+let skipBreakpointOnce = false; // Skip breakpoint check for first instruction after resume
 
 /**
  * Free-wheeling execution loop that maintains 3MHz clock rate
@@ -44,8 +45,9 @@ function executionLoop(): void {
   while (accumulatedCycles >= 1 && isRunning) {
     try {
       // Check if PC is at a breakpoint before executing
+      // Skip the check once after resuming to avoid getting stuck on the same breakpoint
       const pc = cpu.getProgramCounter();
-      if (breakpointAddresses.has(pc)) {
+      if (!skipBreakpointOnce && breakpointAddresses.has(pc)) {
         // Breakpoint hit - pause execution and notify UI
         isRunning = false;
         const snapshot = createSnapshot();
@@ -57,6 +59,7 @@ function executionLoop(): void {
         self.postMessage({ type: 'paused' });
         return;
       }
+      skipBreakpointOnce = false;
 
       const cyclesConsumed = cpu.step();
       accumulatedCycles -= cyclesConsumed;
@@ -117,6 +120,7 @@ self.onmessage = (event: MessageEvent) => {
     case 'run': {
       if (!isRunning) {
         isRunning = true;
+        skipBreakpointOnce = true; // Skip first breakpoint check to avoid getting stuck
         lastTimestamp = performance.now();
         accumulatedCycles = 0;
         executionLoop();

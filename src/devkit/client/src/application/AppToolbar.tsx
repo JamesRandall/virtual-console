@@ -174,9 +174,16 @@ export function AppToolbar() {
     virtualConsole.pause();
     setIsConsoleRunning(false);
 
+    // Reset the CPU
+    virtualConsole.reset();
+
+    // Clear debug state so PC marker doesn't show in editor
+    setSourceMap([]);
+    setSymbolTable({});
+
     // Switch back to edit mode
     setAppMode('edit');
-  }, [virtualConsole, setIsConsoleRunning, setAppMode]);
+  }, [virtualConsole, setIsConsoleRunning, setSourceMap, setSymbolTable, setAppMode]);
 
   // Render
   return (
