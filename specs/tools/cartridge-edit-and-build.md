@@ -7,6 +7,7 @@ Read the following files:
     /Users/jamesrandall/code/virtual-console/specs/tools/ide-framework.md
     /Users/jamesrandall/code/virtual-console/src/devkit/client/react-guidelines.md
     /Users/jamesrandall/code/virtual-console/src/devkit/client/styleguide.md
+    /Users/jamesrandall/code/virtual-console/src/devkit/client/src/*
 
 You can find the existing editors here as a reference:
 
@@ -42,8 +43,8 @@ When the user clicks the cartridge.json file in the file tree, we should open th
 
 ## Phase 2 - Building the cartridge
 
-In the devkit we need to add a "build" button to the left of the run button that will build the cartridge. When pressed it will create a cartridge.rom file in the root directory and show it in the project explorer. The build process should take the assets and pack them into the cartridge using 32k alignment for each bank so that our code can say things like "the sprites are in bank 1".
+In the devkit we need to add a "build" button to the left of the run button that will build the cartridge. When pressed it will create a cartridge.rom file in the root directory and show it in the project explorer. The build process should take the assets and pack them into the cartridge using 32k alignment for each bank so that our code can say things like "the sprites are in bank 1". You will need to assemble the code to obtain the code.bin asset.
 
 ## Phase 3 - Updating our run process
 
-When the run button is pressed we should copy the code in bank 1 into RAM positioning it based on the org metadata in bank 0. We should then start the emulator and switch to run/debug mode as we do now but things should already be running (we don't want to have to press the debuggers run button to start it).
+When the run button is pressed we should copy the code in bank 1 into RAM positioning it based on the org metadata in bank 0. We should then position the program counter, start the emulator and switch to run/debug mode as we do now but things should already be running (we don't want to have to press the debuggers run button to start it).
