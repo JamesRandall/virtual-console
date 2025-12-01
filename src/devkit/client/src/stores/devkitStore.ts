@@ -130,7 +130,7 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   // Initial state
   appMode: 'edit',
   showProjectExplorer: true,  // Visible by default in edit mode
-  showChat: true,             // Visible by default
+  showChat: false,            // Hidden by default
   currentProjectHandle: null,
   currentProjectName: null,
   projectConfig: null,
@@ -270,10 +270,10 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   setAiThinking: (thinking: boolean) => set({ isAiThinking: thinking }),
 
   // App mode actions
-  setAppMode: (mode: AppMode) => set((state) => ({
+  setAppMode: (mode: AppMode) => set(() => ({
     appMode: mode,
-    // Hide project explorer by default when entering debug mode
-    showProjectExplorer: mode === 'debug' ? false : state.showProjectExplorer,
+    // Hide project explorer in debug mode, show it in edit mode
+    showProjectExplorer: mode === 'edit',
   })),
 
   // Panel visibility actions

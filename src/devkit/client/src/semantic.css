@@ -341,11 +341,11 @@
    ========================================================================== */
 
 .dk-tree-node {
-  @apply flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-zinc-700 transition-colors;
+  @apply flex items-center gap-2 pr-2 py-1 cursor-pointer hover:bg-zinc-700 transition-colors;
 }
 
 .dk-tree-node-selected {
-  @apply flex items-center gap-2 px-2 py-1 cursor-pointer bg-zinc-600;
+  @apply flex items-center gap-2 pr-2 py-1 cursor-pointer bg-zinc-600;
 }
 
 /* ============================================================================

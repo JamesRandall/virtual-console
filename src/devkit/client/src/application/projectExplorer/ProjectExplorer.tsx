@@ -375,10 +375,17 @@ export function ProjectExplorer() {
     };
     const handleContextMenu = (e: React.MouseEvent) => handleNodeContextMenu(e, node.data);
 
+    // Adjust paddingLeft to align with header (px-3 = 12px)
+    // react-arborist sets paddingLeft based on depth, we add 12px base padding
+    const adjustedStyle = {
+      ...style,
+      paddingLeft: (style.paddingLeft as number || 0) + 12,
+    };
+
     return (
       <div
         ref={dragHandle}
-        style={style}
+        style={adjustedStyle}
         className={node.isSelected ? 'dk-tree-node-selected' : 'dk-tree-node'}
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
