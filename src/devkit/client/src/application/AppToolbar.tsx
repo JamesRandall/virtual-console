@@ -1,11 +1,13 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlay, faStop, faBars, faComments } from '@fortawesome/free-solid-svg-icons';
+import { faPlay, faStop, faBars, faComments, faBox } from '@fortawesome/free-solid-svg-icons';
 import { useDevkitStore } from '../stores/devkitStore';
 import { useVirtualConsole } from '../consoleIntegration/virtualConsole';
 import { updateVirtualConsoleSnapshot } from '../stores/utilities';
 import { assembleMultiFile } from '../../../../console/src/assembler';
 import { readAllSourceFiles } from '../services/fileSystemService';
+import { buildCartridge } from '../services/cartridgeBundler';
+import { toast } from '../components/Toast';
 
 export function AppToolbar() {
   // Zustand store hooks
@@ -17,6 +19,7 @@ export function AppToolbar() {
   const showChat = useDevkitStore((state) => state.showChat);
   const toggleProjectExplorer = useDevkitStore((state) => state.toggleProjectExplorer);
   const toggleChat = useDevkitStore((state) => state.toggleChat);
+  const refreshProjectTree = useDevkitStore((state) => state.refreshProjectTree);
   const setSourceMap = useDevkitStore((state) => state.setSourceMap);
   const setSymbolTable = useDevkitStore((state) => state.setSymbolTable);
   const updateBreakpointAddresses = useDevkitStore((state) => state.updateBreakpointAddresses);
@@ -27,10 +30,49 @@ export function AppToolbar() {
   // Virtual console hook
   const virtualConsole = useVirtualConsole();
 
+  // Local state
+  const [isBuilding, setIsBuilding] = useState(false);
+
   // Event handlers
+  const handleBuild = useCallback(async () => {
+    if (!currentProjectHandle) {
+      toast.error('No project open. Please open a project first.');
+      return;
+    }
+
+    setIsBuilding(true);
+
+    try {
+      const result = await buildCartridge(currentProjectHandle, openFiles);
+
+      if (!result.success) {
+        const errorMessages = result.errors.join('\n');
+        console.error('Build failed:', errorMessages);
+        toast.error(`Build failed:\n${errorMessages}`);
+        return;
+      }
+
+      // Show success toast
+      toast.success(`Build successful: ${result.bankCount} banks, ${result.romSize?.toLocaleString()} bytes`);
+
+      if (result.warnings.length > 0) {
+        console.warn('Build warnings:', result.warnings);
+        toast.warning(result.warnings.join('\n'));
+      }
+
+      // Refresh the project tree to show the new ROM file
+      refreshProjectTree();
+    } catch (error) {
+      console.error('Build error:', error);
+      toast.error('Build failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsBuilding(false);
+    }
+  }, [currentProjectHandle, openFiles, refreshProjectTree]);
+
   const handleRun = useCallback(async () => {
     if (!currentProjectHandle) {
-      alert('No project open. Please open a project first.');
+      toast.error('No project open. Please open a project first.');
       return;
     }
 
@@ -49,7 +91,7 @@ export function AppToolbar() {
 
       // Check that main.asm exists
       if (!sourceFiles.has('src/main.asm')) {
-        alert('main.asm not found. Please ensure main.asm exists in the src folder.');
+        toast.error('main.asm not found. Please ensure main.asm exists in the src folder.');
         return;
       }
 
@@ -67,7 +109,7 @@ export function AppToolbar() {
             return `${fileInfo}${err.line}: ${err.message}`;
           })
           .join('\n');
-        alert(`Assembly failed with ${result.errors.length} error(s):\n\n${errorMessages}`);
+        toast.error(`Assembly failed with ${result.errors.length} error(s):\n${errorMessages}`);
         return;
       }
 
@@ -100,7 +142,7 @@ export function AppToolbar() {
       setAppMode('debug');
     } catch (error) {
       console.error('Unexpected error assembling code:', error);
-      alert('Failed to assemble code: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      toast.error('Failed to assemble code: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   }, [
     openFiles,
@@ -142,13 +184,23 @@ export function AppToolbar() {
       </div>
       <div className="flex items-center dk-gap-small">
         {appMode === 'edit' ? (
-          <button
-            onClick={handleRun}
-            className="dk-btn-icon"
-            title="Assemble and run"
-          >
-            <FontAwesomeIcon icon={faPlay} />
-          </button>
+          <>
+            <button
+              onClick={handleBuild}
+              disabled={isBuilding}
+              className="dk-btn-icon dk-btn-disabled"
+              title="Build cartridge ROM"
+            >
+              <FontAwesomeIcon icon={faBox} className={isBuilding ? 'animate-pulse' : ''} />
+            </button>
+            <button
+              onClick={handleRun}
+              className="dk-btn-icon"
+              title="Assemble and run"
+            >
+              <FontAwesomeIcon icon={faPlay} />
+            </button>
+          </>
         ) : (
           <button
             onClick={handleStop}

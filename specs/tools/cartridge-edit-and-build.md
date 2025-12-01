@@ -55,4 +55,4 @@ Create this bundler in:
 
 ## Phase 3 - Updating our run process
 
-When the run button is pressed we should copy the code in bank 1 into RAM positioning it based on the org metadata in bank 0. We should then position the program counter, start the emulator and switch to run/debug mode as we do now but things should already be running (we don't want to have to press the debuggers run button to start it).
+When the run button is pressed we should rebuild the cartridge and copy the code in bank 1 into RAM positioning it based on the org metadata in bank 0. We should then position the program counter, start the emulator and switch to run/debug mode as we do now but things should already be running (we don't want to have to press the debuggers run button to start it).
