@@ -7,17 +7,17 @@
 
 ### Memory Map Summary
 
-| Range | Size | Description |
-|-------|------|-------------|
-| 0x0000-0x00FF | 256 B | Zero Page |
-| 0x0100-0x01FF | 256 B | Hardware Registers |
-| 0x0200-0x05FF | 1 KB | Palette RAM |
-| 0x0600-0x06FF | 256 B | Scanline Palette Map |
-| 0x0700-0x0AFF | 896 B | Sprite Attribute Table |
-| 0x0A00-0x0AFF | 256 B | Collision Buffer |
-| 0x0B00-0x0B7F | 128 B | Tile Type Properties |
-| 0x0B80-0x7FFF | ~29 KB | General RAM |
-| 0x8000-0xFFFF | 32 KB | Bankable Memory (256 banks) |
+| Range         | Size   | Description |
+|---------------|--------|-------------|
+| 0x0000-0x00FF | 256 B  | Zero Page |
+| 0x0100-0x01FF | 256 B  | Hardware Registers |
+| 0x0200-0x05FF | 1 KB   | Palette RAM |
+| 0x0600-0x06FF | 256 B  | Scanline Palette Map |
+| 0x0700-0x097F | 640 B  | Sprite Attribute Table |
+| 0x0980-0x0A7F | 256 B  | Collision Buffer |
+| 0x0A80-0x0AFF | 128 B  | Tile Type Properties |
+| 0x0B00-0x7FFF | ~29 KB | General RAM |
+| 0x8000-0xFFFF | 32 KB  | Bankable Memory (256 banks) |
 
 **Total Addressable Memory:** 64 KB + (256 banks × 32 KB) = **8,256 KB (~8 MB)**
 
@@ -34,44 +34,45 @@ Fast access memory for pointers, frequently accessed variables, and temporary st
 
 ### Hardware Registers (0x0100-0x01FF)
 
-| Address | Register | Description |
-|---------|----------|------------|
-| 0x0100 | BANK_REG | Banking register (write bank number 0-255 to switch upper 32K) |
-| 0x0101 | VIDEO_MODE | Video mode select (0-3) |
-| 0x0102 | SCANLINE_INT | Scanline interrupt trigger line |
-| 0x0103 | SCANLINE_CURRENT | Current scanline (read-only) |
-| 0x0104 | SPRITE_ENABLE | Sprite system enable/disable |
-| 0x0105 | SPRITE_COUNT | Number of active sprites |
-| 0x0106 | Reserved | Reserved |
-| 0x0107 | Reserved | Reserved |
-| 0x0108 | COLLISION_FLAGS | Collision status flags (read-only) |
-| 0x0109 | COLLISION_COUNT | Number of collision entries (read-only) |
-| 0x010A | COLLISION_MODE | Collision detection mode control |
-| 0x010B-0x0113 | Reserved | Reserved for future use |
-| 0x0114 | INT_STATUS | Interrupt status flags (read/write to clear) |
-| 0x0115 | INT_ENABLE | Interrupt enable control |
-| 0x0116-0x0128 | Audio Registers | 4-channel audio system (see Audio Registers) |
-| 0x0129-0x0131 | Text Registers | Hardware text rendering system (see Text Registers) |
-| 0x0132 | VBLANK_VEC_LO | VBlank interrupt handler address (low byte) |
-| 0x0133 | VBLANK_VEC_HI | VBlank interrupt handler address (high byte) |
-| 0x0134 | SCANLINE_VEC_LO | Scanline interrupt handler address (low byte) |
-| 0x0135 | SCANLINE_VEC_HI | Scanline interrupt handler address (high byte) |
-| 0x0136 | CONTROLLER_1_BUTTONS | Controller 1 main buttons (read-only) |
-| 0x0137 | CONTROLLER_1_EXTENDED | Controller 1 extended buttons (read-only) |
-| 0x0138 | CONTROLLER_2_BUTTONS | Controller 2 main buttons (read-only) |
-| 0x0139 | CONTROLLER_2_EXTENDED | Controller 2 extended buttons (read-only) |
-| 0x013A-0x013C | Reserved | Reserved for future use |
-| 0x013D | TILEMAP_ENABLE | Tilemap control flags |
-| 0x013E | TILEMAP_GRAPHICS_BANK | Bank containing tile graphics |
-| 0x013F | TILEMAP_X_SCROLL | X scroll offset (0-255) |
-| 0x0140 | TILEMAP_Y_SCROLL | Y scroll offset (0-255) |
-| 0x0141 | TILEMAP_WIDTH | Tilemap width in tiles |
-| 0x0142 | TILEMAP_HEIGHT | Tilemap height in tiles |
-| 0x0143 | TILEMAP_DATA_BANK | Bank containing tilemap data |
-| 0x0144 | TILEMAP_ADDR_HI | Tilemap data address high byte |
-| 0x0145 | TILEMAP_ADDR_LO | Tilemap data address low byte |
-| 0x0146 | TILE_ANIM_FRAME | Global tile animation frame counter |
-| 0x0147-0x01FF | Reserved | Additional hardware registers |
+| Address | Register              | Description                                                    |
+|---------|-----------------------|----------------------------------------------------------------|
+| 0x0100 | BANK_REG              | Banking register (write bank number 0-255 to switch upper 32K) |
+| 0x0101 | VIDEO_MODE            | Video mode select (0-3)                                        |
+| 0x0102 | SCANLINE_INT          | Scanline interrupt trigger line                                |
+| 0x0103 | SCANLINE_CURRENT      | Current scanline (read-only)                                   |
+| 0x0104 | SPRITE_ENABLE         | Sprite system enable/disable                                   |
+| 0x0105 | SPRITE_COUNT          | Number of active sprites                                       |
+| 0x0106 | SPRITE_GRAPHICS_BANK  | Bank containing sprite graphics                                |
+| 0x0107 | SPRITE_OVERFLOW       | Indicates sprite overflow condition                            |
+| 0x0108 | COLLISION_FLAGS       | Collision status flags (read-only)                             |
+| 0x0109 | COLLISION_COUNT       | Number of collision entries (read-only)                        |
+| 0x010A | COLLISION_MODE        | Collision detection mode control                               |
+| 0x010B | SPRITE_SCANLINE_LIMIT | Max sprites per scanline (1-16, default 8)                     |
+| 0x010C-0x0113 | Reserved              | Reserved for future use                                        |
+| 0x0114 | INT_STATUS            | Interrupt status flags (read/write to clear)                   |
+| 0x0115 | INT_ENABLE            | Interrupt enable control                                       |
+| 0x0116-0x0128 | Audio Registers       | 4-channel audio system (see Audio Registers)                   |
+| 0x0129-0x0131 | Text Registers        | Hardware text rendering system (see Text Registers)            |
+| 0x0132 | VBLANK_VEC_LO         | VBlank interrupt handler address (low byte)                    |
+| 0x0133 | VBLANK_VEC_HI         | VBlank interrupt handler address (high byte)                   |
+| 0x0134 | SCANLINE_VEC_LO       | Scanline interrupt handler address (low byte)                  |
+| 0x0135 | SCANLINE_VEC_HI       | Scanline interrupt handler address (high byte)                 |
+| 0x0136 | CONTROLLER_1_BUTTONS  | Controller 1 main buttons (read-only)                          |
+| 0x0137 | CONTROLLER_1_EXTENDED | Controller 1 extended buttons (read-only)                      |
+| 0x0138 | CONTROLLER_2_BUTTONS  | Controller 2 main buttons (read-only)                          |
+| 0x0139 | CONTROLLER_2_EXTENDED | Controller 2 extended buttons (read-only)                      |
+| 0x013A-0x013C | Reserved              | Reserved for future use                                        |
+| 0x013D | TILEMAP_ENABLE        | Tilemap control flags                                          |
+| 0x013E | TILEMAP_GRAPHICS_BANK | Bank containing tile graphics                                  |
+| 0x013F | TILEMAP_X_SCROLL      | X scroll offset (0-255)                                        |
+| 0x0140 | TILEMAP_Y_SCROLL      | Y scroll offset (0-255)                                        |
+| 0x0141 | TILEMAP_WIDTH         | Tilemap width in tiles                                         |
+| 0x0142 | TILEMAP_HEIGHT        | Tilemap height in tiles                                        |
+| 0x0143 | TILEMAP_DATA_BANK     | Bank containing tilemap data                                   |
+| 0x0144 | TILEMAP_ADDR_HI       | Tilemap data address high byte                                 |
+| 0x0145 | TILEMAP_ADDR_LO       | Tilemap data address low byte                                  |
+| 0x0146 | TILE_ANIM_FRAME       | Global tile animation frame counter                            |
+| 0x0147-0x01FF | Reserved              | Additional hardware registers                                  |
 
 **256 bytes**
 
@@ -289,16 +290,16 @@ Collision detection occurs **during frame rendering**:
 *Sprite-Sprite:*
 1. For each pair of active sprites, check bounding box overlap
 2. If bounding boxes overlap:
-   - In bounding box mode: Record collision immediately
-   - In pixel-perfect mode: Check intersection rectangle for overlapping non-transparent pixels
+    - In bounding box mode: Record collision immediately
+    - In pixel-perfect mode: Check intersection rectangle for overlapping non-transparent pixels
 3. Add collision entry to buffer if detected
 
 *Sprite-Tile:*
 1. For each active sprite, determine which tiles it overlaps
 2. Check tile properties (bit 7: solid) from tile properties table at 0x0B00+
 3. If tile is solid:
-   - In bounding box mode: Record collision with tile type
-   - In pixel-perfect mode: Check if sprite has non-transparent pixels over tile pixels
+    - In bounding box mode: Record collision with tile type
+    - In pixel-perfect mode: Check if sprite has non-transparent pixels over tile pixels
 4. Determine collision side (top/bottom/left/right) based on sprite movement
 5. Add collision entry to buffer
 
@@ -484,14 +485,14 @@ Per-scanline palette selection. Each byte selects which palette (0-3 or higher) 
 
 - **0x0600:** Scanline 0 palette selector
 - **0x0601:** Scanline 1 palette selector
-- ... 
+- ...
 - **0x06B0:** Scanline 176 palette selector (Mode 3, tallest mode)
 
 **256 bytes**
 
 ---
 
-### Sprite Attribute Table (0x0700-0x0AFF)
+### Sprite Attribute Table (0x0700-0x097F)
 
 Each sprite entry is 5 bytes:
 
@@ -505,16 +506,15 @@ struct Sprite {
 }
 ```
 
-**Support for up to 128 sprites × 5 bytes = 640 bytes (0x280)**
+**128 sprites × 5 bytes = 640 bytes (0x280)**
 
 - **0x0700-0x097F:** Sprite attributes (128 sprites)
-- **0x0980-0x0AFF:** Reserved for sprite expansion
 
-**896 bytes (0x380)**
+**640 bytes (0x280)**
 
 ---
 
-### Collision Buffer (0x0A00-0x0AFF)
+### Collision Buffer (0x0980-0x0A7F)
 
 Collision detection results written by hardware each frame.
 
@@ -539,7 +539,7 @@ Multiple bits can be set for corner collisions.
 
 **Buffer capacity:** 256 bytes / 3 = 85 collision entries maximum
 
-**0x0A00-0x0AFF:** Collision buffer (256 bytes)
+**0x0980-0x0A7F:** Collision buffer (256 bytes)
 
 **Usage pattern:**
 ```assembly
@@ -554,9 +554,9 @@ CMP R1, #0
 BRZ no_collisions
 
 ; Process first collision
-LD R2, [$0A00]      ; sprite_id
-LD R3, [$0A01]      ; tile_type
-LD R4, [$0A02]      ; type_flags
+LD R2, [$0980]      ; sprite_id
+LD R3, [$0981]      ; tile_type
+LD R4, [$0982]      ; type_flags
 
 ; Check if tile type is spike (example)
 CMP R3, #42
@@ -567,7 +567,7 @@ BRZ hit_spike
 
 ---
 
-### Tile Type Properties (0x0B00-0x0B7F)
+### Tile Type Properties (0x0A80-0x0AFF)
 
 Properties table for 128 tile types. Each byte defines behavior for one tile type:
 
@@ -580,24 +580,24 @@ Bits 3-2: Animation speed (0=slow, 1=med, 2=fast, 3=very fast)
 Bits 1-0: Frame count (0=2 frames, 1=4 frames, 2=8 frames, 3=16 frames)
 ```
 
-**0x0B00-0x0B7F:** Tile properties (128 bytes, one per tile type)
+**0x0A80-0x0AFF:** Tile properties (128 bytes, one per tile type)
 
 **Example:**
 ```assembly
 ; Define tile type 10 (water) as animated, not solid
 LD R0, #%00010110   ; Animated, medium speed, 4 frames
-ST R0, [$0B0A]      ; Store at properties[10]
+ST R0, [$0A8A]      ; Store at properties[10]
 
 ; Define tile type 42 (spike) as hazard
 LD R0, #%01000000   ; Hazard flag set
-ST R0, [$0B2A]      ; Store at properties[42]
+ST R0, [$0AAA]      ; Store at properties[42]
 ```
 
 **128 bytes**
 
 ---
 
-### General RAM (0x0B80-0x7FFF)
+### General RAM (0x0B00-0x7FFF)
 
 Available for:
 - User program code
@@ -607,7 +607,7 @@ Available for:
 - Sound data
 - General purpose storage
 
-**~29 KB (0x7480 bytes)**
+**~29 KB (0x7500 bytes)**
 
 ---
 
@@ -635,8 +635,8 @@ The framebuffer is positioned at the end of memory space ending at **0xFFFF** wi
 - X: 127, Y: 127 (bottom-right corner) → 0xFFFF
 
 #### Mode 3: 176×176 @ 4bpp
-- **Framebuffer:** 0xC380 → 0xFFF (15,488 bytes / 0x3C80)
-- X: 0, Y: 0 (top-left corner) → 0xC000
+- **Framebuffer:** 0xC380 → 0xFFFF (15,488 bytes / 0x3C80)
+- X: 0, Y: 0 (top-left corner) → 0xC380
 - X: 175, Y: 175 (bottom-right corner) → 0xFFFF
 
 ### Bank Usage Conventions
@@ -674,10 +674,10 @@ Each tile = 1 byte:
 **Example 128×128 tilemap:**
 - 16,384 bytes (128 × 128)
 - Leaves ~16KB free in bank for:
-  - Multiple maps/levels
-  - Enemy spawn data
-  - Trigger zones
-  - Level-specific assets
+    - Multiple maps/levels
+    - Enemy spawn data
+    - Trigger zones
+    - Level-specific assets
 
 **Tilemap layout in memory:**
 ```

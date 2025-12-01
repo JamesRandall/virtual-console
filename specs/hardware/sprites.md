@@ -30,7 +30,7 @@ The Virtual Console Video Chip is a custom graphics processor providing hardware
 
 ### Sprite Attribute Table
 
-**Location:** `0x0700-0x0AFF` (1024 bytes)
+**Location:** `0x0700-0x097F` (640 bytes)
 
 Each sprite is defined by 5 bytes:
 
@@ -44,7 +44,7 @@ Offset  Name          Description
 +4      BANK          Bank containing sprite graphics (0-255)
 ```
 
-**Total capacity:** 1024 bytes ÷ 5 bytes/sprite = **204 sprites** (128 used, rest reserved)
+**Total capacity:** 128 sprites × 5 bytes = **640 bytes**
 
 **Sprite address calculation:**
 ```
@@ -137,7 +137,23 @@ ST R0, [$0105]      ; Hardware only checks sprites 0-9
 ; Reduces evaluation time from 128 to 10 sprite checks
 ```
 
-### SPRITE_OVERFLOW (0x0117) - Read Only
+### SPRITE_GRAPHICS_BANK (0x0106)
+
+Memory bank containing sprite graphics..
+
+```
+Value: 0-255
+  Bank to pull sprite graphics from
+```
+
+**Performance optimization:**
+```assembly
+; Bank 2 for sprite graphics
+LD R0, #2
+ST R0, [$0106]
+```
+
+### SPRITE_OVERFLOW (0x0107) - Read Only
 
 Indicates sprite overflow conditions.
 
@@ -154,7 +170,7 @@ Bits 7-1: Reserved
 **Usage:**
 ```assembly
 ; Check for sprite overflow (flickering likely)
-LD R0, [$0117]
+LD R0, [$0107]
 AND R0, #$01
 BRZ no_overflow
 
@@ -162,7 +178,7 @@ BRZ no_overflow
 ; Consider spacing sprites vertically or reducing count
 ```
 
-### SPRITE_SCANLINE_LIMIT (0x0118)
+### SPRITE_SCANLINE_LIMIT (0x010B)
 
 Configurable per-scanline sprite limit (default: 8).
 
@@ -177,11 +193,11 @@ Value: 1-16
 ```assembly
 ; Use NES-style limit
 LD R0, #8
-ST R0, [$0118]
+ST R0, [$010B]
 
 ; More permissive (less authentic but smoother)
 LD R0, #16
-ST R0, [$0118]
+ST R0, [$010B]
 ```
 
 ---
@@ -459,7 +475,7 @@ Bits 7-3: Reserved
 
 ### Collision Buffer
 
-**Location:** 0x0A00-0x0AFF (256 bytes)
+**Location:** 0x0980-0x0A7F (256 bytes)
 
 Each collision entry is 3 bytes:
 
@@ -799,7 +815,7 @@ vblank_handler:
 .define PLAYER_SPRITE 0
 .define COLLISION_FLAGS $0108
 .define COLLISION_COUNT $0109
-.define COLLISION_BUFFER $0A00
+.define COLLISION_BUFFER $0980
 
 check_collisions:
   ; Check if any collisions occurred
@@ -894,15 +910,16 @@ move_player_right:
 
 ## Register Summary
 
-| Address | Name | Access | Description |
-|---------|------|--------|-------------|
-| 0x0104 | SPRITE_ENABLE | R/W | Bit 0: Enable sprite rendering |
-| 0x0105 | SPRITE_COUNT | R/W | Number of active sprites (0-128) |
-| 0x0108 | COLLISION_FLAGS | R/W1C | Collision status flags |
-| 0x0109 | COLLISION_COUNT | R | Number of collision entries |
-| 0x010A | COLLISION_MODE | R/W | Collision detection mode control |
-| 0x0117 | SPRITE_OVERFLOW | R | Scanline overflow flag |
-| 0x0118 | SPRITE_SCANLINE_LIMIT | R/W | Max sprites per scanline (1-16) |
+| Address | Name                  | Access | Description                      |
+|---------|-----------------------|--------|----------------------------------|
+| 0x0104  | SPRITE_ENABLE         | R/W    | Bit 0: Enable sprite rendering   |
+| 0x0105  | SPRITE_COUNT          | R/W    | Number of active sprites (0-128) |
+| 0x0106  | SPRITE_GRAPHICS_BANK  | R/W    | Memory bank containing graphics  |
+| 0x0107  | SPRITE_OVERFLOW       | R      | Scanline overflow flag           |
+| 0x0108  | COLLISION_FLAGS       | R/W1C  | Collision status flags           |
+| 0x0109  | COLLISION_COUNT       | R      | Number of collision entries      |
+| 0x010A  | COLLISION_MODE        | R/W    | Collision detection mode control |
+| 0x010B  | SPRITE_SCANLINE_LIMIT | R/W    | Max sprites per scanline (1-16)  |
 
 ---
 
@@ -910,8 +927,8 @@ move_player_right:
 
 | Address Range | Size | Description |
 |---------------|------|-------------|
-| 0x0700-0x0AFF | 1024 B | Sprite Attribute Table (128 sprites × 5 bytes) |
-| 0x0A00-0x0AFF | 256 B | Collision Buffer (85 entries × 3 bytes) |
+| 0x0700-0x097F | 640 B | Sprite Attribute Table (128 sprites × 5 bytes) |
+| 0x0980-0x0A7F | 256 B | Collision Buffer (85 entries × 3 bytes) |
 | Banks 2-15 | 448 KB | Sprite graphics data (14 banks × 32 KB) |
 
 ---
