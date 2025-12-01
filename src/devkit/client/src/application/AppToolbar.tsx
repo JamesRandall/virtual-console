@@ -5,8 +5,8 @@ import { useDevkitStore } from '../stores/devkitStore';
 import { useVirtualConsole } from '../consoleIntegration/virtualConsole';
 import { updateVirtualConsoleSnapshot } from '../stores/utilities';
 import { assembleMultiFile } from '../../../../console/src/assembler';
-import { readAllSourceFiles } from '../services/fileSystemService';
-import { buildCartridge } from '../services/cartridgeBundler';
+import { readAllSourceFiles, readBinaryFile } from '../services/fileSystemService';
+import { buildCartridge, loadCartridgeCode } from '../services/cartridgeBundler';
 import { toast } from '../components/Toast';
 
 export function AppToolbar() {
@@ -26,6 +26,7 @@ export function AppToolbar() {
   const setCodeChangedSinceAssembly = useDevkitStore((state) => state.setCodeChangedSinceAssembly);
   const updateMemorySnapshot = useDevkitStore((state) => state.updateMemorySnapshot);
   const updateCpuSnapshot = useDevkitStore((state) => state.updateCpuSnapshot);
+  const setIsConsoleRunning = useDevkitStore((state) => state.setIsConsoleRunning);
 
   // Virtual console hook
   const virtualConsole = useVirtualConsole();
@@ -77,11 +78,40 @@ export function AppToolbar() {
     }
 
     try {
-      // Read all source files from disk, including any not currently open
-      const diskSourceFiles = await readAllSourceFiles(currentProjectHandle);
+      // Step 1: Build the cartridge (assembles code and creates ROM)
+      const buildResult = await buildCartridge(currentProjectHandle, openFiles);
 
-      // Merge with currently open (and potentially modified) files
-      // Open files take precedence as they may have unsaved changes
+      if (!buildResult.success) {
+        const errorMessages = buildResult.errors.join('\n');
+        toast.error(`Build failed:\n${errorMessages}`);
+        return;
+      }
+
+      // Show build warnings if any
+      if (buildResult.warnings.length > 0) {
+        toast.warning(buildResult.warnings.join('\n'));
+      }
+
+      // Refresh project tree to show ROM file
+      refreshProjectTree();
+
+      // Step 2: Read the built cartridge ROM
+      const rom = await readBinaryFile(currentProjectHandle, 'cartridge.rom');
+
+      // Step 3: Load code from ROM into memory using metadata
+      const loadResult = loadCartridgeCode(rom, virtualConsole.memory);
+
+      if (!loadResult) {
+        toast.error('Failed to load cartridge: invalid ROM format');
+        return;
+      }
+
+      // Step 4: Set program counter to start address
+      virtualConsole.setProgramCounter(loadResult.startAddress);
+
+      // Step 5: Get source map and symbol table by re-assembling (for debugging)
+      // We need these for breakpoints and source mapping
+      const diskSourceFiles = await readAllSourceFiles(currentProjectHandle);
       const sourceFiles = new Map(diskSourceFiles);
       for (const openFile of openFiles) {
         if (openFile.path.endsWith('.asm')) {
@@ -89,48 +119,17 @@ export function AppToolbar() {
         }
       }
 
-      // Check that main.asm exists
-      if (!sourceFiles.has('src/main.asm')) {
-        toast.error('main.asm not found. Please ensure main.asm exists in the src folder.');
-        return;
-      }
-
-      // Assemble all source files starting from main.asm
-      const result = assembleMultiFile({
+      const assemblyResult = assembleMultiFile({
         sourceFiles,
         entryPoint: 'src/main.asm',
       });
 
-      // Check for errors
-      if (result.errors.length > 0) {
-        const errorMessages = result.errors
-          .map(err => {
-            const fileInfo = err.file ? `${err.file}:` : '';
-            return `${fileInfo}${err.line}: ${err.message}`;
-          })
-          .join('\n');
-        toast.error(`Assembly failed with ${result.errors.length} error(s):\n${errorMessages}`);
-        return;
-      }
+      // Store source map and symbol table for debugging
+      setSourceMap(assemblyResult.sourceMap);
+      setSymbolTable(assemblyResult.symbolTable);
 
-      // Load the assembled code into memory
-      for (const segment of result.segments) {
-        for (let i = 0; i < segment.data.length; i++) {
-          virtualConsole.memory.write8(segment.startAddress + i, segment.data[i]);
-        }
-      }
-
-      // Set program counter to the start of the first segment
-      if (result.segments.length > 0) {
-        virtualConsole.setProgramCounter(result.segments[0].startAddress);
-      }
-
-      // Store source map and symbol table
-      setSourceMap(result.sourceMap);
-      setSymbolTable(result.symbolTable);
-
-      // Update breakpoint addresses based on new source map
-      updateBreakpointAddresses(result.sourceMap);
+      // Update breakpoint addresses based on source map
+      updateBreakpointAddresses(assemblyResult.sourceMap);
 
       // Clear the code changed flag since we just assembled
       setCodeChangedSinceAssembly(false);
@@ -138,16 +137,28 @@ export function AppToolbar() {
       // Update snapshots
       await updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot);
 
-      // Switch to debug mode
+      // Step 6: Switch to debug mode and auto-start the emulator
       setAppMode('debug');
+
+      // Sync breakpoints to worker before starting
+      // We need to get the fresh breakpoint addresses from the store since updateBreakpointAddresses
+      // just updated them, but our closure still has the old value
+      const currentBreakpointAddresses = useDevkitStore.getState().breakpointAddresses;
+      virtualConsole.setBreakpoints(Array.from(currentBreakpointAddresses));
+
+      // Start the emulator running
+      virtualConsole.run();
+      setIsConsoleRunning(true);
+
     } catch (error) {
-      console.error('Unexpected error assembling code:', error);
-      toast.error('Failed to assemble code: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      console.error('Unexpected error running:', error);
+      toast.error('Failed to run: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   }, [
     openFiles,
     currentProjectHandle,
     virtualConsole,
+    refreshProjectTree,
     setSourceMap,
     setSymbolTable,
     updateBreakpointAddresses,
@@ -155,12 +166,17 @@ export function AppToolbar() {
     updateMemorySnapshot,
     updateCpuSnapshot,
     setAppMode,
+    setIsConsoleRunning,
   ]);
 
   const handleStop = useCallback(() => {
+    // Pause the emulator
+    virtualConsole.pause();
+    setIsConsoleRunning(false);
+
     // Switch back to edit mode
     setAppMode('edit');
-  }, [setAppMode]);
+  }, [virtualConsole, setIsConsoleRunning, setAppMode]);
 
   // Render
   return (
