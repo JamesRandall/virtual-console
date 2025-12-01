@@ -11,6 +11,7 @@ import {writeFile, writeBinaryFile, readFile} from "../../services/fileSystemSer
 import {AssemblyEditor} from "./assembly/AssemblyEditor.tsx";
 import {PaletteEditor} from "./palette/PaletteEditor.tsx";
 import {SpriteEditor} from "./spriteEditor/SpriteEditor.tsx";
+import {CartridgeEditor} from "./cartridge/CartridgeEditor.tsx";
 
 // Extract gbin name from path (e.g., "sprites/player.gbin" -> "player")
 function getGbinName(filePath: string): string {
@@ -46,6 +47,7 @@ export function EditorContainer() {
     const isAsmFile = activeFilePath?.endsWith('.asm') ?? false;
     const isPbinFile = activeFilePath?.endsWith('.pbin') ?? false;
     const isGbinFile = activeFilePath?.endsWith('.gbin') ?? false;
+    const isCartridgeJson = activeFilePath === 'cartridge.json';
     const isBinaryFile = isPbinFile || isGbinFile;
 
     // Event handlers
@@ -226,10 +228,15 @@ export function EditorContainer() {
                     filePath={activeFilePath || ''}
                     content={activeFile?.content || ''}
                 />
+            ) : isCartridgeJson ? (
+                <CartridgeEditor
+                    filePath={activeFilePath || ''}
+                    content={activeFile?.content || ''}
+                />
             ) : (
                 <div className="flex flex-col h-full items-center justify-center text-zinc-400">
                     <p>This file type is not editable yet.</p>
-                    <p className="text-sm mt-2">Only .asm, .pbin, and .gbin files can be edited.</p>
+                    <p className="text-sm mt-2">Only .asm, .pbin, .gbin, and cartridge.json files can be edited.</p>
                 </div>
             )}
         </div>
