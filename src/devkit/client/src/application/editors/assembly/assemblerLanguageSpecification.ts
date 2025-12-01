@@ -77,6 +77,7 @@ export const assemblerMonarchLanguage: Monaco.languages.IMonarchLanguage = {
         ".res",
         ".dsb",
         ".align",
+        ".include",
     ],
 
     // Registers

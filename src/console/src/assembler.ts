@@ -21,6 +21,7 @@ import {
 export interface AssemblerError {
   line: number;
   column?: number;
+  file?: string;  // Source file path (for multi-file support)
   message: string;
   severity: 'error' | 'warning';
   suggestion?: string;
@@ -34,6 +35,7 @@ export interface MemorySegment {
 export interface SourceMapEntry {
   address: number;
   line: number;
+  file?: string;  // Source file path (for multi-file support)
 }
 
 export type SymbolTable = Record<string, number>;
@@ -46,9 +48,37 @@ export interface AssembledArtifacts {
 }
 
 
+/**
+ * File resolver function type for loading included files.
+ * Given a path relative to the current file, returns the file contents.
+ * Returns null if the file cannot be found.
+ */
+export type FileResolver = (includePath: string, fromFile: string) => string | null;
+
+/**
+ * Source file representation for multi-file assembly
+ */
+export interface SourceFile {
+  path: string;
+  content: string;
+}
+
+/**
+ * Assembler options for multi-file support
+ */
+export interface AssemblerOptions {
+  /** Entry point file path (default: 'main.asm') */
+  entryPoint?: string;
+  /** Function to resolve and load included files */
+  fileResolver?: FileResolver;
+  /** Pre-loaded source files (alternative to fileResolver) */
+  sourceFiles?: Map<string, string>;
+}
+
 // Parsed instruction/directive
 interface ParsedLine {
   line: number;
+  file: string;  // Source file path
   label?: string;
   type: 'instruction' | 'directive' | 'empty';
   opcode?: string;
@@ -466,13 +496,13 @@ function evaluateMathExpression(expr: string): number {
 /**
  * Parse a line of assembly code
  */
-function parseLine(line: string, lineNumber: number): ParsedLine {
+function parseLine(line: string, lineNumber: number, filePath: string): ParsedLine {
   // Remove comments and trim
   line = removeComment(line).trim();
 
   // Empty line
   if (line.length === 0) {
-    return { line: lineNumber, type: 'empty' };
+    return { line: lineNumber, file: filePath, type: 'empty' };
   }
 
   let label: string | undefined;
@@ -502,6 +532,7 @@ function parseLine(line: string, lineNumber: number): ParsedLine {
 
     return {
       line: lineNumber,
+      file: filePath,
       label,
       type: 'directive',
       directive,
@@ -520,6 +551,7 @@ function parseLine(line: string, lineNumber: number): ParsedLine {
 
     return {
       line: lineNumber,
+      file: filePath,
       label,
       type: 'instruction',
       opcode,
@@ -531,12 +563,13 @@ function parseLine(line: string, lineNumber: number): ParsedLine {
   if (label) {
     return {
       line: lineNumber,
+      file: filePath,
       label,
       type: 'empty',
     };
   }
 
-  return { line: lineNumber, type: 'empty' };
+  return { line: lineNumber, file: filePath, type: 'empty' };
 }
 
 /**
@@ -675,6 +708,7 @@ function encodeInstruction(
   if (!opcodeInfo) {
     errors.push({
       line: parsed.line,
+      file: parsed.file,
       message: `Unknown opcode: ${opcode}`,
       severity: 'error',
     });
@@ -691,6 +725,7 @@ function encodeInstruction(
         : `${expectedCounts.min}-${expectedCounts.max}`;
       errors.push({
         line: parsed.line,
+        file: parsed.file,
         message: `Invalid operand count for ${opcode}: expected ${expectedMsg}, got ${operandCount}`,
         severity: 'error',
       });
@@ -736,6 +771,7 @@ function encodeInstruction(
       if (offset < -128 || offset > 127) {
         errors.push({
           line: parsed.line,
+          file: parsed.file,
           message: `Branch target out of range (offset: ${offset}, max: ±127)`,
           severity: 'error',
           suggestion: `Use JMP instead of ${opcode}`,
@@ -756,6 +792,7 @@ function encodeInstruction(
       if (destReg === null) {
         errors.push({
           line: parsed.line,
+          file: parsed.file,
           message: `Invalid register: ${operands[0]}`,
           severity: 'error',
         });
@@ -780,6 +817,7 @@ function encodeInstruction(
       if (reg === null) {
         errors.push({
           line: parsed.line,
+          file: parsed.file,
           message: `Invalid destination register: ${destOperand}`,
           severity: 'error',
         });
@@ -800,6 +838,7 @@ function encodeInstruction(
       if (secondReg !== expectedPair) {
         errors.push({
           line: parsed.line,
+          file: parsed.file,
           message: `Invalid register pair: ${modeOperand}. Expected R${srcReg}:R${expectedPair}`,
           severity: 'error',
         });
@@ -827,6 +866,7 @@ function encodeInstruction(
       if (addr > 0xFF) {
         errors.push({
           line: parsed.line,
+          file: parsed.file,
           message: `Zero page address out of range: $${addr.toString(16)}`,
           severity: 'error',
         });
@@ -837,6 +877,7 @@ function encodeInstruction(
       if (addr > 0xFF) {
         errors.push({
           line: parsed.line,
+          file: parsed.file,
           message: `Zero page address out of range: $${addr.toString(16)}`,
           severity: 'error',
         });
@@ -848,6 +889,7 @@ function encodeInstruction(
   } catch (error) {
     errors.push({
       line: parsed.line,
+      file: parsed.file,
       message: error instanceof Error ? error.message : String(error),
       severity: 'error',
     });
@@ -871,6 +913,7 @@ function pass1(lines: ParsedLine[], errors: AssemblerError[]): SymbolTable {
         if (!currentLabel) {
           errors.push({
             line: line.line,
+            file: line.file,
             message: `Local label ${line.label} has no parent label`,
             severity: 'error',
           });
@@ -879,6 +922,7 @@ function pass1(lines: ParsedLine[], errors: AssemblerError[]): SymbolTable {
           if (fullLabel in symbols) {
             errors.push({
               line: line.line,
+              file: line.file,
               message: `Duplicate label: ${fullLabel}`,
               severity: 'error',
             });
@@ -892,6 +936,7 @@ function pass1(lines: ParsedLine[], errors: AssemblerError[]): SymbolTable {
         if (line.label in symbols) {
           errors.push({
             line: line.line,
+            file: line.file,
             message: `Duplicate label: ${line.label}`,
             severity: 'error',
           });
@@ -913,6 +958,7 @@ function pass1(lines: ParsedLine[], errors: AssemblerError[]): SymbolTable {
           } catch (error) {
             errors.push({
               line: line.line,
+              file: line.file,
               message: `Invalid .org address: ${args[0]}`,
               severity: 'error',
             });
@@ -928,6 +974,7 @@ function pass1(lines: ParsedLine[], errors: AssemblerError[]): SymbolTable {
           } catch (error) {
             errors.push({
               line: line.line,
+              file: line.file,
               message: `Cannot evaluate constant: ${valueExpr}`,
               severity: 'error',
             });
@@ -955,6 +1002,7 @@ function pass1(lines: ParsedLine[], errors: AssemblerError[]): SymbolTable {
           } catch (error) {
             errors.push({
               line: line.line,
+              file: line.file,
               message: `Cannot evaluate .res count: ${args[0]}`,
               severity: 'error',
             });
@@ -971,6 +1019,7 @@ function pass1(lines: ParsedLine[], errors: AssemblerError[]): SymbolTable {
           } catch (error) {
             errors.push({
               line: line.line,
+              file: line.file,
               message: `Cannot evaluate .align boundary: ${args[0]}`,
               severity: 'error',
             });
@@ -1056,6 +1105,7 @@ function pass2(
           } catch (error) {
             errors.push({
               line: line.line,
+              file: line.file,
               message: `Cannot evaluate byte value: ${val}`,
               severity: 'error',
             });
@@ -1074,6 +1124,7 @@ function pass2(
           } catch (error) {
             errors.push({
               line: line.line,
+              file: line.file,
               message: `Cannot evaluate word value: ${val}`,
               severity: 'error',
             });
@@ -1123,7 +1174,7 @@ function pass2(
 
     // Handle instructions
     if (line.type === 'instruction' && line.opcode) {
-      sourceMap.push({ address: currentAddress, line: line.line });
+      sourceMap.push({ address: currentAddress, line: line.line, file: line.file });
 
       // Expand local labels in operands
       const expandedLine: ParsedLine = {
@@ -1149,18 +1200,179 @@ function pass2(
 }
 
 /**
- * Main assembler function
+ * Resolve a relative path from a base file path
  */
-export function assemble(assemblyCode: string): AssembledArtifacts {
-  const errors: AssemblerError[] = [];
+function resolvePath(includePath: string, fromFile: string): string {
+  // Remove quotes if present
+  includePath = includePath.replace(/^['"]|['"]$/g, '').trim();
+
+  // Get the directory of the current file
+  const lastSlash = fromFile.lastIndexOf('/');
+  const baseDir = lastSlash >= 0 ? fromFile.substring(0, lastSlash + 1) : '';
+
+  // Handle relative paths
+  if (includePath.startsWith('./')) {
+    includePath = includePath.substring(2);
+  }
+
+  // Combine paths
+  let resolved = baseDir + includePath;
+
+  // Normalize path (handle ../)
+  const parts = resolved.split('/');
+  const normalized: string[] = [];
+  for (const part of parts) {
+    if (part === '..') {
+      normalized.pop();
+    } else if (part !== '' && part !== '.') {
+      normalized.push(part);
+    }
+  }
+
+  return normalized.join('/');
+}
+
+/**
+ * Parse a file and recursively process includes
+ */
+function parseFileWithIncludes(
+  filePath: string,
+  content: string,
+  sourceFiles: Map<string, string>,
+  includedFiles: Set<string>,
+  errors: AssemblerError[]
+): ParsedLine[] {
   const lines: ParsedLine[] = [];
 
-  // Parse all lines
-  const sourceLines = assemblyCode.split('\n');
-  for (let i = 0; i < sourceLines.length; i++) {
-    const parsed = parseLine(sourceLines[i], i + 1);
-    lines.push(parsed);
+  // Mark this file as included to prevent circular includes
+  const normalizedPath = filePath.toLowerCase();
+  if (includedFiles.has(normalizedPath)) {
+    // Already included, skip
+    return lines;
   }
+  includedFiles.add(normalizedPath);
+
+  // Parse all lines
+  const sourceLines = content.split('\n');
+  for (let i = 0; i < sourceLines.length; i++) {
+    const lineNumber = i + 1;
+    const parsed = parseLine(sourceLines[i], lineNumber, filePath);
+
+    // Check for .include directive
+    if (parsed.type === 'directive' && parsed.directive === 'INCLUDE') {
+      const args = parsed.directiveArgs || [];
+      if (args.length === 0) {
+        errors.push({
+          line: lineNumber,
+          file: filePath,
+          message: '.include directive requires a file path',
+          severity: 'error',
+        });
+        continue;
+      }
+
+      // Resolve the include path
+      const includePath = args[0].replace(/^['"]|['"]$/g, '').trim();
+      const resolvedPath = resolvePath(includePath, filePath);
+
+      // Check if already included
+      if (includedFiles.has(resolvedPath.toLowerCase())) {
+        // Skip - already included
+        continue;
+      }
+
+      // Get the file content
+      const includeContent = sourceFiles.get(resolvedPath);
+      if (includeContent === undefined) {
+        errors.push({
+          line: lineNumber,
+          file: filePath,
+          message: `Cannot find included file: ${includePath} (resolved to: ${resolvedPath})`,
+          severity: 'error',
+        });
+        continue;
+      }
+
+      // Recursively parse the included file
+      const includedLines = parseFileWithIncludes(
+        resolvedPath,
+        includeContent,
+        sourceFiles,
+        includedFiles,
+        errors
+      );
+
+      // Add the label if present on the include line
+      if (parsed.label) {
+        lines.push({
+          line: lineNumber,
+          file: filePath,
+          label: parsed.label,
+          type: 'empty',
+        });
+      }
+
+      // Insert the included lines
+      lines.push(...includedLines);
+    } else {
+      lines.push(parsed);
+    }
+  }
+
+  return lines;
+}
+
+/**
+ * Main assembler function (single file - backward compatible)
+ */
+export function assemble(assemblyCode: string): AssembledArtifacts {
+  return assembleMultiFile({
+    sourceFiles: new Map([['main.asm', assemblyCode]]),
+    entryPoint: 'main.asm',
+  });
+}
+
+/**
+ * Multi-file assembler function
+ *
+ * @param options Assembly options including source files and entry point
+ * @returns Assembled artifacts including segments, symbol table, source map, and errors
+ */
+export function assembleMultiFile(options: AssemblerOptions): AssembledArtifacts {
+  const errors: AssemblerError[] = [];
+  const entryPoint = options.entryPoint || 'main.asm';
+
+  // Build source files map
+  const sourceFiles = options.sourceFiles || new Map<string, string>();
+
+  // Get entry point content
+  const entryContent = sourceFiles.get(entryPoint);
+  if (entryContent === undefined) {
+    errors.push({
+      line: 0,
+      file: entryPoint,
+      message: `Entry point file not found: ${entryPoint}`,
+      severity: 'error',
+    });
+    return {
+      segments: [],
+      symbolTable: {},
+      sourceMap: [],
+      errors,
+    };
+  }
+
+  // Track included files to prevent duplicates
+  const includedFiles = new Set<string>();
+
+  // Parse all files starting from entry point
+  const lines = parseFileWithIncludes(
+    entryPoint,
+    entryContent,
+    sourceFiles,
+    includedFiles,
+    errors
+  );
 
   // Pass 1: Collect symbols
   const symbols = pass1(lines, errors);

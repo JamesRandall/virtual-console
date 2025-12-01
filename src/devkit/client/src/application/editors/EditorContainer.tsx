@@ -21,7 +21,7 @@ function getGbinName(filePath: string): string {
 export function EditorContainer() {
     // Zustand store hooks
     const sourceMap = useDevkitStore((state) => state.sourceMap);
-    const breakpointLines = useDevkitStore((state) => state.breakpointLines);
+    const breakpointsByFile = useDevkitStore((state) => state.breakpointsByFile);
     const codeChangedSinceAssembly = useDevkitStore((state) => state.codeChangedSinceAssembly);
 
     // Project state
@@ -148,7 +148,9 @@ export function EditorContainer() {
     }, [openFiles, closeFile]);
 
     // Determine if we should show the warning banner
-    const showWarningBanner = codeChangedSinceAssembly && breakpointLines.size > 0 && sourceMap.length > 0;
+    // Show if there are any breakpoints across any file
+    const hasAnyBreakpoints = breakpointsByFile.size > 0;
+    const showWarningBanner = codeChangedSinceAssembly && hasAnyBreakpoints && sourceMap.length > 0;
 
     // Convert open files to tabs
     const tabs: Tab[] = openFiles.map(file => ({

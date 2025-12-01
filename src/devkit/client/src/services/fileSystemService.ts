@@ -322,3 +322,49 @@ export function canDeleteFile(path: string): boolean {
   const normalizedPath = path.toLowerCase();
   return normalizedPath !== 'src/main.asm' && normalizedPath !== 'cartridge.json';
 }
+
+/**
+ * Recursively read all files with a given extension from a directory
+ */
+async function readFilesRecursively(
+  handle: FileSystemDirectoryHandle,
+  basePath: string,
+  extension: string,
+  files: Map<string, string>
+): Promise<void> {
+  for await (const entry of handle.values()) {
+    const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
+
+    if (entry.kind === 'directory') {
+      const subDirHandle = await handle.getDirectoryHandle(entry.name);
+      await readFilesRecursively(subDirHandle, entryPath, extension, files);
+    } else if (entry.kind === 'file' && entry.name.endsWith(extension)) {
+      const fileHandle = await handle.getFileHandle(entry.name);
+      const file = await fileHandle.getFile();
+      const content = await file.text();
+      files.set(entryPath, content);
+    }
+  }
+}
+
+/**
+ * Read all assembly source files from the src directory
+ * Returns a Map of relative paths (from project root) to file contents
+ */
+export async function readAllSourceFiles(
+  directoryHandle: FileSystemDirectoryHandle
+): Promise<Map<string, string>> {
+  const files = new Map<string, string>();
+
+  try {
+    // Get the src directory
+    const srcHandle = await directoryHandle.getDirectoryHandle('src', { create: false });
+
+    // Recursively read all .asm files from src
+    await readFilesRecursively(srcHandle, 'src', '.asm', files);
+  } catch (error) {
+    console.error('Error reading source files:', error);
+  }
+
+  return files;
+}

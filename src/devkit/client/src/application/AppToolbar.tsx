@@ -4,13 +4,15 @@ import { faPlay, faStop, faBars, faComments } from '@fortawesome/free-solid-svg-
 import { useDevkitStore } from '../stores/devkitStore';
 import { useVirtualConsole } from '../consoleIntegration/virtualConsole';
 import { updateVirtualConsoleSnapshot } from '../stores/utilities';
-import { assemble } from '../../../../console/src/assembler';
+import { assembleMultiFile } from '../../../../console/src/assembler';
+import { readAllSourceFiles } from '../services/fileSystemService';
 
 export function AppToolbar() {
   // Zustand store hooks
   const appMode = useDevkitStore((state) => state.appMode);
   const setAppMode = useDevkitStore((state) => state.setAppMode);
   const openFiles = useDevkitStore((state) => state.openFiles);
+  const currentProjectHandle = useDevkitStore((state) => state.currentProjectHandle);
   const showProjectExplorer = useDevkitStore((state) => state.showProjectExplorer);
   const showChat = useDevkitStore((state) => state.showChat);
   const toggleProjectExplorer = useDevkitStore((state) => state.toggleProjectExplorer);
@@ -27,22 +29,43 @@ export function AppToolbar() {
 
   // Event handlers
   const handleRun = useCallback(async () => {
-    // Find main.asm
-    const mainAsmFile = openFiles.find(f => f.path === 'src/main.asm');
-
-    if (!mainAsmFile) {
-      alert('main.asm not found. Please ensure main.asm exists in the src folder.');
+    if (!currentProjectHandle) {
+      alert('No project open. Please open a project first.');
       return;
     }
 
     try {
-      // Assemble the code
-      const result = assemble(mainAsmFile.content);
+      // Read all source files from disk, including any not currently open
+      const diskSourceFiles = await readAllSourceFiles(currentProjectHandle);
+
+      // Merge with currently open (and potentially modified) files
+      // Open files take precedence as they may have unsaved changes
+      const sourceFiles = new Map(diskSourceFiles);
+      for (const openFile of openFiles) {
+        if (openFile.path.endsWith('.asm')) {
+          sourceFiles.set(openFile.path, openFile.content);
+        }
+      }
+
+      // Check that main.asm exists
+      if (!sourceFiles.has('src/main.asm')) {
+        alert('main.asm not found. Please ensure main.asm exists in the src folder.');
+        return;
+      }
+
+      // Assemble all source files starting from main.asm
+      const result = assembleMultiFile({
+        sourceFiles,
+        entryPoint: 'src/main.asm',
+      });
 
       // Check for errors
       if (result.errors.length > 0) {
         const errorMessages = result.errors
-          .map(err => `Line ${err.line}: ${err.message}`)
+          .map(err => {
+            const fileInfo = err.file ? `${err.file}:` : '';
+            return `${fileInfo}${err.line}: ${err.message}`;
+          })
           .join('\n');
         alert(`Assembly failed with ${result.errors.length} error(s):\n\n${errorMessages}`);
         return;
@@ -81,6 +104,7 @@ export function AppToolbar() {
     }
   }, [
     openFiles,
+    currentProjectHandle,
     virtualConsole,
     setSourceMap,
     setSymbolTable,

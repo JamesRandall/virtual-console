@@ -69,7 +69,8 @@ interface DevkitState {
   symbolTable: SymbolTable;
 
   // Breakpoint state
-  breakpointLines: Set<number>;      // Line numbers where breakpoints are set
+  // Map from file path to Set of line numbers with breakpoints
+  breakpointsByFile: Map<string, Set<number>>;
   breakpointAddresses: Set<number>;  // Memory addresses where breakpoints are set
   codeChangedSinceAssembly: boolean; // Track if code changed since last assembly
 
@@ -90,7 +91,8 @@ interface DevkitState {
   updateCpuSnapshot: (snapshot: CpuSnapshot) => void;
   setSourceMap: (sourceMap: SourceMapEntry[]) => void;
   setSymbolTable: (symbolTable: SymbolTable) => void;
-  toggleBreakpoint: (line: number) => void;
+  toggleBreakpoint: (file: string, line: number) => void;
+  getBreakpointsForFile: (file: string) => Set<number>;
   updateBreakpointAddresses: (sourceMap: SourceMapEntry[]) => void;
   clearAllBreakpoints: () => void;
   setCodeChangedSinceAssembly: (changed: boolean) => void;
@@ -148,7 +150,7 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   },
   sourceMap: [],
   symbolTable: {},
-  breakpointLines: new Set<number>(),
+  breakpointsByFile: new Map<string, Set<number>>(),
   breakpointAddresses: new Set<number>(),
   codeChangedSinceAssembly: false,
   shouldScrollToPC: false,
@@ -168,47 +170,64 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   setSourceMap: (sourceMap: SourceMapEntry[]) => set({ sourceMap }),
   setSymbolTable: (symbolTable: SymbolTable) => set({ symbolTable }),
 
-  toggleBreakpoint: (line: number) => set((state) => {
-    const newBreakpointLines = new Set(state.breakpointLines);
-    if (newBreakpointLines.has(line)) {
-      newBreakpointLines.delete(line);
+  toggleBreakpoint: (file: string, line: number) => set((state) => {
+    const newBreakpointsByFile = new Map(state.breakpointsByFile);
+    const fileBreakpoints = new Set(newBreakpointsByFile.get(file) || []);
+
+    if (fileBreakpoints.has(line)) {
+      fileBreakpoints.delete(line);
     } else {
-      newBreakpointLines.add(line);
+      fileBreakpoints.add(line);
+    }
+
+    if (fileBreakpoints.size === 0) {
+      newBreakpointsByFile.delete(file);
+    } else {
+      newBreakpointsByFile.set(file, fileBreakpoints);
     }
 
     // If we have a source map, immediately update breakpoint addresses
     const newBreakpointAddresses = new Set<number>();
     if (state.sourceMap.length > 0) {
-      newBreakpointLines.forEach((line) => {
-        const entry = state.sourceMap.find(entry => entry.line === line);
-        if (entry) {
-          newBreakpointAddresses.add(entry.address);
-        }
+      newBreakpointsByFile.forEach((lines, filePath) => {
+        lines.forEach((lineNum) => {
+          const entry = state.sourceMap.find(e => e.line === lineNum && e.file === filePath);
+          if (entry) {
+            newBreakpointAddresses.add(entry.address);
+          }
+        });
       });
     }
 
     return {
-      breakpointLines: newBreakpointLines,
+      breakpointsByFile: newBreakpointsByFile,
       breakpointAddresses: newBreakpointAddresses
     };
   }),
 
+  getBreakpointsForFile: (file: string) => {
+    const state = useDevkitStore.getState();
+    return state.breakpointsByFile.get(file) || new Set<number>();
+  },
+
   updateBreakpointAddresses: (sourceMap: SourceMapEntry[]) => set((state) => {
     const newBreakpointAddresses = new Set<number>();
 
-    // For each breakpoint line, find the corresponding address in the source map
-    state.breakpointLines.forEach((line) => {
-      const entry = sourceMap.find(entry => entry.line === line);
-      if (entry) {
-        newBreakpointAddresses.add(entry.address);
-      }
+    // For each breakpoint (file, line), find the corresponding address in the source map
+    state.breakpointsByFile.forEach((lines, filePath) => {
+      lines.forEach((lineNum) => {
+        const entry = sourceMap.find(e => e.line === lineNum && e.file === filePath);
+        if (entry) {
+          newBreakpointAddresses.add(entry.address);
+        }
+      });
     });
 
     return { breakpointAddresses: newBreakpointAddresses };
   }),
 
   clearAllBreakpoints: () => set({
-    breakpointLines: new Set<number>(),
+    breakpointsByFile: new Map<string, Set<number>>(),
     breakpointAddresses: new Set<number>()
   }),
 

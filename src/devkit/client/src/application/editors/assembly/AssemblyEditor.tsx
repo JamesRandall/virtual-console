@@ -1,11 +1,13 @@
-import {useCallback, useRef, useEffect} from "react";
+import {useCallback, useRef, useEffect, useMemo} from "react";
 import {Editor, type Monaco, type OnMount} from "@monaco-editor/react";
 import type * as MonacoEditor from "monaco-editor";
+import {useShallow} from "zustand/react/shallow";
 
 import {useDevkitStore} from "../../../stores/devkitStore.ts";
 import {updateVirtualConsoleSnapshot} from "../../../stores/utilities.ts";
 import {useVirtualConsole} from "../../../consoleIntegration/virtualConsole.tsx";
-import {assemble, type AssemblerError} from "../../../../../../console/src/assembler.ts";
+import {assembleMultiFile, type AssemblerError} from "../../../../../../console/src/assembler.ts";
+import {readAllSourceFiles} from "../../../services/fileSystemService.ts";
 import {
     registerAssemblerLanguage,
     ASSEMBLER_LANGUAGE_ID,
@@ -26,11 +28,21 @@ export function AssemblyEditor({ content, filePath, onChange }: AssemblyEditorPr
     const sourceMap = useDevkitStore((state) => state.sourceMap);
     const cpuSnapshot = useDevkitStore((state) => state.cpuSnapshot);
     const isConsoleRunning = useDevkitStore((state) => state.isConsoleRunning);
-    const breakpointLines = useDevkitStore((state) => state.breakpointLines);
     const toggleBreakpoint = useDevkitStore((state) => state.toggleBreakpoint);
+
+    // Get breakpoints for this specific file - use useShallow for proper array comparison
+    const breakpointLinesArray = useDevkitStore(
+        useShallow((state) => {
+            const fileBreakpoints = state.breakpointsByFile.get(filePath);
+            return fileBreakpoints ? Array.from(fileBreakpoints).sort((a, b) => a - b) : [];
+        })
+    );
+    // Memoize the Set to avoid recreating on every render
+    const breakpointLines = useMemo(() => new Set(breakpointLinesArray), [breakpointLinesArray]);
     const updateBreakpointAddresses = useDevkitStore((state) => state.updateBreakpointAddresses);
     const setCodeChangedSinceAssembly = useDevkitStore((state) => state.setCodeChangedSinceAssembly);
     const openFiles = useDevkitStore((state) => state.openFiles);
+    const currentProjectHandle = useDevkitStore((state) => state.currentProjectHandle);
 
     // Virtual console hook
     const virtualConsole = useVirtualConsole();
@@ -39,25 +51,31 @@ export function AssemblyEditor({ content, filePath, onChange }: AssemblyEditorPr
     const monacoRef = useRef<Monaco | null>(null);
     const editorRef = useRef<MonacoEditor.editor.IStandaloneCodeEditor | null>(null);
     const decorationsCollectionRef = useRef<MonacoEditor.editor.IEditorDecorationsCollection | null>(null);
+    const filePathRef = useRef(filePath);
 
-    // Find the line number for a given program counter address
+    // Keep filePathRef up to date
+    useEffect(() => {
+        filePathRef.current = filePath;
+    }, [filePath]);
+
+    // Find the line number for a given program counter address (only for this file)
     const findLineForPC = useCallback((pc: number): number | null => {
         if (sourceMap.length === 0) {
             return null;
         }
 
-        // Find the source map entry for the current PC
+        // Find the source map entry for the current PC that matches this file
         // Source map is sorted by address, so we find the last entry with address <= PC
         let line: number | null = null;
         for (const entry of sourceMap) {
-            if (entry.address <= pc) {
+            if (entry.address <= pc && entry.file === filePath) {
                 line = entry.line;
-            } else {
+            } else if (entry.address > pc) {
                 break;
             }
         }
         return line;
-    }, [sourceMap]);
+    }, [sourceMap, filePath]);
 
     // Update gutter decorations based on current PC and breakpoints
     const updateDecorations = useCallback(() => {
@@ -118,8 +136,8 @@ export function AssemblyEditor({ content, filePath, onChange }: AssemblyEditorPr
         }
     }, [content]);
 
-    // Validation function
-    const validateCode = useCallback((code: string) => {
+    // Validation function - uses multi-file assembly to properly resolve includes
+    const validateCode = useCallback(async (code: string) => {
         if (!monacoRef.current || !editorRef.current) {
             return;
         }
@@ -133,11 +151,35 @@ export function AssemblyEditor({ content, filePath, onChange }: AssemblyEditorPr
         }
 
         try {
-            // Assemble the code to get errors
-            const result = assemble(code);
+            // Build source files map from disk and open files
+            let sourceFiles = new Map<string, string>();
+
+            // Read files from disk if we have a project handle
+            if (currentProjectHandle) {
+                sourceFiles = await readAllSourceFiles(currentProjectHandle);
+            }
+
+            // Merge with currently open files (they may have unsaved changes)
+            for (const openFile of openFiles) {
+                if (openFile.path.endsWith('.asm')) {
+                    sourceFiles.set(openFile.path, openFile.content);
+                }
+            }
+
+            // Update the current file's content with what's being validated
+            sourceFiles.set(filePath, code);
+
+            // Assemble all files starting from main.asm
+            const result = assembleMultiFile({
+                sourceFiles,
+                entryPoint: 'src/main.asm',
+            });
+
+            // Filter errors to only show those for the current file
+            const fileErrors = result.errors.filter(e => e.file === filePath);
 
             // Convert assembler errors to Monaco markers
-            const markers: MonacoEditor.editor.IMarkerData[] = result.errors.map(
+            const markers: MonacoEditor.editor.IMarkerData[] = fileErrors.map(
                 (error: AssemblerError) => ({
                     startLineNumber: error.line,
                     startColumn: error.column || 1,
@@ -157,23 +199,41 @@ export function AssemblyEditor({ content, filePath, onChange }: AssemblyEditorPr
             // If assembler throws an exception, clear markers
             monaco.editor.setModelMarkers(model, ASSEMBLER_LANGUAGE_ID, []);
         }
-    }, []);
+    }, [currentProjectHandle, openFiles, filePath]);
 
-    // Handle assembly
-    const handleAssemble = useCallback(() => {
-        // Assemble main.asm
-        const mainAsmFile = openFiles.find(f => f.path === 'src/main.asm');
+    // Handle assembly - uses multi-file assembly
+    const handleAssemble = useCallback(async () => {
+        // Build source files map from open files
+        const sourceFiles = new Map<string, string>();
 
-        if (!mainAsmFile) {
+        // Read files from disk if we have a project handle
+        if (currentProjectHandle) {
+            const diskFiles = await readAllSourceFiles(currentProjectHandle);
+            for (const [path, content] of diskFiles) {
+                sourceFiles.set(path, content);
+            }
+        }
+
+        // Merge with currently open files (they may have unsaved changes)
+        for (const openFile of openFiles) {
+            if (openFile.path.endsWith('.asm')) {
+                sourceFiles.set(openFile.path, openFile.content);
+            }
+        }
+
+        if (!sourceFiles.has('src/main.asm')) {
             console.error("main.asm not found");
             return { success: false, error: "main.asm not found" };
         }
 
-        console.log('📝 Assembling code (length:', mainAsmFile.content.length, 'chars)');
+        console.log('📝 Assembling code with', sourceFiles.size, 'source files');
 
         try {
-            // Assemble the code
-            const result = assemble(mainAsmFile.content);
+            // Assemble all files starting from main.asm
+            const result = assembleMultiFile({
+                sourceFiles,
+                entryPoint: 'src/main.asm',
+            });
 
             // Check for errors
             if (result.errors.length > 0) {
@@ -183,6 +243,7 @@ export function AssemblyEditor({ content, filePath, onChange }: AssemblyEditorPr
                     errors: result.errors.map(err => ({
                         line: err.line,
                         column: err.column,
+                        file: err.file,
                         message: err.message
                     }))
                 };
@@ -222,7 +283,7 @@ export function AssemblyEditor({ content, filePath, onChange }: AssemblyEditorPr
             const errorMessage = error instanceof Error ? error.message : String(error);
             return { success: false, error: errorMessage };
         }
-    }, [openFiles, setSourceMap, setSymbolTable, updateBreakpointAddresses, setCodeChangedSinceAssembly, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
+    }, [currentProjectHandle, openFiles, setSourceMap, setSymbolTable, updateBreakpointAddresses, setCodeChangedSinceAssembly, virtualConsole, updateMemorySnapshot, updateCpuSnapshot]);
 
     // Set up event listeners for AI tools
     const setupAiToolListeners = useCallback((editor: MonacoEditor.editor.IStandaloneCodeEditor) => {
@@ -320,6 +381,8 @@ export function AssemblyEditor({ content, filePath, onChange }: AssemblyEditorPr
         decorationsCollectionRef.current = editor.createDecorationsCollection();
 
         // Add mouse down handler for breakpoint toggling
+        // Use filePathRef to always get the current filePath, since this handler
+        // is registered once and won't be updated when filePath changes
         editor.onMouseDown((e) => {
             if (!monacoRef.current) return;
 
@@ -327,7 +390,7 @@ export function AssemblyEditor({ content, filePath, onChange }: AssemblyEditorPr
             if (e.target.type === monacoRef.current.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
                 const line = e.target.position?.lineNumber;
                 if (line) {
-                    toggleBreakpoint(line);
+                    toggleBreakpoint(filePathRef.current, line);
                 }
             }
         });
@@ -350,14 +413,15 @@ export function AssemblyEditor({ content, filePath, onChange }: AssemblyEditorPr
         // Notify parent of content change
         onChange(code);
 
-        // Mark code as changed if we have an existing source map (assembly has occurred) and this is main.asm
-        if (sourceMap.length > 0 && filePath === 'src/main.asm') {
+        // Mark code as changed if we have an existing source map (assembly has occurred)
+        // This applies to any .asm file since changes to includes also affect the build
+        if (sourceMap.length > 0) {
             setCodeChangedSinceAssembly(true);
         }
 
         // Validate code on change
         validateCode(code);
-    }, [onChange, sourceMap.length, filePath, setCodeChangedSinceAssembly, validateCode]);
+    }, [onChange, sourceMap.length, setCodeChangedSinceAssembly, validateCode]);
 
     return (
         <Editor

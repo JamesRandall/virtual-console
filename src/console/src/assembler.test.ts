@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { assemble } from './assembler';
+import { assemble, assembleMultiFile } from './assembler';
 import {
   OP_NOP, OP_LD, OP_MOV, OP_ADD, OP_BR, OP_EXT,
   EXT_RET, EXT_PUSH, EXT_POP, EXT_INC, EXT_DEC,
@@ -1088,6 +1088,558 @@ describe('Assembler', () => {
       expect(result.symbolTable['main']).toBe(0x8000);
       expect(result.symbolTable['SCREEN_ADDR']).toBe(0xC000);
       expect(result.symbolTable['main.loop']).toBeDefined();
+    });
+  });
+
+  describe('Multi-File Assembly', () => {
+    describe('.include directive', () => {
+      it('should include a file from the same directory', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "utils.asm"
+          main:
+            CALL utility_function
+            RET
+          `],
+          ['src/utils.asm', `
+          utility_function:
+            LD R0, #$42
+            RET
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.symbolTable['utility_function']).toBe(0x8000);
+        expect(result.symbolTable['main']).toBeDefined();
+      });
+
+      it('should include a file with quoted path', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "helpers.asm"
+          main:
+            NOP
+          `],
+          ['src/helpers.asm', `
+          helper:
+            RET
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.symbolTable['helper']).toBeDefined();
+      });
+
+      it('should resolve relative paths with ../', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "../lib/math.asm"
+          main:
+            CALL add_numbers
+            RET
+          `],
+          ['lib/math.asm', `
+          add_numbers:
+            ADD R0, R1
+            RET
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.symbolTable['add_numbers']).toBeDefined();
+      });
+
+      it('should resolve paths with ./', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "./utils.asm"
+          main:
+            NOP
+          `],
+          ['src/utils.asm', `
+          util:
+            RET
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.symbolTable['util']).toBeDefined();
+      });
+
+      it('should handle nested includes', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "level1.asm"
+          main:
+            CALL func_a
+            CALL func_b
+            RET
+          `],
+          ['src/level1.asm', `
+            .include "level2.asm"
+          func_a:
+            LD R0, #1
+            RET
+          `],
+          ['src/level2.asm', `
+          func_b:
+            LD R0, #2
+            RET
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.symbolTable['func_a']).toBeDefined();
+        expect(result.symbolTable['func_b']).toBeDefined();
+      });
+
+      it('should handle includes from subdirectories', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "utils/helpers.asm"
+          main:
+            CALL helper
+            RET
+          `],
+          ['src/utils/helpers.asm', `
+          helper:
+            RET
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.symbolTable['helper']).toBeDefined();
+      });
+    });
+
+    describe('Duplicate include prevention', () => {
+      it('should not include the same file twice', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "shared.asm"
+            .include "other.asm"
+          main:
+            NOP
+          `],
+          ['src/other.asm', `
+            .include "shared.asm"
+          other_func:
+            NOP
+          `],
+          ['src/shared.asm', `
+          shared_const:
+            .define SHARED_VALUE $42
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        // Should not error with duplicate label
+        expect(result.errors).toHaveLength(0);
+        expect(result.symbolTable['SHARED_VALUE']).toBe(0x42);
+      });
+
+      it('should handle circular includes gracefully', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "a.asm"
+          main:
+            NOP
+          `],
+          ['src/a.asm', `
+            .include "b.asm"
+          func_a:
+            NOP
+          `],
+          ['src/b.asm', `
+            .include "a.asm"
+          func_b:
+            NOP
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        // Should not infinite loop, should complete without duplicate label errors
+        expect(result.errors).toHaveLength(0);
+        expect(result.symbolTable['func_a']).toBeDefined();
+        expect(result.symbolTable['func_b']).toBeDefined();
+      });
+
+      it('should be case-insensitive for duplicate detection', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "Utils.asm"
+            .include "utils.asm"
+          main:
+            NOP
+          `],
+          ['src/Utils.asm', `
+          util_func:
+            RET
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        // Second include should be skipped
+        expect(result.errors).toHaveLength(0);
+      });
+    });
+
+    describe('Error handling', () => {
+      it('should error when included file is not found', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "nonexistent.asm"
+          main:
+            NOP
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors.length).toBeGreaterThan(0);
+        expect(result.errors[0].message).toContain('Cannot find included file');
+        expect(result.errors[0].file).toBe('src/main.asm');
+      });
+
+      it('should error when .include has no argument', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include
+          main:
+            NOP
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors.length).toBeGreaterThan(0);
+        expect(result.errors[0].message).toContain('requires a file path');
+      });
+
+      it('should error when entry point is not found', () => {
+        const sourceFiles = new Map([
+          ['src/other.asm', `
+            NOP
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors.length).toBeGreaterThan(0);
+        expect(result.errors[0].message).toContain('Entry point file not found');
+      });
+
+      it('should report errors with correct file path', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "broken.asm"
+          main:
+            NOP
+          `],
+          ['src/broken.asm', `
+          func:
+            INVALID_INSTRUCTION
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors.length).toBeGreaterThan(0);
+        expect(result.errors[0].file).toBe('src/broken.asm');
+        expect(result.errors[0].message).toContain('Unknown opcode');
+      });
+    });
+
+    describe('Source map tracking', () => {
+      it('should track source file in source map entries', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "utils.asm"
+          main:
+            NOP
+            RET
+          `],
+          ['src/utils.asm', `
+          util:
+            LD R0, #1
+            RET
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors).toHaveLength(0);
+
+        // Check that source map entries have file information
+        const utilEntries = result.sourceMap.filter(e => e.file === 'src/utils.asm');
+        const mainEntries = result.sourceMap.filter(e => e.file === 'src/main.asm');
+
+        expect(utilEntries.length).toBeGreaterThan(0);
+        expect(mainEntries.length).toBeGreaterThan(0);
+      });
+
+      it('should have correct line numbers per file', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+          main:
+            NOP
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.sourceMap.length).toBe(1);
+        expect(result.sourceMap[0].file).toBe('src/main.asm');
+        expect(result.sourceMap[0].line).toBe(4); // Line 4 has NOP
+      });
+    });
+
+    describe('Symbol sharing across files', () => {
+      it('should share labels across included files', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "constants.asm"
+          main:
+            LD R0, #MY_CONST
+            RET
+          `],
+          ['src/constants.asm', `
+            .define MY_CONST $42
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.symbolTable['MY_CONST']).toBe(0x42);
+        // Check that the LD instruction uses the correct constant
+        expect(result.segments[0].data[2]).toBe(0x42);
+      });
+
+      it('should allow calling functions defined in included files', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+          main:
+            CALL utility
+            RET
+            .include "utils.asm"
+          `],
+          ['src/utils.asm', `
+          utility:
+            LD R0, #$FF
+            RET
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.symbolTable['utility']).toBeDefined();
+      });
+
+      it('should allow forward references to included file labels', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+          main:
+            JMP external_label
+            .include "external.asm"
+          `],
+          ['src/external.asm', `
+          external_label:
+            NOP
+            RET
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors).toHaveLength(0);
+      });
+    });
+
+    describe('Backward compatibility', () => {
+      it('should work with single file using assemble()', () => {
+        const code = `
+          .org $8000
+        main:
+          NOP
+          RET
+        `;
+
+        const result = assemble(code);
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.sourceMap[0].file).toBe('main.asm');
+      });
+
+      it('should work with assembleMultiFile for single file', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+          main:
+            NOP
+            RET
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.segments).toHaveLength(1);
+      });
+    });
+
+    describe('Complex multi-file programs', () => {
+      it('should assemble a multi-file game structure', () => {
+        const sourceFiles = new Map([
+          ['src/main.asm', `
+            .org $8000
+            .include "constants.asm"
+            .include "graphics.asm"
+            .include "input.asm"
+
+          main:
+            CALL init_graphics
+            CALL init_input
+
+          game_loop:
+            CALL read_input
+            CALL update_screen
+            JMP game_loop
+          `],
+          ['src/constants.asm', `
+            .define SCREEN_BASE $C000
+            .define INPUT_PORT $0100
+            .define SPRITE_COUNT 16
+          `],
+          ['src/graphics.asm', `
+          init_graphics:
+            LD R0, #0
+            LD R2, #>SCREEN_BASE
+            LD R3, #<SCREEN_BASE
+            RET
+
+          update_screen:
+            NOP
+            RET
+          `],
+          ['src/input.asm', `
+          init_input:
+            LD R0, #0
+            RET
+
+          read_input:
+            LD R0, [INPUT_PORT]
+            RET
+          `]
+        ]);
+
+        const result = assembleMultiFile({
+          sourceFiles,
+          entryPoint: 'src/main.asm'
+        });
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.symbolTable['SCREEN_BASE']).toBe(0xC000);
+        expect(result.symbolTable['INPUT_PORT']).toBe(0x0100);
+        expect(result.symbolTable['SPRITE_COUNT']).toBe(16);
+        expect(result.symbolTable['init_graphics']).toBeDefined();
+        expect(result.symbolTable['init_input']).toBeDefined();
+        expect(result.symbolTable['update_screen']).toBeDefined();
+        expect(result.symbolTable['read_input']).toBeDefined();
+        expect(result.symbolTable['main']).toBeDefined();
+        expect(result.symbolTable['game_loop']).toBeDefined();
+      });
     });
   });
 });
