@@ -553,13 +553,76 @@ export function SpriteCanvas({
     setPreviewPixels([]);
   }, [isDrawing, startPos, previewPixels, selectedTool, selectedColorIndex, onPixelsChange, isDraggingPaste, onOperationEnd]);
 
-  // Handle mouse leave
+  // Handle mouse leave - just clear preview, don't release the tool
   const handleMouseLeave = useCallback(() => {
     setPreviewPixels([]);
-    if (isDrawing) {
+  }, []);
+
+  // Add global mouse listeners when drawing to track mouse outside canvas
+  useEffect(() => {
+    if (!isDrawing && !isDraggingPaste) return;
+
+    const handleGlobalMouseUp = () => {
       handleMouseUp();
-    }
-  }, [isDrawing, handleMouseUp]);
+    };
+
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      // Create a synthetic event-like object with clientX/clientY
+      const syntheticEvent = {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        currentTarget: canvas,
+      } as React.MouseEvent<HTMLCanvasElement>;
+
+      // Check if mouse is within canvas bounds for actual pixel operations
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const pixelSize = zoom;
+      const col = Math.floor(x / pixelSize);
+      const row = Math.floor(y / pixelSize);
+
+      // Only process if within bounds or for preview updates
+      if (row >= 0 && row < SPRITE_HEIGHT && col >= 0 && col < SPRITE_WIDTH) {
+        handleMouseMove(syntheticEvent);
+      } else {
+        // Outside bounds - update preview for shape tools to show clamped preview
+        if (startPos && (selectedTool === 'line' || selectedTool === 'rectangle' || selectedTool === 'ellipse')) {
+          // Clamp to canvas bounds for preview
+          const clampedRow = Math.max(0, Math.min(SPRITE_HEIGHT - 1, row));
+          const clampedCol = Math.max(0, Math.min(SPRITE_WIDTH - 1, col));
+
+          if (selectedTool === 'line') {
+            setPreviewPixels(getLinePixels(startPos.row, startPos.col, clampedRow, clampedCol));
+          } else if (selectedTool === 'rectangle') {
+            setPreviewPixels(getRectanglePixels(startPos.row, startPos.col, clampedRow, clampedCol));
+          } else if (selectedTool === 'ellipse') {
+            setPreviewPixels(getEllipsePixels(startPos.row, startPos.col, clampedRow, clampedCol));
+          }
+        } else if (isDraggingPaste && pastePreview && pasteDragOffset) {
+          // Handle paste dragging outside canvas
+          const newRow = row - pasteDragOffset.row;
+          const newCol = col - pasteDragOffset.col;
+          onPastePreviewChange({
+            ...pastePreview,
+            row: newRow,
+            col: newCol,
+          });
+        }
+      }
+    };
+
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+
+    return () => {
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+    };
+  }, [isDrawing, isDraggingPaste, handleMouseUp, handleMouseMove, zoom, startPos, selectedTool, getLinePixels, getRectanglePixels, getEllipsePixels, pastePreview, pasteDragOffset, onPastePreviewChange]);
 
   return (
     <div className="relative inline-block">
