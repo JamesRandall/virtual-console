@@ -206,7 +206,7 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   }),
 
   getBreakpointsForFile: (file: string) => {
-    const state = useDevkitStore.getState();
+    const state:DevkitState = useDevkitStore.getState();
     return state.breakpointsByFile.get(file) || new Set<number>();
   },
 

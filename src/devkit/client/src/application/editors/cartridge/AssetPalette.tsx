@@ -32,6 +32,7 @@ async function findAssetsInDirectory(
   basePath: string,
   assets: AssetItem[]
 ): Promise<void> {
+  // @ts-expect-error - values() is supported but not in all type definitions
   for await (const entry of handle.values()) {
     const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
 

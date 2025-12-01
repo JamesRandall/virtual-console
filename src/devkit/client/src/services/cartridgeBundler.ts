@@ -167,7 +167,7 @@ export async function buildCartridge(
     try {
       const cartridgeJson = await readFile(projectHandle, 'cartridge.json');
       cartridgeConfig = JSON.parse(cartridgeJson);
-    } catch (error) {
+    } catch {
       errors.push('Failed to read cartridge.json. Please configure your cartridge first.');
       return { success: false, errors, warnings };
     }
@@ -240,7 +240,7 @@ export async function buildCartridge(
       try {
         const assetBank = await loadAssetBank(projectHandle, assetPath);
         banks.push(assetBank);
-      } catch (error) {
+      } catch {
         warnings.push(`Failed to load asset: ${assetPath}`);
         // Add empty bank as placeholder to maintain bank indices
         banks.push(createEmptyBank());
@@ -333,7 +333,7 @@ export function loadCartridgeCode(
   // Bank 1 starts at offset BANK_SIZE
   const codeBank = rom.slice(BANK_SIZE, BANK_SIZE * 2);
 
-  let firstStartAddress = segments[0].startAddress;
+  const firstStartAddress = segments[0].startAddress;
 
   for (const segment of segments) {
     for (let i = 0; i < segment.length; i++) {
