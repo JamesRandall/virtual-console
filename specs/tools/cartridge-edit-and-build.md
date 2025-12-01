@@ -41,9 +41,17 @@ When the user clicks the cartridge.json file in the file tree, we should open th
     ]
 }
 
+Create this editor in:
+
+    /Users/jamesrandall/code/virtual-console/src/devkit/client/src/application/editors/cartridge
+
 ## Phase 2 - Building the cartridge
 
 In the devkit we need to add a "build" button to the left of the run button that will build the cartridge. When pressed it will create a cartridge.rom file in the root directory and show it in the project explorer. The build process should take the assets and pack them into the cartridge using 32k alignment for each bank so that our code can say things like "the sprites are in bank 1". You will need to assemble the code to obtain the code.bin asset.
+
+Create this bundler in:
+
+    /Users/jamesrandall/code/virtual-console/src/devkit/client/src/services/cartridgeBundler.ts
 
 ## Phase 3 - Updating our run process
 
