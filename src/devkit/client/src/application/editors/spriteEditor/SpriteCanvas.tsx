@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { SYSTEM_PALETTE, rgbToString } from '../../../../../../console/src/systemPalette';
 import { type Tool } from './ToolPalette';
 
@@ -47,8 +47,6 @@ export function SpriteCanvas({
   onPixelsChange,
   selection,
   onSelectionChange,
-  clipboard,
-  onClipboardChange,
   pastePreview,
   onPastePreviewChange,
   onCommitPaste,
@@ -628,7 +626,7 @@ export function SpriteCanvas({
     <div className="relative inline-block">
       <canvas
         ref={canvasRef}
-        className={`border border-zinc-600 ${pastePreview && isInsidePastePreview ? 'cursor-move' : 'cursor-crosshair'}`}
+        className={`border border-zinc-600 ${pastePreview ? 'cursor-move' : 'cursor-crosshair'}`}
         style={{ imageRendering: 'pixelated' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}

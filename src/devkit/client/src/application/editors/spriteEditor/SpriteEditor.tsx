@@ -7,6 +7,7 @@ import { SpriteSelector } from './SpriteSelector';
 import { PaletteSelector } from './PaletteSelector';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faUndo, faRedo } from '@fortawesome/free-solid-svg-icons';
+import { readBinaryFile } from '../../../services/fileSystemService';
 
 interface SpriteEditorProps {
   filePath: string;
@@ -25,6 +26,30 @@ const SPRITE_HEIGHT = 16;
 const BYTES_PER_SPRITE_4BPP = 128; // 16x16 pixels at 4bpp = 128 bytes
 const SPRITES_PER_GBIN = 256;
 const MAX_UNDO_HISTORY = 50; // Maximum number of undo states per sprite
+
+// Helper: Set a pixel in gbin data (4bpp format - 2 pixels per byte)
+function setPixelInGbin(data: Uint8Array, spriteIndex: number, row: number, col: number, colorIndex: number): void {
+  const spriteOffset = spriteIndex * BYTES_PER_SPRITE_4BPP;
+  const byteOffset = spriteOffset + row * 8 + Math.floor(col / 2);
+  const currentByte = data[byteOffset];
+
+  if (col % 2 === 0) {
+    // Even pixel - high nibble
+    data[byteOffset] = (currentByte & 0x0F) | ((colorIndex & 0x0F) << 4);
+  } else {
+    // Odd pixel - low nibble
+    data[byteOffset] = (currentByte & 0xF0) | (colorIndex & 0x0F);
+  }
+}
+
+// Helper: Encode Uint8Array to base64
+function encodeToBase64(data: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < data.length; i++) {
+    binary += String.fromCharCode(data[i]);
+  }
+  return btoa(binary);
+}
 
 export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
   // Zustand store hooks
@@ -185,20 +210,8 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
       if (!currentProjectHandle) return;
 
       try {
-        const pathParts = selectedPalettePath.split('/');
-        let currentHandle: FileSystemDirectoryHandle = currentProjectHandle;
-
-        // Navigate through directories
-        for (let i = 0; i < pathParts.length - 1; i++) {
-          currentHandle = await currentHandle.getDirectoryHandle(pathParts[i], { create: false });
-        }
-
-        // Get the file
-        const fileName = pathParts[pathParts.length - 1];
-        const fileHandle = await currentHandle.getFileHandle(fileName, { create: false });
-        const file = await fileHandle.getFile();
-        const arrayBuffer = await file.arrayBuffer();
-        setPaletteData(new Uint8Array(arrayBuffer));
+        const data = await readBinaryFile(currentProjectHandle, selectedPalettePath);
+        setPaletteData(data);
       } catch (err) {
         console.error('Error loading palette:', err);
         // Fall back to default palette (all zeros)
@@ -263,29 +276,14 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
   // Apply pixel state to the sprite
   const applyPixelState = useCallback((pixels: number[][]) => {
     const newData = new Uint8Array(gbinData);
-    const spriteOffset = selectedSpriteIndex * BYTES_PER_SPRITE_4BPP;
 
     for (let row = 0; row < SPRITE_HEIGHT; row++) {
       for (let col = 0; col < SPRITE_WIDTH; col++) {
-        const colorIndex = pixels[row][col];
-        const byteOffset = spriteOffset + row * 8 + Math.floor(col / 2);
-        const currentByte = newData[byteOffset];
-
-        if (col % 2 === 0) {
-          newData[byteOffset] = (currentByte & 0x0F) | ((colorIndex & 0x0F) << 4);
-        } else {
-          newData[byteOffset] = (currentByte & 0xF0) | (colorIndex & 0x0F);
-        }
+        setPixelInGbin(newData, selectedSpriteIndex, row, col, pixels[row][col]);
       }
     }
 
-    let binary = '';
-    for (let i = 0; i < newData.length; i++) {
-      binary += String.fromCharCode(newData[i]);
-    }
-    const base64 = btoa(binary);
-
-    updateFileContent(filePath, base64);
+    updateFileContent(filePath, encodeToBase64(newData));
     markFileDirty(filePath, true);
   }, [gbinData, selectedSpriteIndex, filePath, updateFileContent, markFileDirty]);
 
@@ -337,30 +335,10 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
       hasUndoForCurrentStrokeRef.current = true;
     }
 
-    const spriteOffset = selectedSpriteIndex * BYTES_PER_SPRITE_4BPP;
-    const byteOffset = spriteOffset + row * 8 + Math.floor(col / 2);
-
-    // Create new gbin data with the change
     const newData = new Uint8Array(gbinData);
-    const currentByte = newData[byteOffset];
+    setPixelInGbin(newData, selectedSpriteIndex, row, col, colorIndex);
 
-    if (col % 2 === 0) {
-      // Even pixel - high nibble
-      newData[byteOffset] = (currentByte & 0x0F) | ((colorIndex & 0x0F) << 4);
-    } else {
-      // Odd pixel - low nibble
-      newData[byteOffset] = (currentByte & 0xF0) | (colorIndex & 0x0F);
-    }
-
-    // Encode back to base64
-    let binary = '';
-    for (let i = 0; i < newData.length; i++) {
-      binary += String.fromCharCode(newData[i]);
-    }
-    const base64 = btoa(binary);
-
-    // Update file content in store
-    updateFileContent(filePath, base64);
+    updateFileContent(filePath, encodeToBase64(newData));
     markFileDirty(filePath, true);
   }, [gbinData, selectedSpriteIndex, filePath, updateFileContent, markFileDirty, pushUndoState]);
 
@@ -375,31 +353,55 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
     const newData = new Uint8Array(gbinData);
 
     for (const { row, col, colorIndex } of changes) {
-      const spriteOffset = selectedSpriteIndex * BYTES_PER_SPRITE_4BPP;
-      const byteOffset = spriteOffset + row * 8 + Math.floor(col / 2);
-      const currentByte = newData[byteOffset];
-
-      if (col % 2 === 0) {
-        newData[byteOffset] = (currentByte & 0x0F) | ((colorIndex & 0x0F) << 4);
-      } else {
-        newData[byteOffset] = (currentByte & 0xF0) | (colorIndex & 0x0F);
-      }
+      setPixelInGbin(newData, selectedSpriteIndex, row, col, colorIndex);
     }
 
-    // Encode back to base64
-    let binary = '';
-    for (let i = 0; i < newData.length; i++) {
-      binary += String.fromCharCode(newData[i]);
-    }
-    const base64 = btoa(binary);
-
-    updateFileContent(filePath, base64);
+    updateFileContent(filePath, encodeToBase64(newData));
     markFileDirty(filePath, true);
   }, [gbinData, selectedSpriteIndex, filePath, updateFileContent, markFileDirty, pushUndoState]);
 
   // Called when a drawing operation ends (mouse up)
   const handleOperationEnd = useCallback(() => {
     hasUndoForCurrentStrokeRef.current = false;
+  }, []);
+
+  // Helper: Get normalized selection bounds (min/max)
+  const getSelectionBounds = useCallback((sel: { startRow: number; startCol: number; endRow: number; endCol: number }) => {
+    return {
+      minRow: Math.min(sel.startRow, sel.endRow),
+      maxRow: Math.max(sel.startRow, sel.endRow),
+      minCol: Math.min(sel.startCol, sel.endCol),
+      maxCol: Math.max(sel.startCol, sel.endCol),
+    };
+  }, []);
+
+  // Helper: Extract pixel data from a selection region
+  const extractSelectionPixels = useCallback((sel: { startRow: number; startCol: number; endRow: number; endCol: number }) => {
+    const { minRow, maxRow, minCol, maxCol } = getSelectionBounds(sel);
+    const pixelData: number[][] = [];
+    for (let r = minRow; r <= maxRow; r++) {
+      const rowData: number[] = [];
+      for (let c = minCol; c <= maxCol; c++) {
+        rowData.push(spritePixels[r][c]);
+      }
+      pixelData.push(rowData);
+    }
+    return { pixelData, minRow, maxRow, minCol, maxCol };
+  }, [getSelectionBounds, spritePixels]);
+
+  // Helper: Convert paste preview to pixel changes array
+  const getPasteChanges = useCallback((preview: { row: number; col: number; data: number[][] }) => {
+    const changes: Array<{ row: number; col: number; colorIndex: number }> = [];
+    for (let r = 0; r < preview.data.length; r++) {
+      for (let c = 0; c < preview.data[r].length; c++) {
+        const targetRow = preview.row + r;
+        const targetCol = preview.col + c;
+        if (targetRow >= 0 && targetRow < SPRITE_HEIGHT && targetCol >= 0 && targetCol < SPRITE_WIDTH) {
+          changes.push({ row: targetRow, col: targetCol, colorIndex: preview.data[r][c] });
+        }
+      }
+    }
+    return changes;
   }, []);
 
   // Get the effective color index for the current tool
@@ -409,78 +411,38 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
   const handleToolSelect = useCallback((tool: Tool) => {
     if (pastePreview) {
       // Commit the paste before switching tools
-      const changes: Array<{ row: number; col: number; colorIndex: number }> = [];
-      for (let r = 0; r < pastePreview.data.length; r++) {
-        for (let c = 0; c < pastePreview.data[r].length; c++) {
-          const targetRow = pastePreview.row + r;
-          const targetCol = pastePreview.col + c;
-          if (targetRow >= 0 && targetRow < SPRITE_HEIGHT && targetCol >= 0 && targetCol < SPRITE_WIDTH) {
-            changes.push({ row: targetRow, col: targetCol, colorIndex: pastePreview.data[r][c] });
-          }
-        }
-      }
+      const changes = getPasteChanges(pastePreview);
       if (changes.length > 0) {
         handlePixelsChange(changes);
       }
       setPastePreview(null);
     }
     setSelectedTool(tool);
-  }, [pastePreview, handlePixelsChange]);
+  }, [pastePreview, handlePixelsChange, getPasteChanges]);
 
   // Handle actions (cut, copy, paste)
   const handleAction = useCallback((action: Action) => {
     if (action === 'cut' && selection) {
       // Cut: copy to clipboard and clear selection
-      const minRow = Math.min(selection.startRow, selection.endRow);
-      const maxRow = Math.max(selection.startRow, selection.endRow);
-      const minCol = Math.min(selection.startCol, selection.endCol);
-      const maxCol = Math.max(selection.startCol, selection.endCol);
-
-      const clipboardData: number[][] = [];
+      const { pixelData, minRow, maxRow, minCol, maxCol } = extractSelectionPixels(selection);
       const changes: Array<{ row: number; col: number; colorIndex: number }> = [];
-
       for (let r = minRow; r <= maxRow; r++) {
-        const rowData: number[] = [];
         for (let c = minCol; c <= maxCol; c++) {
-          rowData.push(spritePixels[r][c]);
           changes.push({ row: r, col: c, colorIndex: 0 });
         }
-        clipboardData.push(rowData);
       }
 
-      setClipboard(clipboardData);
+      setClipboard(pixelData);
       handlePixelsChange(changes);
       setSelection(null);
     } else if (action === 'copy' && selection) {
       // Copy: copy to clipboard
-      const minRow = Math.min(selection.startRow, selection.endRow);
-      const maxRow = Math.max(selection.startRow, selection.endRow);
-      const minCol = Math.min(selection.startCol, selection.endCol);
-      const maxCol = Math.max(selection.startCol, selection.endCol);
-
-      const clipboardData: number[][] = [];
-      for (let r = minRow; r <= maxRow; r++) {
-        const rowData: number[] = [];
-        for (let c = minCol; c <= maxCol; c++) {
-          rowData.push(spritePixels[r][c]);
-        }
-        clipboardData.push(rowData);
-      }
-
-      setClipboard(clipboardData);
+      const { pixelData } = extractSelectionPixels(selection);
+      setClipboard(pixelData);
     } else if (action === 'paste' && clipboard) {
       // If already pasting, commit the current paste first
       if (pastePreview) {
-        const changes: Array<{ row: number; col: number; colorIndex: number }> = [];
-        for (let r = 0; r < pastePreview.data.length; r++) {
-          for (let c = 0; c < pastePreview.data[r].length; c++) {
-            const targetRow = pastePreview.row + r;
-            const targetCol = pastePreview.col + c;
-            if (targetRow >= 0 && targetRow < SPRITE_HEIGHT && targetCol >= 0 && targetCol < SPRITE_WIDTH) {
-              changes.push({ row: targetRow, col: targetCol, colorIndex: pastePreview.data[r][c] });
-            }
-          }
-        }
+        const changes = getPasteChanges(pastePreview);
         if (changes.length > 0) {
           handlePixelsChange(changes);
         }
@@ -499,48 +461,29 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
       });
       setSelection(null);
     }
-  }, [selection, clipboard, pastePreview, spritePixels, handlePixelsChange]);
+  }, [selection, clipboard, pastePreview, handlePixelsChange, extractSelectionPixels, getPasteChanges]);
 
   // Commit paste preview to actual pixels
   const handleCommitPaste = useCallback(() => {
     if (!pastePreview) return;
 
-    const changes: Array<{ row: number; col: number; colorIndex: number }> = [];
-    for (let r = 0; r < pastePreview.data.length; r++) {
-      for (let c = 0; c < pastePreview.data[r].length; c++) {
-        const targetRow = pastePreview.row + r;
-        const targetCol = pastePreview.col + c;
-        if (targetRow >= 0 && targetRow < SPRITE_HEIGHT && targetCol >= 0 && targetCol < SPRITE_WIDTH) {
-          changes.push({ row: targetRow, col: targetCol, colorIndex: pastePreview.data[r][c] });
-        }
-      }
-    }
+    const changes = getPasteChanges(pastePreview);
     if (changes.length > 0) {
       handlePixelsChange(changes);
     }
     setPastePreview(null);
-  }, [pastePreview, handlePixelsChange]);
+  }, [pastePreview, handlePixelsChange, getPasteChanges]);
 
   // Start moving the selection (cut + paste in place)
   const handleStartMove = useCallback(() => {
     if (!selection) return;
 
-    const minRow = Math.min(selection.startRow, selection.endRow);
-    const maxRow = Math.max(selection.startRow, selection.endRow);
-    const minCol = Math.min(selection.startCol, selection.endCol);
-    const maxCol = Math.max(selection.startCol, selection.endCol);
-
-    // Copy the selected pixels
-    const moveData: number[][] = [];
+    const { pixelData, minRow, maxRow, minCol, maxCol } = extractSelectionPixels(selection);
     const clearChanges: Array<{ row: number; col: number; colorIndex: number }> = [];
-
     for (let r = minRow; r <= maxRow; r++) {
-      const rowData: number[] = [];
       for (let c = minCol; c <= maxCol; c++) {
-        rowData.push(spritePixels[r][c]);
         clearChanges.push({ row: r, col: c, colorIndex: 0 });
       }
-      moveData.push(rowData);
     }
 
     // Clear the original location
@@ -550,12 +493,12 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
     setPastePreview({
       row: minRow,
       col: minCol,
-      data: moveData,
+      data: pixelData,
     });
 
     // Clear selection since we're now in paste/move mode
     setSelection(null);
-  }, [selection, spritePixels, handlePixelsChange]);
+  }, [selection, handlePixelsChange, extractSelectionPixels]);
 
   return (
     <div className="flex flex-col h-full dk-bg-primary">
