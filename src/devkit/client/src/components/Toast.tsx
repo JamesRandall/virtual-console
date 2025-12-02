@@ -47,6 +47,7 @@ function ToastItem({ toast: t, onRemove }: { toast: Toast; onRemove: () => void 
       const timer = setTimeout(onRemove, t.duration);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [t.duration, onRemove]);
 
   const icons = {

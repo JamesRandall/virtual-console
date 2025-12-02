@@ -1,8 +1,9 @@
 import type { AIProvider } from './interface.js';
 import { AnthropicProvider } from './anthropic.js';
 import { BedrockProvider } from './bedrock.js';
+import { LlamaCppProvider } from './llamacpp.js';
 
-export type ProviderType = 'anthropic' | 'bedrock';
+export type ProviderType = 'anthropic' | 'bedrock' | 'llamacpp';
 
 export interface ProviderConfig {
   type: ProviderType;
@@ -14,6 +15,8 @@ export interface ProviderConfig {
   bedrockModelId?: string;
   bedrockMaxRetries?: number;
   bedrockBaseDelayMs?: number;
+  // llama.cpp config
+  llamacppHost?: string;
 }
 
 export function createAIProvider(config: ProviderConfig): AIProvider {
@@ -34,6 +37,12 @@ export function createAIProvider(config: ProviderConfig): AIProvider {
         config.bedrockMaxRetries,
         config.bedrockBaseDelayMs
       );
+
+    case 'llamacpp':
+      if (!config.llamacppHost) {
+        throw new Error('llama.cpp host is required');
+      }
+      return new LlamaCppProvider(config.llamacppHost);
 
     default:
       throw new Error(`Unsupported provider type: ${config.type}`);

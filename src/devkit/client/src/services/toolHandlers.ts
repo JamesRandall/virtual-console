@@ -1,4 +1,5 @@
 import { useDevkitStore } from '../stores/devkitStore.js';
+import { readFile } from './fileSystemService.js';
 
 // Get editor content and state
 export async function handleToolRequest(tool: string, parameters: Record<string, unknown>): Promise<unknown> {
@@ -36,12 +37,31 @@ export async function handleToolRequest(tool: string, parameters: Record<string,
     case 'capture_screen':
       return await handleCaptureScreen();
 
+    case 'list_project_files':
+      return await handleListProjectFiles(parameters);
+
+    case 'read_project_file':
+      return await handleReadProjectFile(parameters);
+
     default:
       throw new Error(`Unknown tool: ${tool}`);
   }
 }
 
 async function handleReadSourceCode(): Promise<unknown> {
+  // First, try to get content directly from the store (most reliable)
+  const store = useDevkitStore.getState();
+  const activeFile = store.openFiles.find(f => f.path === store.activeFilePath);
+
+  if (activeFile && activeFile.content) {
+    console.log('read_source_code: Got content from store for', activeFile.path);
+    return {
+      code: activeFile.content,
+      filePath: activeFile.path,
+    };
+  }
+
+  // Fallback: try the event-based approach for cursor position info
   return new Promise((resolve) => {
     const handler = (e: Event) => {
       const customEvent = e as CustomEvent;
@@ -51,16 +71,13 @@ async function handleReadSourceCode(): Promise<unknown> {
       window.removeEventListener('editor-content-response', handler);
     };
 
-    // Add listener BEFORE dispatching the event
     window.addEventListener('editor-content-response', handler);
 
-    // Timeout after 5 seconds
     const timeout = setTimeout(() => {
       window.removeEventListener('editor-content-response', handler);
-      resolve({ code: '', error: 'Timeout reading editor content' });
+      resolve({ code: '', error: 'No active file open' });
     }, 5000);
 
-    // Now dispatch the event
     const event = new CustomEvent('get-editor-content');
     window.dispatchEvent(event);
   });
@@ -264,4 +281,114 @@ async function handleCaptureScreen(): Promise<unknown> {
     const event = new CustomEvent('capture-canvas');
     window.dispatchEvent(event);
   });
+}
+
+interface FileEntry {
+  name: string;
+  type: 'file' | 'directory';
+  children?: FileEntry[];
+}
+
+/**
+ * Recursively list directory contents
+ */
+async function listDirectoryContents(
+  handle: FileSystemDirectoryHandle,
+  maxDepth: number = 5,
+  currentDepth: number = 0
+): Promise<FileEntry[]> {
+  if (currentDepth >= maxDepth) {
+    return [];
+  }
+
+  const entries: FileEntry[] = [];
+
+  // Cast to any to work around incomplete TypeScript types for File System Access API
+  for await (const entry of (handle as any).values()) {
+    if (entry.kind === 'directory') {
+      const subDirHandle = await handle.getDirectoryHandle(entry.name);
+      const children = await listDirectoryContents(subDirHandle, maxDepth, currentDepth + 1);
+      entries.push({
+        name: entry.name,
+        type: 'directory',
+        children
+      });
+    } else {
+      entries.push({
+        name: entry.name,
+        type: 'file'
+      });
+    }
+  }
+
+  // Sort: directories first, then files, both alphabetically
+  entries.sort((a, b) => {
+    if (a.type !== b.type) {
+      return a.type === 'directory' ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
+  return entries;
+}
+
+async function handleListProjectFiles(parameters: Record<string, unknown>): Promise<unknown> {
+  const projectHandle = useDevkitStore.getState().currentProjectHandle;
+
+  if (!projectHandle) {
+    return { error: 'No project is currently open' };
+  }
+
+  const path = parameters.path as string | undefined;
+
+  try {
+    let targetHandle: FileSystemDirectoryHandle = projectHandle;
+
+    // Navigate to subdirectory if path is provided
+    if (path) {
+      const pathParts = path.split('/').filter(p => p);
+      for (const part of pathParts) {
+        targetHandle = await targetHandle.getDirectoryHandle(part, { create: false });
+      }
+    }
+
+    const files = await listDirectoryContents(targetHandle);
+
+    return {
+      path: path || '/',
+      files
+    };
+  } catch (error) {
+    return {
+      error: `Failed to list files: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+async function handleReadProjectFile(parameters: Record<string, unknown>): Promise<unknown> {
+  const projectHandle = useDevkitStore.getState().currentProjectHandle;
+
+  if (!projectHandle) {
+    return { error: 'No project is currently open' };
+  }
+
+  const path = parameters.path as string;
+
+  if (!path) {
+    return { error: 'File path is required' };
+  }
+
+  try {
+    const content = await readFile(projectHandle, path);
+
+    return {
+      path,
+      content,
+      lines: content.split('\n').length
+    };
+  } catch (error) {
+    return {
+      error: `Failed to read file '${path}': ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
 }

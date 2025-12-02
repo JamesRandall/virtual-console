@@ -18,6 +18,10 @@ export const config = {
   bedrockMaxRetries: parseInt(process.env.BEDROCK_MAX_RETRIES || '5', 10),
   bedrockBaseDelayMs: parseInt(process.env.BEDROCK_BASE_DELAY_MS || '1000', 10),
 
+  // llama.cpp configuration
+  llamacppHost: process.env.LLAMACPP_HOST || 'http://localhost:8080',
+  llamacppGrammarPath: process.env.LLAMACPP_GRAMMAR_PATH || './src/ai/grammars/vc-asm.gbnf',
+
   // Model configuration
   maxTokens: parseInt(process.env.MAX_TOKENS || '20000', 10),
   temperature: parseFloat(process.env.TEMPERATURE || '1'),
@@ -42,10 +46,13 @@ export const config = {
           'Set BEDROCK_MODEL_ID in .env file (e.g., arn:aws:bedrock:eu-west-2:551004122490:inference-profile/eu.anthropic.claude-sonnet-4-5-20250929-v1:0)'
         );
       }
+    } else if (this.aiProvider === 'llamacpp') {
+      // llamacpp has defaults, no required config
+      console.log(`Using llama.cpp provider at ${this.llamacppHost}`);
     } else {
       throw new Error(
         `Unsupported AI_PROVIDER: ${this.aiProvider}\n` +
-        'Supported providers: anthropic, bedrock'
+        'Supported providers: anthropic, bedrock, llamacpp'
       );
     }
   }

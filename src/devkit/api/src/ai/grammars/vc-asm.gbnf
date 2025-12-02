@@ -1,0 +1,117 @@
+# GBNF Grammar for vc-asm Assembly Language
+# Used for grammar-constrained generation with llama.cpp
+
+# Root: a program is zero or more lines
+root ::= line*
+
+# A line can be empty, have just a comment, or have content
+line ::= ws* line-content? comment? eol
+
+line-content ::= label-def ws* statement?
+               | statement
+
+# Label definition (identifier followed by colon)
+label-def ::= identifier ":"
+
+# Statement is either an instruction or a directive
+statement ::= instruction | directive
+
+# Instructions
+instruction ::= opcode-noarg
+              | opcode-single ws+ operand
+              | opcode-double ws+ operand ws* "," ws* operand
+              | branch-op ws+ branch-target
+
+# Opcodes grouped by operand count
+opcode-noarg ::= "NOP"i | "RET"i | "RTI"i | "SEI"i | "CLI"i
+
+opcode-single ::= "PUSH"i | "POP"i | "INC"i | "DEC"i | "ROL"i | "ROR"i
+                | "JMP"i | "CALL"i
+
+opcode-double ::= "LD"i | "ST"i | "MOV"i | "ADD"i | "SUB"i | "AND"i
+                | "OR"i | "XOR"i | "SHL"i | "SHR"i | "CMP"i
+
+branch-op ::= "BRZ"i | "BRNZ"i | "BRC"i | "BRNC"i | "BRN"i | "BRNN"i
+            | "BRV"i | "BRNV"i
+
+branch-target ::= identifier | local-label
+
+# Operands
+operand ::= immediate | register | memory-ref | identifier
+
+# Immediate values: #value or #expression
+immediate ::= "#" immediate-value
+
+immediate-value ::= paren-expr | unary-expr | number | identifier
+
+paren-expr ::= "(" ws* expression ws* ")"
+
+unary-expr ::= (">" | "<") (identifier | paren-expr)
+
+expression ::= expr-term (ws* expr-op ws* expr-term)*
+
+expr-term ::= number | identifier | paren-expr
+
+expr-op ::= "+" | "-" | "*" | "/" | "&" | "|" | "^" | ">>" | "<<"
+
+# Registers
+register ::= "R"i [0-5] | "SP"i | "PC"i
+
+# Memory references: [address] or [Rx:Ry]
+memory-ref ::= "[" ws* memory-inner ws* "]"
+
+memory-inner ::= reg-pair | address-expr
+
+reg-pair ::= register ":" register
+
+address-expr ::= addr-base (ws* "+" ws* (register | number))?
+
+addr-base ::= number | identifier
+
+# Numbers in various formats
+number ::= hex-dollar | hex-0x | binary-percent | binary-0b | decimal
+
+hex-dollar ::= "$" [0-9a-fA-F]+
+hex-0x ::= "0" [xX] [0-9a-fA-F]+
+binary-percent ::= "%" [01]+
+binary-0b ::= "0" [bB] [01]+
+decimal ::= [0-9]+
+
+# Directives
+directive ::= dir-org | dir-define | dir-data | dir-string | dir-res | dir-align
+
+dir-org ::= ".org"i ws+ number
+
+dir-define ::= (".define"i | ".equ"i) ws+ identifier ws+ expression
+
+dir-data ::= (".byte"i | ".db"i | ".word"i | ".dw"i) ws+ data-list
+
+data-list ::= data-item (ws* "," ws* data-item)*
+
+data-item ::= number | identifier | char-literal | expression
+
+dir-string ::= (".string"i | ".asciiz"i) ws+ string-literal
+
+dir-res ::= (".res"i | ".dsb"i) ws+ number
+
+dir-align ::= ".align"i ws+ number
+
+# Identifiers and labels
+identifier ::= [a-zA-Z_] [a-zA-Z0-9_]*
+local-label ::= "." [a-zA-Z_] [a-zA-Z0-9_]*
+
+# Literals
+char-literal ::= "'" char-content "'"
+char-content ::= [^'\\] | escape-seq
+
+string-literal ::= "\"" string-content* "\""
+string-content ::= [^"\\] | escape-seq
+
+escape-seq ::= "\\" [nrt\\"'0]
+
+# Comments start with semicolon
+comment ::= ws* ";" [^\r\n]*
+
+# Whitespace and line endings
+ws ::= [ \t]+
+eol ::= "\r"? "\n" | "\r"

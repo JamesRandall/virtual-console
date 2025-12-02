@@ -2,6 +2,7 @@ import type { Socket } from 'socket.io';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import type { AIProvider } from '../ai/providers/interface.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -155,16 +156,22 @@ export function registerToolResponse(id: string, result: unknown, error?: string
   }
 }
 
+// Server-side tools list
+const serverSideTools = ['get_example', 'generate_assembly_code'];
+
 /**
  * Execute a server-side tool (doesn't need browser)
  */
 export async function executeServerSideTool(
   toolName: string,
-  parameters: Record<string, unknown>
+  parameters: Record<string, unknown>,
+  provider?: AIProvider
 ): Promise<unknown> {
   switch (toolName) {
     case 'get_example':
       return handleGetExample(parameters);
+    case 'generate_assembly_code':
+      return handleGenerateAssemblyCode(parameters, provider);
     default:
       throw new Error(`Unknown server-side tool: ${toolName}`);
   }
@@ -174,7 +181,7 @@ export async function executeServerSideTool(
  * Check if a tool is handled server-side
  */
 export function isServerSideTool(toolName: string): boolean {
-  return toolName === 'get_example';
+  return serverSideTools.includes(toolName);
 }
 
 /**
@@ -222,6 +229,113 @@ function handleGetExample(parameters: Record<string, unknown>): unknown {
       error: `Failed to load example '${name}': ${error instanceof Error ? error.message : String(error)}`
     };
   }
+}
+
+/**
+ * Handle generate_assembly_code tool - uses grammar-constrained generation
+ */
+async function handleGenerateAssemblyCode(
+  parameters: Record<string, unknown>,
+  provider?: AIProvider
+): Promise<{ code: string } | { error: string }> {
+  // Check if provider supports grammar-constrained generation
+  if (!provider?.generateWithGrammar) {
+    return {
+      error: 'Grammar-constrained generation is not available. This feature requires the llama.cpp provider.'
+    };
+  }
+
+  const task = parameters.task as string;
+  const context = parameters.context as string | undefined;
+  const existingCode = parameters.existing_code as string | undefined;
+
+  if (!task) {
+    return { error: 'Task description is required' };
+  }
+
+  // Load the GBNF grammar
+  let grammar: string;
+  try {
+    const grammarPath = join(__dirname, '..', 'ai', 'grammars', 'vc-asm.gbnf');
+    grammar = readFileSync(grammarPath, 'utf-8');
+  } catch (error) {
+    return {
+      error: `Failed to load grammar file: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+
+  // Build the code generation prompt
+  const prompt = buildCodeGenerationPrompt(task, context, existingCode);
+
+  try {
+    const code = await provider.generateWithGrammar(prompt, grammar);
+    return { code };
+  } catch (error) {
+    return {
+      error: `Code generation failed: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+/**
+ * Build a prompt for grammar-constrained code generation
+ */
+function buildCodeGenerationPrompt(
+  task: string,
+  context?: string,
+  existingCode?: string
+): string {
+  let prompt = `You are a vc-asm assembly code generator for a custom 8-bit virtual console.
+
+## CPU Quick Reference
+- Registers: R0-R5 (8-bit GP), SP (16-bit stack), PC (16-bit program counter)
+- Register Pairs: R0:R1, R2:R3, R4:R5 (high:low for 16-bit addressing)
+- Flags: C (Carry), Z (Zero), I (Interrupt), V (Overflow), N (Negative)
+
+## Instruction Set
+- No operands: NOP, RET, RTI, SEI, CLI
+- Single operand: PUSH, POP, INC, DEC, ROL, ROR, JMP, CALL
+- Two operands: LD, ST, MOV, ADD, SUB, AND, OR, XOR, SHL, SHR, CMP
+- Branches: BRZ, BRNZ, BRC, BRNC, BRN, BRNN, BRV, BRNV
+
+## Addressing Modes
+- Immediate: #value (e.g., LD R0, #42 or LD R0, #$FF)
+- Register: Rx (e.g., ADD R0, R1)
+- Absolute: [$addr] (e.g., LD R0, [$1234])
+- Zero Page: [$zp] (e.g., LD R0, [$80])
+- ZP Indexed: [$zp+Rx] (e.g., LD R0, [$80+R1])
+- Register Pair Indirect: [Rx:Ry] (e.g., LD R0, [R2:R3])
+- Relative: label (for branches, e.g., BRZ loop)
+
+## Key Memory Addresses
+- $0100: Bank register
+- $0101: Video mode
+- $0114: INT_STATUS (W1C)
+- $0115: INT_ENABLE
+- $0132-$0133: VBlank vector (hi/lo)
+- $0136: Controller 1 buttons
+- $0200-$05FF: Palette RAM
+- $0700-$0AFF: Sprite attribute table
+- $B000-$FFFF: Framebuffer (Mode 0)
+
+## Task
+${task}
+`;
+
+  if (context) {
+    prompt += `\n## Context\n${context}\n`;
+  }
+
+  if (existingCode) {
+    prompt += `\n## Existing Code to Modify/Extend\n\`\`\`asm\n${existingCode}\n\`\`\`\n`;
+  }
+
+  prompt += `\n## Output
+Generate only valid vc-asm assembly code. Include comments to explain the code.
+
+`;
+
+  return prompt;
 }
 
 /**
@@ -372,6 +486,56 @@ export function getToolDefinitions() {
         type: 'object' as const,
         properties: {},
         required: []
+      }
+    },
+    {
+      name: 'generate_assembly_code',
+      description: 'Generate vc-asm assembly code using grammar-constrained generation. Use this tool when you need to write new assembly code or make significant modifications to existing code. The output is guaranteed to be syntactically valid vc-asm. NOTE: This tool requires the llama.cpp provider to be configured.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          task: {
+            type: 'string' as const,
+            description: 'Description of what the assembly code should accomplish'
+          },
+          context: {
+            type: 'string' as const,
+            description: 'Existing code, memory layout constraints, or other relevant context'
+          },
+          existing_code: {
+            type: 'string' as const,
+            description: 'Current code to modify or extend (if applicable)'
+          }
+        },
+        required: ['task']
+      }
+    },
+    {
+      name: 'list_project_files',
+      description: 'Lists all files and folders in the current project. Use this to explore the project structure and find files. Returns a tree structure showing all directories and files. Call with no path to list from project root, or provide a path to list a specific subdirectory.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          path: {
+            type: 'string' as const,
+            description: 'Optional subdirectory path to list (e.g., "src" or "sprites"). Omit to list from project root.'
+          }
+        },
+        required: []
+      }
+    },
+    {
+      name: 'read_project_file',
+      description: 'Reads the contents of a file from the project. Use this to read .include files, sprite data, or any other project file. For assembly files referenced with .include directive, use the path as it appears in the directive (e.g., if code has .include "loop.asm", read "src/loop.asm").',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          path: {
+            type: 'string' as const,
+            description: 'Path to the file relative to project root (e.g., "src/loop.asm", "sprites/player.gbin", "config.json")'
+          }
+        },
+        required: ['path']
       }
     }
   ];

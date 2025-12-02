@@ -332,7 +332,8 @@ async function readFilesRecursively(
   extension: string,
   files: Map<string, string>
 ): Promise<void> {
-  for await (const entry of handle.values()) {
+  // Cast to any to work around incomplete TypeScript types for File System Access API
+  for await (const entry of (handle as any).values()) {
     const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
 
     if (entry.kind === 'directory') {

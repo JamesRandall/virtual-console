@@ -4,7 +4,7 @@ import { getToolDefinitions, executeToolRequest, executeServerSideTool, isServer
 import { createAIProvider } from './providers/factory.js';
 import { config } from '../config.js';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
-import type { ToolUseBlock } from './providers/interface.js';
+import type { AIProvider, ToolUseBlock } from './providers/interface.js';
 
 // Store conversation history per socket
 const conversationHistory = new Map<string, MessageParam[]>();
@@ -59,7 +59,11 @@ async function streamClaudeResponse(socket: Socket, history: MessageParam[]): Pr
     bedrockModelId: config.bedrockModelId,
     bedrockMaxRetries: config.bedrockMaxRetries,
     bedrockBaseDelayMs: config.bedrockBaseDelayMs,
+    llamacppHost: config.llamacppHost,
   });
+
+  // Store provider for tool execution (needed for grammar-constrained generation)
+  const providerRef = provider;
 
   let currentResponse = '';
   let toolUseBlocks: ToolUseBlock[] = [];
@@ -124,7 +128,7 @@ async function streamClaudeResponse(socket: Socket, history: MessageParam[]): Pr
       // Finalize the current streaming message before executing tools
       socket.emit('ai_response_done', {});
 
-      await handleToolUses(socket, history, currentResponse, toolUseBlocks);
+      await handleToolUses(socket, history, currentResponse, toolUseBlocks, providerRef);
     } else {
       // No tools, just save the response
       if (currentResponse) {
@@ -146,7 +150,8 @@ async function handleToolUses(
   socket: Socket,
   history: MessageParam[],
   textResponse: string,
-  toolUseBlocks: ToolUseBlock[]
+  toolUseBlocks: ToolUseBlock[],
+  provider: AIProvider
 ): Promise<void> {
   // Build assistant message with tool uses
   const assistantContent: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }> = [];
@@ -181,8 +186,8 @@ async function handleToolUses(
 
       // Check if this is a server-side tool or client-side tool
       if (isServerSideTool(tool.name)) {
-        // Execute on server
-        result = await executeServerSideTool(tool.name, tool.input);
+        // Execute on server (pass provider for tools that need it like generate_assembly_code)
+        result = await executeServerSideTool(tool.name, tool.input, provider);
       } else {
         // Execute on client (browser)
         result = await executeToolRequest(socket, tool.id, tool.name, tool.input);

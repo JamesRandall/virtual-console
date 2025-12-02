@@ -8,6 +8,12 @@ export interface AIProvider {
    * Stream a chat completion with tool support
    */
   streamChat(params: StreamChatParams): AsyncIterable<StreamEvent>;
+
+  /**
+   * Optional: Generate text with grammar constraint (e.g., GBNF for llama.cpp)
+   * Used for code generation that must be syntactically valid
+   */
+  generateWithGrammar?(prompt: string, grammar: string): Promise<string>;
 }
 
 export interface StreamChatParams {
