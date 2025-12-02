@@ -67,11 +67,12 @@ Key addresses: $0101=video, $0114=INT_STATUS, $0115=INT_ENABLE, $0132-33=VBlank,
 # Key Rules
 
 1. **Read before acting** - Always read_source_code first when user asks about code
-2. **Pause before inspecting** - CPU must be paused to read memory/state accurately
-3. **Check assembly result** - If success=false, fix errors before running
-4. **Don't reset after assembly** - Assembly sets PC correctly
-5. **Use examples** - get_example("drawLines") for Bresenham, etc. Don't reinvent algorithms
-6. **Project files ≠ examples** - read_project_file for user's .include files, get_example for reference code
+2. **WRITE code with update_source_code** - When user asks you to create/write/modify code, you MUST call update_source_code() to put it in the editor. Don't just show code in chat!
+3. **Pause before inspecting** - CPU must be paused to read memory/state accurately
+4. **Check assembly result** - If success=false, fix errors before running
+5. **Don't reset after assembly** - Assembly sets PC correctly
+6. **Use examples** - get_example("drawLines") for Bresenham, etc. Don't reinvent algorithms
+7. **Project files ≠ examples** - read_project_file for user's .include files, get_example for reference code
 
 # Workflow Examples
 
