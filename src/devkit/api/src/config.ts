@@ -18,8 +18,9 @@ export const config = {
   bedrockMaxRetries: parseInt(process.env.BEDROCK_MAX_RETRIES || '5', 10),
   bedrockBaseDelayMs: parseInt(process.env.BEDROCK_BASE_DELAY_MS || '1000', 10),
 
-  // llama.cpp configuration
-  llamacppHost: process.env.LLAMACPP_HOST || 'http://localhost:8080',
+  // llama.cpp configuration (two servers: chat + codegen)
+  llamacppChatHost: process.env.LLAMACPP_CHAT_HOST || 'http://localhost:8080',
+  llamacppCodegenHost: process.env.LLAMACPP_CODEGEN_HOST || 'http://localhost:8081',
   llamacppGrammarPath: process.env.LLAMACPP_GRAMMAR_PATH || './src/ai/grammars/vc-asm.gbnf',
 
   // Model configuration
@@ -48,7 +49,7 @@ export const config = {
       }
     } else if (this.aiProvider === 'llamacpp') {
       // llamacpp has defaults, no required config
-      console.log(`Using llama.cpp provider at ${this.llamacppHost}`);
+      console.log(`Using llama.cpp provider: chat=${this.llamacppChatHost}, codegen=${this.llamacppCodegenHost}`);
     } else {
       throw new Error(
         `Unsupported AI_PROVIDER: ${this.aiProvider}\n` +

@@ -35,10 +35,12 @@ interface LlamaCppChatCompletionChunk {
 }
 
 export class LlamaCppProvider implements AIProvider {
-  private baseUrl: string;
+  private chatUrl: string;
+  private codegenUrl: string;
 
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl.replace(/\/$/, ''); // Remove trailing slash
+  constructor(chatUrl: string, codegenUrl: string) {
+    this.chatUrl = chatUrl.replace(/\/$/, ''); // Remove trailing slash
+    this.codegenUrl = codegenUrl.replace(/\/$/, '');
   }
 
   /**
@@ -51,7 +53,7 @@ export class LlamaCppProvider implements AIProvider {
     // Convert tools to OpenAI format
     const tools = this.convertTools(params.tools);
 
-    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(`${this.chatUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -190,10 +192,10 @@ export class LlamaCppProvider implements AIProvider {
 
   /**
    * Generate text with GBNF grammar constraint
-   * Used for code generation that must be syntactically valid
+   * Uses the codegen server with larger context for full hardware spec
    */
   async generateWithGrammar(prompt: string, grammar: string): Promise<string> {
-    const response = await fetch(`${this.baseUrl}/completion`, {
+    const response = await fetch(`${this.codegenUrl}/completion`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

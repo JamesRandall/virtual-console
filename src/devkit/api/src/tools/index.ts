@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { AIProvider } from '../ai/providers/interface.js';
+import { loadHardwareCheatsheet } from '../ai/systemPrompts.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -278,45 +279,22 @@ async function handleGenerateAssemblyCode(
 }
 
 /**
- * Build a prompt for grammar-constrained code generation
+ * Build a prompt for grammar-constrained code generation.
+ * This includes the FULL hardware specification for accurate code generation.
  */
 function buildCodeGenerationPrompt(
   task: string,
   context?: string,
   existingCode?: string
 ): string {
+  // Load the full hardware cheatsheet
+  const hardwareSpec = loadHardwareCheatsheet();
+
   let prompt = `You are a vc-asm assembly code generator for a custom 8-bit virtual console.
 
-## CPU Quick Reference
-- Registers: R0-R5 (8-bit GP), SP (16-bit stack), PC (16-bit program counter)
-- Register Pairs: R0:R1, R2:R3, R4:R5 (high:low for 16-bit addressing)
-- Flags: C (Carry), Z (Zero), I (Interrupt), V (Overflow), N (Negative)
+## Complete Hardware Specification
 
-## Instruction Set
-- No operands: NOP, RET, RTI, SEI, CLI
-- Single operand: PUSH, POP, INC, DEC, ROL, ROR, JMP, CALL
-- Two operands: LD, ST, MOV, ADD, SUB, AND, OR, XOR, SHL, SHR, CMP
-- Branches: BRZ, BRNZ, BRC, BRNC, BRN, BRNN, BRV, BRNV
-
-## Addressing Modes
-- Immediate: #value (e.g., LD R0, #42 or LD R0, #$FF)
-- Register: Rx (e.g., ADD R0, R1)
-- Absolute: [$addr] (e.g., LD R0, [$1234])
-- Zero Page: [$zp] (e.g., LD R0, [$80])
-- ZP Indexed: [$zp+Rx] (e.g., LD R0, [$80+R1])
-- Register Pair Indirect: [Rx:Ry] (e.g., LD R0, [R2:R3])
-- Relative: label (for branches, e.g., BRZ loop)
-
-## Key Memory Addresses
-- $0100: Bank register
-- $0101: Video mode
-- $0114: INT_STATUS (W1C)
-- $0115: INT_ENABLE
-- $0132-$0133: VBlank vector (hi/lo)
-- $0136: Controller 1 buttons
-- $0200-$05FF: Palette RAM
-- $0700-$0AFF: Sprite attribute table
-- $B000-$FFFF: Framebuffer (Mode 0)
+${hardwareSpec}
 
 ## Task
 ${task}

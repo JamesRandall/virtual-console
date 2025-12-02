@@ -59,7 +59,8 @@ async function streamClaudeResponse(socket: Socket, history: MessageParam[]): Pr
     bedrockModelId: config.bedrockModelId,
     bedrockMaxRetries: config.bedrockMaxRetries,
     bedrockBaseDelayMs: config.bedrockBaseDelayMs,
-    llamacppHost: config.llamacppHost,
+    llamacppChatHost: config.llamacppChatHost,
+    llamacppCodegenHost: config.llamacppCodegenHost,
   });
 
   // Store provider for tool execution (needed for grammar-constrained generation)

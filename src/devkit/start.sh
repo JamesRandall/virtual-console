@@ -17,12 +17,11 @@ fi
 
 # llama.cpp configuration
 LLAMACPP_MODEL="$HOME/models/qwen2.5-coder-32b-instruct-q4_k_m.gguf"
-LLAMACPP_PORT=8080
+LLAMACPP_CHAT_PORT=8080      # Fast chat with small context
+LLAMACPP_CODEGEN_PORT=8081   # Code generation with large context
 
 # Check if using llamacpp provider
 if grep -q "AI_PROVIDER=llamacpp" api/.env 2>/dev/null; then
-    echo -e "${YELLOW}🦙 Starting llama.cpp server...${NC}"
-
     # Check if model exists
     if [ ! -f "$LLAMACPP_MODEL" ]; then
         echo -e "${RED}❌ Error: llama.cpp model not found at $LLAMACPP_MODEL${NC}"
@@ -35,27 +34,48 @@ if grep -q "AI_PROVIDER=llamacpp" api/.env 2>/dev/null; then
         exit 1
     fi
 
-    # Start llama.cpp server
-    # 64GB M4 Max can handle large context with 32B Q4 model (~20GB)
+    # Start llama.cpp chat server (small context, fast)
+    echo -e "${YELLOW}🦙 Starting llama.cpp chat server (port $LLAMACPP_CHAT_PORT)...${NC}"
     llama-server \
         --model "$LLAMACPP_MODEL" \
-        --port $LLAMACPP_PORT \
-        --ctx-size 65536 \
+        --port $LLAMACPP_CHAT_PORT \
+        --ctx-size 8192 \
         --n-gpu-layers 99 \
+        --flash-attn on \
         --chat-template chatml &
-    LLAMACPP_PID=$!
+    LLAMACPP_CHAT_PID=$!
 
-    # Wait for llama.cpp to be ready
-    echo -e "${YELLOW}⏳ Waiting for llama.cpp server to be ready...${NC}"
-    sleep 5
+    # Start llama.cpp code generation server (large context)
+    echo -e "${YELLOW}🦙 Starting llama.cpp codegen server (port $LLAMACPP_CODEGEN_PORT)...${NC}"
+    llama-server \
+        --model "$LLAMACPP_MODEL" \
+        --port $LLAMACPP_CODEGEN_PORT \
+        --ctx-size 32768 \
+        --n-gpu-layers 99 \
+        --flash-attn on \
+        --chat-template chatml &
+    LLAMACPP_CODEGEN_PID=$!
 
-    # Check if llama.cpp is running
-    if ! kill -0 $LLAMACPP_PID 2>/dev/null; then
-        echo -e "${RED}❌ llama.cpp server failed to start${NC}"
+    # Wait for servers to be ready
+    echo -e "${YELLOW}⏳ Waiting for llama.cpp servers to be ready...${NC}"
+    sleep 8
+
+    # Check if chat server is running
+    if ! kill -0 $LLAMACPP_CHAT_PID 2>/dev/null; then
+        echo -e "${RED}❌ llama.cpp chat server failed to start${NC}"
+        kill $LLAMACPP_CODEGEN_PID 2>/dev/null
         exit 1
     fi
 
-    echo -e "${GREEN}✅ llama.cpp server running on port $LLAMACPP_PORT${NC}"
+    # Check if codegen server is running
+    if ! kill -0 $LLAMACPP_CODEGEN_PID 2>/dev/null; then
+        echo -e "${RED}❌ llama.cpp codegen server failed to start${NC}"
+        kill $LLAMACPP_CHAT_PID 2>/dev/null
+        exit 1
+    fi
+
+    echo -e "${GREEN}✅ llama.cpp chat server running on port $LLAMACPP_CHAT_PORT (8k context)${NC}"
+    echo -e "${GREEN}✅ llama.cpp codegen server running on port $LLAMACPP_CODEGEN_PORT (32k context)${NC}"
 fi
 
 # Start API server in background
@@ -93,8 +113,9 @@ if ! kill -0 $CLIENT_PID 2>/dev/null; then
 fi
 
 echo -e "${GREEN}✅ DevKit is running!${NC}"
-if [ -n "$LLAMACPP_PID" ]; then
-    echo -e "${GREEN}   llama.cpp: http://localhost:$LLAMACPP_PORT${NC}"
+if [ -n "$LLAMACPP_CHAT_PID" ]; then
+    echo -e "${GREEN}   llama.cpp chat: http://localhost:$LLAMACPP_CHAT_PORT${NC}"
+    echo -e "${GREEN}   llama.cpp codegen: http://localhost:$LLAMACPP_CODEGEN_PORT${NC}"
 fi
 echo -e "${GREEN}   API Server: http://localhost:3001${NC}"
 echo -e "${GREEN}   DevKit UI: http://localhost:5173${NC}"
@@ -105,8 +126,11 @@ cleanup() {
     echo -e "${YELLOW}Shutting down...${NC}"
     kill $CLIENT_PID 2>/dev/null
     kill $API_PID 2>/dev/null
-    if [ -n "$LLAMACPP_PID" ]; then
-        kill $LLAMACPP_PID 2>/dev/null
+    if [ -n "$LLAMACPP_CHAT_PID" ]; then
+        kill $LLAMACPP_CHAT_PID 2>/dev/null
+    fi
+    if [ -n "$LLAMACPP_CODEGEN_PID" ]; then
+        kill $LLAMACPP_CODEGEN_PID 2>/dev/null
     fi
     exit
 }

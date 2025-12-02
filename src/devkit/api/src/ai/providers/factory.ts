@@ -15,8 +15,9 @@ export interface ProviderConfig {
   bedrockModelId?: string;
   bedrockMaxRetries?: number;
   bedrockBaseDelayMs?: number;
-  // llama.cpp config
-  llamacppHost?: string;
+  // llama.cpp config (two servers)
+  llamacppChatHost?: string;
+  llamacppCodegenHost?: string;
 }
 
 export function createAIProvider(config: ProviderConfig): AIProvider {
@@ -39,10 +40,10 @@ export function createAIProvider(config: ProviderConfig): AIProvider {
       );
 
     case 'llamacpp':
-      if (!config.llamacppHost) {
-        throw new Error('llama.cpp host is required');
+      if (!config.llamacppChatHost || !config.llamacppCodegenHost) {
+        throw new Error('llama.cpp chat and codegen hosts are required');
       }
-      return new LlamaCppProvider(config.llamacppHost);
+      return new LlamaCppProvider(config.llamacppChatHost, config.llamacppCodegenHost);
 
     default:
       throw new Error(`Unsupported provider type: ${config.type}`);
