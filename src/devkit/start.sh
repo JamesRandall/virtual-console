@@ -16,15 +16,24 @@ if [ ! -f "api/.env" ]; then
 fi
 
 # llama.cpp configuration
-LLAMACPP_MODEL="$HOME/models/qwen2.5-coder-32b-instruct-q4_k_m.gguf"
+DEFAULT_MODEL="$HOME/models/qwen2.5-coder-32b-instruct-q4_k_m.gguf"
+LLAMACPP_CHAT_MODEL="${LLAMACPP_CHAT_MODEL:-$DEFAULT_MODEL}"
+LLAMACPP_CODEGEN_MODEL="${LLAMACPP_CODEGEN_MODEL:-$DEFAULT_MODEL}"
 LLAMACPP_CHAT_PORT=8080      # Fast chat with small context
 LLAMACPP_CODEGEN_PORT=8081   # Code generation with large context
 
-# Check if using llamacpp provider
-if grep -q "AI_PROVIDER=llamacpp" api/.env 2>/dev/null; then
-    # Check if model exists
-    if [ ! -f "$LLAMACPP_MODEL" ]; then
-        echo -e "${RED}❌ Error: llama.cpp model not found at $LLAMACPP_MODEL${NC}"
+# Check if using llamacpp provider (default if AI_PROVIDER is not set)
+AI_PROVIDER=$(grep "^AI_PROVIDER=" api/.env 2>/dev/null | cut -d'=' -f2)
+if [ -z "$AI_PROVIDER" ] || [ "$AI_PROVIDER" = "llamacpp" ]; then
+    # Check if chat model exists
+    if [ ! -f "$LLAMACPP_CHAT_MODEL" ]; then
+        echo -e "${RED}❌ Error: llama.cpp chat model not found at $LLAMACPP_CHAT_MODEL${NC}"
+        exit 1
+    fi
+
+    # Check if codegen model exists
+    if [ ! -f "$LLAMACPP_CODEGEN_MODEL" ]; then
+        echo -e "${RED}❌ Error: llama.cpp codegen model not found at $LLAMACPP_CODEGEN_MODEL${NC}"
         exit 1
     fi
 
@@ -36,8 +45,9 @@ if grep -q "AI_PROVIDER=llamacpp" api/.env 2>/dev/null; then
 
     # Start llama.cpp chat server (small context, fast)
     echo -e "${YELLOW}🦙 Starting llama.cpp chat server (port $LLAMACPP_CHAT_PORT)...${NC}"
+    echo -e "${YELLOW}   Model: $LLAMACPP_CHAT_MODEL${NC}"
     llama-server \
-        --model "$LLAMACPP_MODEL" \
+        --model "$LLAMACPP_CHAT_MODEL" \
         --port $LLAMACPP_CHAT_PORT \
         --ctx-size 8192 \
         --n-gpu-layers 99 \
@@ -47,8 +57,9 @@ if grep -q "AI_PROVIDER=llamacpp" api/.env 2>/dev/null; then
 
     # Start llama.cpp code generation server (large context)
     echo -e "${YELLOW}🦙 Starting llama.cpp codegen server (port $LLAMACPP_CODEGEN_PORT)...${NC}"
+    echo -e "${YELLOW}   Model: $LLAMACPP_CODEGEN_MODEL${NC}"
     llama-server \
-        --model "$LLAMACPP_MODEL" \
+        --model "$LLAMACPP_CODEGEN_MODEL" \
         --port $LLAMACPP_CODEGEN_PORT \
         --ctx-size 32768 \
         --n-gpu-layers 99 \

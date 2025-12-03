@@ -6,7 +6,7 @@ dotenv.config();
 
 export const config = {
   // AI Provider selection
-  aiProvider: (process.env.AI_PROVIDER || 'anthropic') as ProviderType,
+  aiProvider: (process.env.AI_PROVIDER || 'llamacpp') as ProviderType,
 
   // Anthropic API
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
