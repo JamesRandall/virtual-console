@@ -2,6 +2,10 @@
 
 An 8-bit virtual console with a browser-based development kit and AI-powered coding assistant.
 
+![Virtual Console DevKit](screenshots/2.png)
+
+![Virtual Console DevKit](screenshots/1.png)
+
 ## Features
 
 * A 3Mhz 6502-inspired CPU with a RISC twist
