@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useDevkitStore } from '../../stores/devkitStore.ts';
-import { aiWebSocket } from '../../services/aiWebSocket.ts';
+import { aiWebSocket } from '../../services/ai/aiWebSocket.ts';
 import { ChatHeader } from './ChatHeader.tsx';
 import { ChatMessageList } from './ChatMessageList.tsx';
 import { ChatInput } from './ChatInput.tsx';

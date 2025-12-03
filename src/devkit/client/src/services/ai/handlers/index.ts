@@ -1,0 +1,13 @@
+export { handleReadSourceCode } from './readSourceCode.ts';
+export { handleUpdateSourceCode } from './updateSourceCode.ts';
+export { handleReadCpuState } from './readCpuState.ts';
+export { handleReadMemory } from './readMemory.ts';
+export { handleSetBreakpoint } from './setBreakpoint.ts';
+export { handleStepDebugger } from './stepDebugger.ts';
+export { handleRunDebugger } from './runDebugger.ts';
+export { handlePauseDebugger } from './pauseDebugger.ts';
+export { handleResetConsole } from './resetConsole.ts';
+export { handleAssembleCode } from './assembleCode.ts';
+export { handleCaptureScreen } from './captureScreen.ts';
+export { handleListProjectFiles } from './listProjectFiles.ts';
+export { handleReadProjectFile } from './readProjectFile.ts';

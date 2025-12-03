@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
-import { useDevkitStore } from '../stores/devkitStore.js';
-import type { ChatMessage } from '../stores/devkitStore.js';
+import { useDevkitStore } from '../../stores/devkitStore.ts';
+import type { ChatMessage } from '../../stores/devkitStore.ts';
 
 const API_URL = 'http://localhost:3001';
 
@@ -152,7 +152,7 @@ class AiWebSocketClient {
       let result: unknown;
 
       // Import dynamically to avoid circular dependencies
-      const { handleToolRequest } = await import('./toolHandlers.js');
+      const { handleToolRequest } = await import('./toolHandlers.ts');
       result = await handleToolRequest(tool, parameters);
 
       this.sendToolResponse(id, result);
