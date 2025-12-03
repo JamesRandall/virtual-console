@@ -202,4 +202,4 @@ llama-server --model ~/models/your-model.gguf --port 8081 --ctx-size 32768 --n-g
 
 ## License
 
-MIT
+[MIT](LICENSE)
