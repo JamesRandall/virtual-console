@@ -51,19 +51,26 @@ function createEmptyBank(): Uint8Array {
   return new Uint8Array(BANK_SIZE);
 }
 
+// Palette RAM location and size
+const PALETTE_RAM_START = 0x0200;
+const PALETTE_RAM_SIZE = 0x0400; // 1024 bytes (0x0200-0x05FF)
+
 /**
  * Build metadata.bin (Bank 0)
  *
  * Format:
  * - Bytes 0-1: Magic number (0x56, 0x43 = "VC")
- * - Byte 2: Version (0x01)
+ * - Byte 2: Version (0x02) - bumped for palette support
  * - Byte 3: Number of code segments
+ * - Byte 4: First palette bank number (0xFF = no palette)
+ * - Bytes 5-7: Reserved
+ * - Byte 8+: Segment data
  * - For each segment:
  *   - Bytes 0-1: Start address (big-endian)
  *   - Bytes 2-3: Length (big-endian)
  *   - Bytes 4-5: Offset in code.bin (big-endian)
  */
-function buildMetadataBank(segments: MemorySegment[]): Uint8Array {
+function buildMetadataBank(segments: MemorySegment[], firstPaletteBank: number): Uint8Array {
   const bank = createEmptyBank();
 
   // Magic number "VC"
@@ -71,13 +78,21 @@ function buildMetadataBank(segments: MemorySegment[]): Uint8Array {
   bank[1] = 0x43; // 'C'
 
   // Version
-  bank[2] = 0x01;
+  bank[2] = 0x02;
 
   // Number of segments
   bank[3] = Math.min(segments.length, 255);
 
-  // Write segment metadata
-  let offset = 4;
+  // First palette bank (0xFF = no palette)
+  bank[4] = firstPaletteBank & 0xFF;
+
+  // Reserved bytes 5-7
+  bank[5] = 0x00;
+  bank[6] = 0x00;
+  bank[7] = 0x00;
+
+  // Write segment metadata starting at byte 8
+  let offset = 8;
   let codeOffset = 0;
 
   for (let i = 0; i < Math.min(segments.length, 255); i++) {
@@ -207,9 +222,8 @@ export async function buildCartridge(
     // 3. Build the ROM banks
     const banks: Uint8Array[] = [];
 
-    // Bank 0: Metadata
-    const metadataBank = buildMetadataBank(assemblyResult.segments);
-    banks.push(metadataBank);
+    // Placeholder for metadata bank (we'll fill it in after we know the palette bank)
+    banks.push(createEmptyBank());
 
     // Bank 1: Code
     const codeBank = buildCodeBank(assemblyResult.segments);
@@ -229,12 +243,20 @@ export async function buildCartridge(
     if (configBanks[0] === 'metadata.bin') startIndex++;
     if (configBanks[1] === 'code.bin') startIndex++;
 
+    // Track the first palette bank (0xFF = no palette found)
+    let firstPaletteBank = 0xFF;
+
     for (let i = startIndex; i < configBanks.length; i++) {
       const assetPath = configBanks[i];
 
       // Skip the fixed banks
       if (assetPath === 'metadata.bin' || assetPath === 'code.bin') {
         continue;
+      }
+
+      // Track the first .pbin file's bank number
+      if (assetPath.endsWith('.pbin') && firstPaletteBank === 0xFF) {
+        firstPaletteBank = banks.length; // Current bank index (before adding)
       }
 
       try {
@@ -246,6 +268,10 @@ export async function buildCartridge(
         banks.push(createEmptyBank());
       }
     }
+
+    // Now build the metadata bank with the palette bank info
+    const metadataBank = buildMetadataBank(assemblyResult.segments, firstPaletteBank);
+    banks[0] = metadataBank;
 
     // 4. Concatenate all banks into final ROM
     const romSize = banks.length * BANK_SIZE;
@@ -272,12 +298,21 @@ export async function buildCartridge(
 }
 
 /**
+ * Full cartridge metadata
+ */
+export interface CartridgeMetadata {
+  version: number;
+  segments: CodeSegmentMetadata[];
+  firstPaletteBank: number; // 0xFF = no palette
+}
+
+/**
  * Parse a cartridge ROM and extract metadata
  *
  * @param rom - The ROM data
  * @returns Parsed metadata or null if invalid
  */
-export function parseCartridgeMetadata(rom: Uint8Array): CodeSegmentMetadata[] | null {
+export function parseCartridgeMetadata(rom: Uint8Array): CartridgeMetadata | null {
   if (rom.length < BANK_SIZE) {
     return null;
   }
@@ -287,17 +322,22 @@ export function parseCartridgeMetadata(rom: Uint8Array): CodeSegmentMetadata[] |
     return null;
   }
 
-  // Check version
+  // Read version
   const version = rom[2];
-  if (version !== 0x01) {
-    console.warn(`Unknown cartridge version: ${version}`);
-  }
+
+  // Read segment count
+  const segmentCount = rom[3];
+
+  // Read first palette bank (version 2+, otherwise default to 0xFF)
+  const firstPaletteBank = version >= 2 ? rom[4] : 0xFF;
+
+  // Determine segment data offset based on version
+  const segmentDataOffset = version >= 2 ? 8 : 4;
 
   // Read segments
-  const segmentCount = rom[3];
   const segments: CodeSegmentMetadata[] = [];
 
-  let offset = 4;
+  let offset = segmentDataOffset;
   for (let i = 0; i < segmentCount; i++) {
     const startAddress = (rom[offset] << 8) | rom[offset + 1];
     const length = (rom[offset + 2] << 8) | rom[offset + 3];
@@ -312,7 +352,19 @@ export function parseCartridgeMetadata(rom: Uint8Array): CodeSegmentMetadata[] |
     offset += 6;
   }
 
-  return segments;
+  return {
+    version,
+    segments,
+    firstPaletteBank,
+  };
+}
+
+/**
+ * Result of loading cartridge code
+ */
+export interface LoadCartridgeResult {
+  startAddress: number;
+  firstPaletteBank: number; // 0xFF = no palette
 }
 
 /**
@@ -320,27 +372,61 @@ export function parseCartridgeMetadata(rom: Uint8Array): CodeSegmentMetadata[] |
  *
  * @param rom - The ROM data
  * @param memory - Object with write8 method to write bytes to memory
+ * @returns Load result with start address and palette bank info, or null if invalid
  */
 export function loadCartridgeCode(
   rom: Uint8Array,
   memory: { write8: (address: number, value: number) => void }
-): { startAddress: number } | null {
-  const segments = parseCartridgeMetadata(rom);
-  if (!segments || segments.length === 0) {
+): LoadCartridgeResult | null {
+  const metadata = parseCartridgeMetadata(rom);
+  if (!metadata || metadata.segments.length === 0) {
     return null;
   }
 
   // Bank 1 starts at offset BANK_SIZE
   const codeBank = rom.slice(BANK_SIZE, BANK_SIZE * 2);
 
-  const firstStartAddress = segments[0].startAddress;
+  const firstStartAddress = metadata.segments[0].startAddress;
 
-  for (const segment of segments) {
+  for (const segment of metadata.segments) {
     for (let i = 0; i < segment.length; i++) {
       const byte = codeBank[segment.offsetInBank + i];
       memory.write8(segment.startAddress + i, byte);
     }
   }
 
-  return { startAddress: firstStartAddress };
+  return {
+    startAddress: firstStartAddress,
+    firstPaletteBank: metadata.firstPaletteBank,
+  };
+}
+
+/**
+ * Load palette data from a cartridge ROM into palette RAM
+ *
+ * @param rom - The ROM data
+ * @param paletteBank - The bank number containing palette data
+ * @param memory - Object with write8 method to write bytes to memory
+ */
+export function loadCartridgePalette(
+  rom: Uint8Array,
+  paletteBank: number,
+  memory: { write8: (address: number, value: number) => void }
+): void {
+  if (paletteBank === 0xFF) {
+    return; // No palette to load
+  }
+
+  const bankOffset = paletteBank * BANK_SIZE;
+  if (bankOffset + PALETTE_RAM_SIZE > rom.length) {
+    console.warn(`Palette bank ${paletteBank} is out of range`);
+    return;
+  }
+
+  // Copy palette data from ROM bank to palette RAM (0x0200-0x05FF)
+  // Only copy PALETTE_RAM_SIZE bytes, not the full 32KB bank
+  for (let i = 0; i < PALETTE_RAM_SIZE; i++) {
+    const byte = rom[bankOffset + i];
+    memory.write8(PALETTE_RAM_START + i, byte);
+  }
 }

@@ -6,7 +6,7 @@ import { useVirtualConsole } from '../consoleIntegration/virtualConsole';
 import { updateVirtualConsoleSnapshot } from '../stores/utilities';
 import { assembleMultiFile } from '../../../../console/src/assembler';
 import { readAllSourceFiles, readBinaryFile } from '../services/fileSystemService';
-import { buildCartridge, loadCartridgeCode } from '../services/cartridgeBundler';
+import { buildCartridge, loadCartridgeCode, loadCartridgePalette } from '../services/cartridgeBundler';
 import { toast } from '../components/Toast';
 
 export function AppToolbar() {
@@ -109,10 +109,15 @@ export function AppToolbar() {
         return;
       }
 
-      // Step 5: Set program counter to start address
+      // Step 5: Load palette from cartridge if present
+      if (loadResult.firstPaletteBank !== 0xFF) {
+        loadCartridgePalette(rom, loadResult.firstPaletteBank, virtualConsole.memory);
+      }
+
+      // Step 6: Set program counter to start address
       virtualConsole.setProgramCounter(loadResult.startAddress);
 
-      // Step 6: Get source map and symbol table by re-assembling (for debugging)
+      // Step 7: Get source map and symbol table by re-assembling (for debugging)
       // We need these for breakpoints and source mapping
       const diskSourceFiles = await readAllSourceFiles(currentProjectHandle);
       const sourceFiles = new Map(diskSourceFiles);
@@ -140,7 +145,7 @@ export function AppToolbar() {
       // Update snapshots
       await updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot);
 
-      // Step 7: Switch to debug mode and auto-start the emulator
+      // Step 8: Switch to debug mode and auto-start the emulator
       setAppMode('debug');
 
       // Sync breakpoints to worker before starting
