@@ -52,6 +52,20 @@
 .define SPRITE_3_FLAGS      $0712
 .define SPRITE_3_BANK       $0713
 
+; Sprite 4 attribute addresses
+.define SPRITE_4_X          $0714
+.define SPRITE_4_Y          $0715
+.define SPRITE_4_IDX        $0716
+.define SPRITE_4_FLAGS      $0717
+.define SPRITE_4_BANK       $0718
+
+; Sprite 5 attribute addresses
+.define SPRITE_5_X          $0719
+.define SPRITE_5_Y          $071A
+.define SPRITE_5_IDX        $071B
+.define SPRITE_5_FLAGS      $071C
+.define SPRITE_5_BANK       $071D
+
 ; Scanline palette map
 .define SCANLINE_MAP        $0600
 
@@ -93,11 +107,13 @@
 .define SPRITE1_X_VAR       $0B02       ; Sprite 1 current X position
 .define SPRITE1_DIR         $0B03       ; Sprite 1 direction: 0 = right, 1 = left
 .define SPRITE2_X_VAR       $0B04       ; Sprite 2 current X position
-.define SPRITE2_Y_VAR       $0B05       ; Sprite 2 current Y position
-.define SPRITE2_DIR         $0B06       ; Sprite 2 direction: 0 = down-right, 1 = up-left
-.define SPRITE3_X_VAR       $0B07       ; Sprite 3 current X position
-.define SPRITE3_Y_VAR       $0B08       ; Sprite 3 current Y position
-.define SPRITE3_DIR         $0B09       ; Sprite 3 direction: 0 = up-right, 1 = down-left
+.define SPRITE2_DIR         $0B05       ; Sprite 2 direction: 0 = right, 1 = left
+.define SPRITE3_X_VAR       $0B06       ; Sprite 3 current X position
+.define SPRITE3_DIR         $0B07       ; Sprite 3 direction: 0 = right, 1 = left
+.define SPRITE4_Y_VAR       $0B08       ; Sprite 4 current Y position
+.define SPRITE4_DIR         $0B09       ; Sprite 4 direction: 0 = down, 1 = up
+.define SPRITE5_Y_VAR       $0B0A       ; Sprite 5 current Y position
+.define SPRITE5_DIR         $0B0B       ; Sprite 5 direction: 0 = down, 1 = up
 
 ; =============================================================================
 ; Entry Point
@@ -133,8 +149,8 @@ main:
     LD R0, #1
     ST R0, [SPRITE_ENABLE]
 
-    ; Set sprite count to 4
-    LD R0, #4
+    ; Set sprite count to 6
+    LD R0, #6
     ST R0, [SPRITE_COUNT]
 
     ; Configure sprite 0 (moves vertically)
@@ -169,19 +185,17 @@ main:
     LD R0, #SPRITE_BANK         ; Cartridge bank 2
     ST R0, [SPRITE_1_BANK]
 
-    ; Initialize sprite 2 (diagonal: top-left to bottom-right)
+    ; Initialize sprite 2 (horizontal along top)
     LD R0, #MIN_X
     ST R0, [SPRITE2_X_VAR]
-    LD R0, #MIN_Y
-    ST R0, [SPRITE2_Y_VAR]
-    LD R0, #0                   ; Start moving down-right
+    LD R0, #0                   ; Start moving right
     ST R0, [SPRITE2_DIR]
 
     ; Configure sprite 2
     LD R0, #MIN_X
     ST R0, [SPRITE_2_X]
 
-    LD R0, #MIN_Y
+    LD R0, #MIN_Y               ; Top of screen
     ST R0, [SPRITE_2_Y]
 
     LD R0, #0                   ; Sprite index 0
@@ -193,19 +207,17 @@ main:
     LD R0, #SPRITE_BANK
     ST R0, [SPRITE_2_BANK]
 
-    ; Initialize sprite 3 (diagonal: bottom-left to top-right)
+    ; Initialize sprite 3 (horizontal along bottom)
     LD R0, #MIN_X
     ST R0, [SPRITE3_X_VAR]
-    LD R0, #MAX_Y
-    ST R0, [SPRITE3_Y_VAR]
-    LD R0, #0                   ; Start moving up-right
+    LD R0, #0                   ; Start moving right
     ST R0, [SPRITE3_DIR]
 
     ; Configure sprite 3
     LD R0, #MIN_X
     ST R0, [SPRITE_3_X]
 
-    LD R0, #MAX_Y
+    LD R0, #MAX_Y               ; Bottom of screen
     ST R0, [SPRITE_3_Y]
 
     LD R0, #0                   ; Sprite index 0
@@ -216,6 +228,50 @@ main:
 
     LD R0, #SPRITE_BANK
     ST R0, [SPRITE_3_BANK]
+
+    ; Initialize sprite 4 (vertical along left)
+    LD R0, #MIN_Y
+    ST R0, [SPRITE4_Y_VAR]
+    LD R0, #0                   ; Start moving down
+    ST R0, [SPRITE4_DIR]
+
+    ; Configure sprite 4
+    LD R0, #MIN_X               ; Left of screen
+    ST R0, [SPRITE_4_X]
+
+    LD R0, #MIN_Y
+    ST R0, [SPRITE_4_Y]
+
+    LD R0, #0                   ; Sprite index 0
+    ST R0, [SPRITE_4_IDX]
+
+    LD R0, #$00
+    ST R0, [SPRITE_4_FLAGS]
+
+    LD R0, #SPRITE_BANK
+    ST R0, [SPRITE_4_BANK]
+
+    ; Initialize sprite 5 (vertical along right)
+    LD R0, #MIN_Y
+    ST R0, [SPRITE5_Y_VAR]
+    LD R0, #0                   ; Start moving down
+    ST R0, [SPRITE5_DIR]
+
+    ; Configure sprite 5
+    LD R0, #MAX_X               ; Right of screen
+    ST R0, [SPRITE_5_X]
+
+    LD R0, #MIN_Y
+    ST R0, [SPRITE_5_Y]
+
+    LD R0, #0                   ; Sprite index 0
+    ST R0, [SPRITE_5_IDX]
+
+    LD R0, #$00
+    ST R0, [SPRITE_5_FLAGS]
+
+    LD R0, #SPRITE_BANK
+    ST R0, [SPRITE_5_BANK]
 
     ; Clear any pending interrupt flags
     LD R0, #$FF
@@ -302,92 +358,105 @@ vblank_handler:
     ST R0, [SPRITE1_X_VAR]
     ST R0, [SPRITE_1_X]
 
-    ; === Update Sprite 2 (diagonal: top-left to bottom-right) ===
-    LD R0, [SPRITE2_DIR]
-    CMP R0, #0
-    BRNZ .sprite2_upleft
-
-.sprite2_downright:
-    ; Moving down-right
+    ; === Update Sprite 2 (horizontal along top) ===
     LD R0, [SPRITE2_X_VAR]
+    LD R1, [SPRITE2_DIR]
+    CMP R1, #0
+    BRNZ .sprite2_left
+
+.sprite2_right:
     INC R0
+    CMP R0, #MAX_X
+    BRNZ .sprite2_update
+    LD R1, #1
+    ST R1, [SPRITE2_DIR]
+    JMP .sprite2_update
+
+.sprite2_left:
+    DEC R0
+    CMP R0, #MIN_X
+    BRNZ .sprite2_update
+    LD R1, #0
+    ST R1, [SPRITE2_DIR]
+
+.sprite2_update:
     ST R0, [SPRITE2_X_VAR]
     ST R0, [SPRITE_2_X]
-    CMP R0, #MAX_X
-    BRZ .sprite2_reverse
 
-    LD R0, [SPRITE2_Y_VAR]
-    INC R0
-    ST R0, [SPRITE2_Y_VAR]
-    ST R0, [SPRITE_2_Y]
-    CMP R0, #MAX_Y
-    BRNZ .sprite3_start
-    JMP .sprite2_reverse
-
-.sprite2_upleft:
-    ; Moving up-left
-    LD R0, [SPRITE2_X_VAR]
-    DEC R0
-    ST R0, [SPRITE2_X_VAR]
-    ST R0, [SPRITE_2_X]
-    CMP R0, #MIN_X
-    BRZ .sprite2_reverse
-
-    LD R0, [SPRITE2_Y_VAR]
-    DEC R0
-    ST R0, [SPRITE2_Y_VAR]
-    ST R0, [SPRITE_2_Y]
-    CMP R0, #MIN_Y
-    BRNZ .sprite3_start
-
-.sprite2_reverse:
-    LD R0, [SPRITE2_DIR]
-    XOR R0, #1
-    ST R0, [SPRITE2_DIR]
-
-.sprite3_start:
-    ; === Update Sprite 3 (diagonal: bottom-left to top-right) ===
-    LD R0, [SPRITE3_DIR]
-    CMP R0, #0
-    BRNZ .sprite3_downleft
-
-.sprite3_upright:
-    ; Moving up-right
+    ; === Update Sprite 3 (horizontal along bottom) ===
     LD R0, [SPRITE3_X_VAR]
+    LD R1, [SPRITE3_DIR]
+    CMP R1, #0
+    BRNZ .sprite3_left
+
+.sprite3_right:
     INC R0
+    CMP R0, #MAX_X
+    BRNZ .sprite3_update
+    LD R1, #1
+    ST R1, [SPRITE3_DIR]
+    JMP .sprite3_update
+
+.sprite3_left:
+    DEC R0
+    CMP R0, #MIN_X
+    BRNZ .sprite3_update
+    LD R1, #0
+    ST R1, [SPRITE3_DIR]
+
+.sprite3_update:
     ST R0, [SPRITE3_X_VAR]
     ST R0, [SPRITE_3_X]
-    CMP R0, #MAX_X
-    BRZ .sprite3_reverse
 
-    LD R0, [SPRITE3_Y_VAR]
-    DEC R0
-    ST R0, [SPRITE3_Y_VAR]
-    ST R0, [SPRITE_3_Y]
-    CMP R0, #MIN_Y
-    BRNZ .vblank_done
-    JMP .sprite3_reverse
+    ; === Update Sprite 4 (vertical along left) ===
+    LD R0, [SPRITE4_Y_VAR]
+    LD R1, [SPRITE4_DIR]
+    CMP R1, #0
+    BRNZ .sprite4_up
 
-.sprite3_downleft:
-    ; Moving down-left
-    LD R0, [SPRITE3_X_VAR]
-    DEC R0
-    ST R0, [SPRITE3_X_VAR]
-    ST R0, [SPRITE_3_X]
-    CMP R0, #MIN_X
-    BRZ .sprite3_reverse
-
-    LD R0, [SPRITE3_Y_VAR]
+.sprite4_down:
     INC R0
-    ST R0, [SPRITE3_Y_VAR]
-    ST R0, [SPRITE_3_Y]
     CMP R0, #MAX_Y
-    BRNZ .vblank_done
+    BRNZ .sprite4_update
+    LD R1, #1
+    ST R1, [SPRITE4_DIR]
+    JMP .sprite4_update
 
-.sprite3_reverse:
-    LD R0, [SPRITE3_DIR]
-    XOR R0, #1
-    ST R0, [SPRITE3_DIR]
+.sprite4_up:
+    DEC R0
+    CMP R0, #MIN_Y
+    BRNZ .sprite4_update
+    LD R1, #0
+    ST R1, [SPRITE4_DIR]
+
+.sprite4_update:
+    ST R0, [SPRITE4_Y_VAR]
+    ST R0, [SPRITE_4_Y]
+
+    ; === Update Sprite 5 (vertical along right) ===
+    LD R0, [SPRITE5_Y_VAR]
+    LD R1, [SPRITE5_DIR]
+    CMP R1, #0
+    BRNZ .sprite5_up
+
+.sprite5_down:
+    INC R0
+    CMP R0, #MAX_Y
+    BRNZ .sprite5_update
+    LD R1, #1
+    ST R1, [SPRITE5_DIR]
+    JMP .sprite5_update
+
+.sprite5_up:
+    DEC R0
+    CMP R0, #MIN_Y
+    BRNZ .sprite5_update
+    LD R1, #0
+    ST R1, [SPRITE5_DIR]
+
+.sprite5_update:
+    ST R0, [SPRITE5_Y_VAR]
+    ST R0, [SPRITE_5_Y]
 
 .vblank_done:
     POP R1

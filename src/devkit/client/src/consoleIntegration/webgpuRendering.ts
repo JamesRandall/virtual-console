@@ -9,7 +9,7 @@
 import { pollGamepads } from './gamePad';
 import { generateWGSLPaletteArray } from '../../../../console/src/systemPalette';
 import { SpriteRenderer } from './spriteRenderer';
-import { BankedMemory, LOWER_MEMORY_OFFSET } from '../../../../console/src/bankedMemory';
+import { BankedMemory } from '../../../../console/src/bankedMemory';
 
 // Memory layout constants for Mode 0
 const FRAMEBUFFER_START = 0xB000;

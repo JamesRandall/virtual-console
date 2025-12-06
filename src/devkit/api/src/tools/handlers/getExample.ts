@@ -72,6 +72,13 @@ export const EXAMPLES = [
     description: 'Complete Pong game with player vs AI, score tracking, and physics-based paddle collisions',
     demonstrates: ['Game loop architecture', 'AI opponent logic', 'Collision detection', 'Score tracking', 'XOR sprite drawing', 'VBlank interrupts', 'Controller input', 'Ball physics', 'Paddle bounce angles', 'State management'],
     use_for: ['Complete game reference', 'AI implementation', 'Game physics', 'Collision systems', 'Score display', 'Two-player games', 'Learning game architecture']
+  },
+  {
+    name: 'simpleSprite',
+    filename: 'simpleSprite.asm',
+    description: 'Hardware sprite demonstration with 6 sprites moving in different directions using VBlank interrupts',
+    demonstrates: ['Hardware sprite setup', 'Sprite attribute configuration', 'VBlank interrupt animation', 'Multiple sprite movement', 'Scanline palette mapping', 'Cartridge bank references'],
+    use_for: ['Hardware sprites', 'Sprite animation', 'VBlank-driven movement', 'Palette block switching', 'Learning sprite system']
   }
 ];
 

@@ -41,14 +41,12 @@ const VIDEO_MODE_REGISTER = 0x0101;
 
 export class SpriteRenderer {
   private readonly memoryView: Uint8Array;
-  private readonly bankedMemory: BankedMemory;
   private readonly spriteEngine: SpriteEngine;
   private readonly collisionDetector: CollisionDetector;
   private readonly lowerMemory: Uint8Array;
 
   constructor(sharedBuffer: SharedArrayBuffer, bankedMemory: BankedMemory) {
     this.memoryView = new Uint8Array(sharedBuffer);
-    this.bankedMemory = bankedMemory;
 
     // Create a view of lower memory
     this.lowerMemory = new Uint8Array(sharedBuffer, LOWER_MEMORY_OFFSET, LOWER_MEMORY_SIZE);
