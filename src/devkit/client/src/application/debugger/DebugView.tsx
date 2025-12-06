@@ -17,7 +17,7 @@ const TABS: Tab[] = [
 
 export function DebugView() {
     // Local state
-    const [activeTab, setActiveTab] = useState<TabId>('debug');
+    const [activeTab, setActiveTab] = useState<TabId>('console');
     const updateMemorySnapshot = useDevkitStore((state) => state.updateMemorySnapshot);
     const updateCpuSnapshot = useDevkitStore((state) => state.updateCpuSnapshot);
     const virtualConsole = useVirtualConsole();
