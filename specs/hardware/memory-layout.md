@@ -641,11 +641,21 @@ The framebuffer is positioned at the end of memory space ending at **0xFFFF** wi
 
 ### Bank Usage Conventions
 
-**Bank 0:** Primary framebuffer + working data  
-**Bank 1:** Secondary framebuffer (for double buffering)  
-**Bank 2-15:** Sprite graphics data  
-**Bank 16-31:** Tile graphics data (128 tile types)  
-**Bank 32+:** Level data, additional assets, code overlays
+**Banks 0-15: RAM Region**
+- Bank 0: Primary framebuffer + working data
+- Bank 1: Secondary framebuffer (for double buffering)
+- Bank 2-3: General purpose RAM (decompression buffers, dynamic data)
+- Banks 4-15: Reserved for future RAM expansion (currently unpopulated)
+
+**Banks 16-255: Cartridge ROM**
+- Mapped directly from cartridge .rom file
+- Bank 16 = first cartridge bank, Bank 17 = second, etc.
+- Typical layout:
+  - Bank 16: Cartridge metadata + loader
+  - Bank 17: Game code
+  - Banks 18+: Sprite graphics, tile graphics, level data, audio, etc.
+
+**Note:** Sprites and tiles can reference any bank (0-255). Graphics stored in cartridge ROM are accessed directly without copying to RAM.
 
 #### Tile Graphics Storage
 

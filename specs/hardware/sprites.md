@@ -26,7 +26,7 @@ The Virtual Console Video Chip is a custom graphics processor providing hardware
 | Sprite size | 16×16 pixels | Fixed size |
 | Color depth | 4bpp or 8bpp | Matches video mode |
 | Transparency | Color 0 | Always transparent |
-| Sprite graphics banks | 2-15 | 14 banks available |
+| Sprite graphics banks | 0-255 | Any bank (RAM or cartridge ROM) |
 
 ### Sprite Attribute Table
 
@@ -206,19 +206,21 @@ ST R0, [$010B]
 
 ### Memory Organization
 
-Sprite graphics are stored in banks 2-15 (14 banks available).
+Sprite graphics are typically stored in cartridge ROM banks (16-255). Each sprite attribute includes a bank byte, allowing sprites to reference graphics in any bank. This enables:
+
+- Direct ROM access (no copy to RAM required)
+- Massive sprite libraries (up to 240 banks × 256 sprites = 61,440 sprite graphics at 4bpp)
+- Mixed RAM/ROM usage (dynamically generated sprites in banks 0-3, static sprites in ROM)
 
 **16×16 sprite at 4bpp:**
 - 16×16 = 256 pixels
 - 256 pixels ÷ 2 pixels/byte = 128 bytes per sprite
 - 32768 bytes/bank ÷ 128 bytes/sprite = **256 sprites per bank**
-- 14 banks × 256 sprites = **3,584 total sprite graphics**
 
 **16×16 sprite at 8bpp:**
 - 16×16 = 256 pixels
 - 256 pixels × 1 byte/pixel = 256 bytes per sprite
 - 32768 bytes/bank ÷ 256 bytes/sprite = **128 sprites per bank**
-- 14 banks × 128 sprites = **1,792 total sprite graphics**
 
 ### Graphics Data Format
 
@@ -265,8 +267,8 @@ pixel_value = nibble at offset 0x51A (high nibble since x=5 is odd)
 
 **Assembly example - Setting up sprite graphics:**
 ```assembly
-; Switch to sprite graphics bank
-LD R0, #2              ; Bank 2 for sprite graphics
+; Switch to sprite graphics bank (cartridge bank 2 = absolute bank 18)
+LD R0, #18             ; Bank 18 for sprite graphics
 ST R0, [$0100]         ; BANK_REG
 
 ; Write sprite 0 - simple 2×2 pixel test pattern
@@ -717,7 +719,7 @@ main:
   ST R0, [$0703]
 
   ; Bank
-  LD R0, #2              ; Bank 2 (sprite graphics)
+  LD R0, #18             ; Bank 18 (cartridge bank 2)
   ST R0, [$0704]
 
 done:
@@ -929,7 +931,7 @@ move_player_right:
 |---------------|------|-------------|
 | 0x0700-0x097F | 640 B | Sprite Attribute Table (128 sprites × 5 bytes) |
 | 0x0980-0x0A7F | 256 B | Collision Buffer (85 entries × 3 bytes) |
-| Banks 2-15 | 448 KB | Sprite graphics data (14 banks × 32 KB) |
+| Banks 0-255 | 8 MB | Sprite graphics (any bank: RAM or ROM) |
 
 ---
 
