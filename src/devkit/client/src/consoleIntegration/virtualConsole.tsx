@@ -235,6 +235,10 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
       },
 
       mountCartridge(rom: Uint8Array): Promise<{ bankCount: number }> {
+        // Mount cartridge on main thread's banked memory (for sprite renderer)
+        bankedMemory.mountCartridge(rom);
+
+        // Also mount on worker's banked memory (for CPU)
         return new Promise((resolve) => {
           cartridgeMountResolverRef.current = resolve;
           worker.postMessage({
@@ -245,6 +249,10 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
       },
 
       unmountCartridge(): Promise<void> {
+        // Unmount from main thread's banked memory
+        bankedMemory.unmountCartridge();
+
+        // Also unmount from worker's banked memory
         return new Promise((resolve) => {
           cartridgeUnmountResolverRef.current = resolve;
           worker.postMessage({ type: 'unmountCartridge' });

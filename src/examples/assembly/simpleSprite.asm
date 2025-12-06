@@ -23,6 +23,9 @@
 .define SPRITE_0_FLAGS      $0703
 .define SPRITE_0_BANK       $0704
 
+; Scanline palette map
+.define SCANLINE_MAP        $0600
+
 ; =============================================================================
 ; Constants
 ; =============================================================================
@@ -48,6 +51,9 @@ main:
 
     ; Clear framebuffer to black
     CALL clear_screen
+
+    ; Set up scanline palette map
+    CALL setup_scanline_map
 
     ; Enable sprites
     LD R0, #1
@@ -76,6 +82,45 @@ main:
     ; Done - loop forever
 done:
     JMP done
+
+; =============================================================================
+; Subroutine: Setup Scanline Palette Map
+; First 80 rows use palette block 0, second 80 rows use palette block 3
+; =============================================================================
+
+setup_scanline_map:
+    PUSH R0
+    PUSH R2
+    PUSH R3
+    PUSH R4
+
+    ; R2:R3 = address pointer ($0600)
+    LD R2, #$06
+    LD R3, #$00
+
+    ; First 80 scanlines = palette block 0
+    LD R0, #0
+    LD R4, #80
+.first_half:
+    ST R0, [R2:R3]
+    INC R3
+    DEC R4
+    BRNZ .first_half
+
+    ; Second 80 scanlines = palette block 3
+    LD R0, #3
+    LD R4, #80
+.second_half:
+    ST R0, [R2:R3]
+    INC R3
+    DEC R4
+    BRNZ .second_half
+
+    POP R4
+    POP R3
+    POP R2
+    POP R0
+    RET
 
 ; =============================================================================
 ; Subroutine: Clear Screen

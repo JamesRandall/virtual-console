@@ -224,19 +224,31 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
     return vec4f(0.0, 0.0, 0.0, 1.0);
   }
 
-  // Calculate framebuffer byte address (4bpp = 2 pixels per byte)
+  // Calculate pixel index for this position
   let pixelIndex = y * 256u + x;
   let byteIndex = pixelIndex / 2u;
-  let byte = readByte(&framebuffer, byteIndex);
 
-  // Extract 4-bit color index
-  // Even pixels (x=0,2,4...) use HIGH nibble (bits 4-7)
-  // Odd pixels (x=1,3,5...) use LOW nibble (bits 0-3)
+  // Check if there's a sprite pixel at this location
+  let hasSpritePixel = readByte(&spriteMask, pixelIndex) != 0u;
+
   var colorIndex: u32;
-  if ((pixelIndex & 1u) == 0u) {
-    colorIndex = (byte >> 4u) & 0xFu; // High nibble (even pixel)
+
+  if (hasSpritePixel) {
+    // Read sprite color from overlay buffer (4bpp format)
+    let spriteByte = readByte(&spriteOverlay, byteIndex);
+    if ((pixelIndex & 1u) == 0u) {
+      colorIndex = (spriteByte >> 4u) & 0xFu; // High nibble (even pixel)
+    } else {
+      colorIndex = spriteByte & 0xFu; // Low nibble (odd pixel)
+    }
   } else {
-    colorIndex = byte & 0xFu; // Low nibble (odd pixel)
+    // Read background color from framebuffer (4bpp format)
+    let byte = readByte(&framebuffer, byteIndex);
+    if ((pixelIndex & 1u) == 0u) {
+      colorIndex = (byte >> 4u) & 0xFu; // High nibble (even pixel)
+    } else {
+      colorIndex = byte & 0xFu; // Low nibble (odd pixel)
+    }
   }
 
   // Get palette selector for this scanline
