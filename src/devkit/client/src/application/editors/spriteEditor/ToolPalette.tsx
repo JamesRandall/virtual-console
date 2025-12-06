@@ -77,9 +77,6 @@ export function ToolPalette({
   hasClipboard,
   isPasting,
 }: ToolPaletteProps) {
-  const drawingTools = TOOLS.filter((t) => t.group === 'drawing');
-  const selectionTools = TOOLS.filter((t) => t.group === 'selection');
-
   const isActionEnabled = (action: Action): boolean => {
     if (action === 'cut' || action === 'copy') {
       return hasSelection;
@@ -91,85 +88,57 @@ export function ToolPalette({
   };
 
   return (
-    <div className="flex flex-col dk-padding-tight dk-gap-small w-10">
-      {/* Drawing tools */}
-      <div className="flex flex-col dk-gap-tight">
-        <span className="dk-tertiary-text text-[9px] text-center">Draw</span>
-        {drawingTools.map((tool) => (
+    <div className="flex flex-col bg-zinc-800 overflow-visible">
+      {/* All tools */}
+      {TOOLS.map((tool) => (
+        <div key={tool.id} className="relative group">
           <button
-            key={tool.id}
             onClick={() => onToolSelect(tool.id)}
             className={`
-              w-8 h-8 flex items-center justify-center rounded transition-colors
+              w-10 h-10 flex items-center justify-center transition-colors
               ${
                 selectedTool === tool.id
                   ? 'bg-zinc-600 text-white'
-                  : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600 hover:text-zinc-200'
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
               }
             `}
-            title={tool.label}
           >
-            <FontAwesomeIcon icon={tool.icon} className="text-sm" />
+            <FontAwesomeIcon icon={tool.icon} className="text-base" />
           </button>
-        ))}
-      </div>
-
-      {/* Divider */}
-      <div className="border-t border-zinc-600 my-1" />
-
-      {/* Selection tools */}
-      <div className="flex flex-col dk-gap-tight">
-        <span className="dk-tertiary-text text-[9px] text-center">Select</span>
-        {selectionTools.map((tool) => (
-          <button
-            key={tool.id}
-            onClick={() => onToolSelect(tool.id)}
-            className={`
-              w-8 h-8 flex items-center justify-center rounded transition-colors
-              ${
-                selectedTool === tool.id
-                  ? 'bg-zinc-600 text-white'
-                  : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600 hover:text-zinc-200'
-              }
-            `}
-            title={tool.label}
-          >
-            <FontAwesomeIcon icon={tool.icon} className="text-sm" />
-          </button>
-        ))}
-      </div>
-
-      {/* Divider */}
-      <div className="border-t border-zinc-600 my-1" />
+          <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-zinc-900 text-zinc-200 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+            {tool.label}
+          </div>
+        </div>
+      ))}
 
       {/* Actions */}
-      <div className="flex flex-col dk-gap-tight">
-        <span className="dk-tertiary-text text-[9px] text-center">Edit</span>
-        {ACTIONS.map((action) => {
-          const enabled = isActionEnabled(action.id);
-          const isActive = action.id === 'paste' && isPasting;
-          return (
+      {ACTIONS.map((action) => {
+        const enabled = isActionEnabled(action.id);
+        const isActive = action.id === 'paste' && isPasting;
+        return (
+          <div key={action.id} className="relative group">
             <button
-              key={action.id}
               onClick={() => enabled && onAction(action.id)}
               disabled={!enabled}
               className={`
-                w-8 h-8 flex items-center justify-center rounded transition-colors
+                w-10 h-10 flex items-center justify-center transition-colors
                 ${
                   isActive
                     ? 'bg-zinc-600 text-white'
                     : enabled
-                      ? 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600 hover:text-zinc-200'
+                      ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
                       : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
                 }
               `}
-              title={action.label}
             >
-              <FontAwesomeIcon icon={action.icon} className="text-sm" />
+              <FontAwesomeIcon icon={action.icon} className="text-base" />
             </button>
-          );
-        })}
-      </div>
+            <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-zinc-900 text-zinc-200 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+              {action.label}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

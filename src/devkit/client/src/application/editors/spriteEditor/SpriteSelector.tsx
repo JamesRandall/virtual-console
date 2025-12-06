@@ -76,13 +76,15 @@ export function SpriteSelector({
     };
   }, [isDropdownOpen]);
 
+  const btnClass = "h-7 w-7 flex items-center justify-center bg-zinc-700 hover:bg-zinc-600 text-zinc-400 hover:text-zinc-200 rounded transition-colors disabled:bg-zinc-800 disabled:cursor-not-allowed disabled:text-zinc-600";
+
   return (
-    <div className="flex items-center dk-gap-tight relative" ref={dropdownRef}>
+    <div className="flex items-center gap-1 relative" ref={dropdownRef}>
       {/* First button */}
       <button
         onClick={handleFirst}
         disabled={selectedIndex === 0}
-        className="dk-btn-icon dk-btn-disabled"
+        className={btnClass}
         title="First sprite"
       >
         <FontAwesomeIcon icon={faBackward} className="text-xs" />
@@ -92,7 +94,7 @@ export function SpriteSelector({
       <button
         onClick={handlePrevious}
         disabled={selectedIndex === 0}
-        className="dk-btn-icon dk-btn-disabled"
+        className={btnClass}
         title="Previous sprite"
       >
         <FontAwesomeIcon icon={faChevronLeft} className="text-xs" />
@@ -105,7 +107,7 @@ export function SpriteSelector({
         max={maxSprites - 1}
         value={selectedIndex}
         onChange={handleInputChange}
-        className="dk-input w-16 text-center"
+        className="h-7 w-14 px-2 bg-zinc-700 border border-zinc-600 rounded text-zinc-200 text-sm text-center focus:outline-none focus:border-zinc-500"
         title="Sprite index"
       />
 
@@ -113,7 +115,7 @@ export function SpriteSelector({
       <button
         onClick={handleNext}
         disabled={selectedIndex === maxSprites - 1}
-        className="dk-btn-icon dk-btn-disabled"
+        className={btnClass}
         title="Next sprite"
       >
         <FontAwesomeIcon icon={faChevronRight} className="text-xs" />
@@ -123,7 +125,7 @@ export function SpriteSelector({
       <button
         onClick={handleLast}
         disabled={selectedIndex === maxSprites - 1}
-        className="dk-btn-icon dk-btn-disabled"
+        className={btnClass}
         title="Last sprite"
       >
         <FontAwesomeIcon icon={faForward} className="text-xs" />
@@ -137,7 +139,7 @@ export function SpriteSelector({
       {/* Sprite picker dropdown button */}
       <button
         onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-        className={`dk-btn-icon ${isDropdownOpen ? 'bg-zinc-600 text-white' : ''}`}
+        className={`${btnClass} ${isDropdownOpen ? 'bg-zinc-600 text-white' : ''}`}
         title="Open sprite picker"
       >
         <FontAwesomeIcon icon={faTableCells} className="text-xs" />

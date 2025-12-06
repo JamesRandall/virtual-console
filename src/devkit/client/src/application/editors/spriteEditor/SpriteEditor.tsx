@@ -502,10 +502,75 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
 
   return (
     <div className="flex flex-col h-full dk-bg-primary">
+      {/* Top toolbar - full width */}
+      <div className="flex items-center gap-6 px-3 py-2 dk-border-b">
+        {/* Sprite selector */}
+        <div className="flex items-center gap-2">
+          <span className="dk-label">Sprite:</span>
+          <SpriteSelector
+            selectedIndex={selectedSpriteIndex}
+            onSelectIndex={setSelectedSpriteIndex}
+            maxSprites={SPRITES_PER_GBIN}
+            gbinData={gbinData}
+            paletteData={paletteData}
+            paletteBlockIndex={selectedPaletteBlockIndex}
+            spritePaletteConfigs={spritePaletteConfigs}
+          />
+        </div>
+
+        {/* Zoom controls */}
+        <div className="flex items-center gap-2">
+          <span className="dk-label">Zoom:</span>
+          <select
+            value={zoom}
+            onChange={(e) => setZoom(Number(e.target.value))}
+            className="h-7 w-16 px-2 bg-zinc-700 border border-zinc-600 rounded text-zinc-200 text-sm focus:outline-none focus:border-zinc-500"
+          >
+            <option value={1}>1x</option>
+            <option value={4}>4x</option>
+            <option value={8}>8x</option>
+            <option value={16}>16x</option>
+            <option value={24}>24x</option>
+            <option value={32}>32x</option>
+          </select>
+        </div>
+
+        {/* Transparency toggle */}
+        <label className="flex items-center gap-2 cursor-pointer dk-text-secondary">
+          <input
+            type="checkbox"
+            checked={showTransparency}
+            onChange={(e) => setShowTransparency(e.target.checked)}
+            className="cursor-pointer"
+          />
+          <span className="text-sm">Show transparency</span>
+        </label>
+
+        {/* Undo/Redo buttons */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleUndo}
+            disabled={undoCount === 0}
+            className="h-7 w-7 flex items-center justify-center bg-zinc-700 hover:bg-zinc-600 text-zinc-400 hover:text-zinc-200 rounded transition-colors disabled:bg-zinc-800 disabled:cursor-not-allowed disabled:text-zinc-600"
+            title={`Undo (${undoCount})`}
+          >
+            <FontAwesomeIcon icon={faUndo} className="text-xs" />
+          </button>
+          <button
+            onClick={handleRedo}
+            disabled={redoCount === 0}
+            className="h-7 w-7 flex items-center justify-center bg-zinc-700 hover:bg-zinc-600 text-zinc-400 hover:text-zinc-200 rounded transition-colors disabled:bg-zinc-800 disabled:cursor-not-allowed disabled:text-zinc-600"
+            title={`Redo (${redoCount})`}
+          >
+            <FontAwesomeIcon icon={faRedo} className="text-xs" />
+          </button>
+        </div>
+      </div>
+
       {/* Main content area */}
       <div className="flex flex-1 min-h-0">
         {/* Tool palette - left side */}
-        <div className="flex-shrink-0 dk-border-r">
+        <div className="flex-shrink-0 overflow-visible">
           <ToolPalette
             selectedTool={selectedTool}
             onToolSelect={handleToolSelect}
@@ -516,76 +581,9 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
           />
         </div>
 
-        {/* Canvas and controls - center */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Top toolbar */}
-          <div className="flex items-center justify-between dk-padding-compact dk-border-b">
-            {/* Sprite selector */}
-            <div className="flex items-center dk-gap-compact">
-              <span className="dk-label">Sprite:</span>
-              <SpriteSelector
-                selectedIndex={selectedSpriteIndex}
-                onSelectIndex={setSelectedSpriteIndex}
-                maxSprites={SPRITES_PER_GBIN}
-                gbinData={gbinData}
-                paletteData={paletteData}
-                paletteBlockIndex={selectedPaletteBlockIndex}
-                spritePaletteConfigs={spritePaletteConfigs}
-              />
-            </div>
-
-            {/* Zoom controls */}
-            <div className="flex items-center dk-gap-compact">
-              <span className="dk-label">Zoom:</span>
-              <select
-                value={zoom}
-                onChange={(e) => setZoom(Number(e.target.value))}
-                className="dk-input w-20"
-              >
-                <option value={1}>1x</option>
-                <option value={4}>4x</option>
-                <option value={8}>8x</option>
-                <option value={16}>16x</option>
-                <option value={24}>24x</option>
-                <option value={32}>32x</option>
-              </select>
-            </div>
-
-            {/* Transparency toggle */}
-            <label className="flex items-center dk-gap-tight cursor-pointer dk-text-secondary">
-              <input
-                type="checkbox"
-                checked={showTransparency}
-                onChange={(e) => setShowTransparency(e.target.checked)}
-                className="cursor-pointer"
-              />
-              <span className="text-sm">Show transparency</span>
-            </label>
-
-            {/* Undo/Redo buttons */}
-            <div className="flex items-center dk-gap-tight">
-              <button
-                onClick={handleUndo}
-                disabled={undoCount === 0}
-                className="dk-btn-icon dk-btn-disabled"
-                title={`Undo (${undoCount})`}
-              >
-                <FontAwesomeIcon icon={faUndo} className="text-xs" />
-              </button>
-              <button
-                onClick={handleRedo}
-                disabled={redoCount === 0}
-                className="dk-btn-icon dk-btn-disabled"
-                title={`Redo (${redoCount})`}
-              >
-                <FontAwesomeIcon icon={faRedo} className="text-xs" />
-              </button>
-            </div>
-          </div>
-
-          {/* Canvas area */}
-          <div className="flex-1 min-h-0 overflow-auto flex items-center justify-center dk-padding-standard">
-            <SpriteCanvas
+        {/* Canvas area */}
+        <div className="flex-1 min-h-0 overflow-auto flex items-center justify-center dk-padding-standard">
+          <SpriteCanvas
               pixels={spritePixels}
               paletteData={paletteData}
               paletteBlockIndex={selectedPaletteBlockIndex}
@@ -605,7 +603,6 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
               onStartMove={handleStartMove}
               onOperationEnd={handleOperationEnd}
             />
-          </div>
         </div>
       </div>
 
