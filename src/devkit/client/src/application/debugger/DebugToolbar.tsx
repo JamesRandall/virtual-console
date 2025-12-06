@@ -70,7 +70,7 @@ export function DebugToolbar() {
             setIsConsoleRunning(false);
 
             // Zero the memory
-            const memoryArray = new Uint8Array(virtualConsole.sharedMemory);
+            const memoryArray = new Uint8Array(virtualConsole.sharedBuffer);
             memoryArray.fill(0);
 
             // Reset the CPU

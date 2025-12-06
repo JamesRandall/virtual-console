@@ -7,9 +7,11 @@ import React, {
   type ReactNode,
 } from 'react';
 import { MemoryBus } from '../../../../console/src/memoryBus';
+import { BankedMemory, createSharedMemory } from '../../../../console/src/bankedMemory';
 import type { CpuSnapshot } from '../stores/devkitStore';
 
-const MEMORY_SIZE = 65536; // 64KB
+// Default to supporting 64 cartridge banks (2MB cartridge)
+const DEFAULT_CARTRIDGE_BANKS = 64;
 
 /**
  * Virtual Console Controller Interface
@@ -22,8 +24,11 @@ export interface VirtualConsoleController {
   /** Memory bus for main thread access (peripherals, rendering) */
   memory: MemoryBus;
 
+  /** Banked memory for direct bank access (renderer, debug tools) */
+  bankedMemory: BankedMemory;
+
   /** Shared memory buffer accessible by both threads */
-  sharedMemory: SharedArrayBuffer;
+  sharedBuffer: SharedArrayBuffer;
 
   /** Promise that resolves when the CPU worker is initialized */
   ready: Promise<void>;
@@ -48,6 +53,12 @@ export interface VirtualConsoleController {
 
   /** Request current CPU state snapshot */
   getSnapshot(): Promise<CpuSnapshot>;
+
+  /** Mount a cartridge ROM */
+  mountCartridge(rom: Uint8Array): Promise<{ bankCount: number }>;
+
+  /** Unmount the current cartridge */
+  unmountCartridge(): Promise<void>;
 }
 
 interface VirtualConsoleContextValue {
@@ -70,6 +81,8 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
     new Map()
   );
   const snapshotIdRef = useRef(0);
+  const cartridgeMountResolverRef = useRef<((result: { bankCount: number }) => void) | null>(null);
+  const cartridgeUnmountResolverRef = useRef<(() => void) | null>(null);
 
   // Store the ready promise and resolver in refs so they persist across re-renders
   const readyPromiseRef = useRef<Promise<void> | null>(null);
@@ -86,10 +99,10 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
       );
     }
 
-    // Create SharedArrayBuffer for memory
-    const sharedMemory = new SharedArrayBuffer(MEMORY_SIZE);
-    const memoryArray = new Uint8Array(sharedMemory);
-    const memory = new MemoryBus(memoryArray);
+    // Create SharedArrayBuffer for all memory (lower + RAM banks + cartridge space)
+    const sharedBuffer = createSharedMemory(DEFAULT_CARTRIDGE_BANKS);
+    const bankedMemory = new BankedMemory(sharedBuffer);
+    const memory = new MemoryBus(bankedMemory);
 
     // Create initialization promise only once and store in ref
     if (!readyPromiseRef.current) {
@@ -108,7 +121,7 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
 
     // Handle worker messages
     worker.onmessage = (event: MessageEvent) => {
-      const { type, snapshot, error } = event.data;
+      const { type, snapshot, error, bankCount } = event.data;
 
       if (type === 'initialized') {
         // Resolve initialization promise
@@ -140,6 +153,18 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
       } else if (type === 'running') {
         // CPU started running - dispatch event
         window.dispatchEvent(new Event('cpuRunning'));
+      } else if (type === 'cartridgeMounted') {
+        // Cartridge mounted - resolve promise
+        if (cartridgeMountResolverRef.current) {
+          cartridgeMountResolverRef.current({ bankCount });
+          cartridgeMountResolverRef.current = null;
+        }
+      } else if (type === 'cartridgeUnmounted') {
+        // Cartridge unmounted - resolve promise
+        if (cartridgeUnmountResolverRef.current) {
+          cartridgeUnmountResolverRef.current();
+          cartridgeUnmountResolverRef.current = null;
+        }
       } else if (type === 'error') {
         console.error('CPU Worker error:', error);
       }
@@ -149,15 +174,16 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
       console.error('Worker error:', error);
     };
 
-    // Initialize worker with shared memory
+    // Initialize worker with shared memory buffer
     worker.postMessage({
       type: 'init',
-      payload: { sharedMemory },
+      payload: { sharedBuffer },
     });
 
     return {
       memory,
-      sharedMemory,
+      bankedMemory,
+      sharedBuffer,
       ready: readyPromiseRef.current,
 
       run() {
@@ -195,6 +221,23 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
           const id = snapshotIdRef.current++;
           snapshotResolversRef.current.set(id, resolve);
           worker.postMessage({ type: 'getSnapshot' });
+        });
+      },
+
+      mountCartridge(rom: Uint8Array): Promise<{ bankCount: number }> {
+        return new Promise((resolve) => {
+          cartridgeMountResolverRef.current = resolve;
+          worker.postMessage({
+            type: 'mountCartridge',
+            payload: { rom: rom.buffer },
+          });
+        });
+      },
+
+      unmountCartridge(): Promise<void> {
+        return new Promise((resolve) => {
+          cartridgeUnmountResolverRef.current = resolve;
+          worker.postMessage({ type: 'unmountCartridge' });
         });
       },
     };

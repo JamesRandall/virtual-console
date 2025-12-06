@@ -7,7 +7,7 @@ import { useDevkitStore } from '../../stores/devkitStore.ts';
 
 export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
   // Virtual console
-  const { sharedMemory } = useVirtualConsole();
+  const { sharedBuffer } = useVirtualConsole();
 
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -28,7 +28,7 @@ export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
     let mounted = true;
 
     // Initialize renderer
-    createWebGPURenderer(canvas, sharedMemory)
+    createWebGPURenderer(canvas, sharedBuffer)
       .then((renderer) => {
         if (!mounted) {
           renderer.destroy();
@@ -52,7 +52,7 @@ export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
         rendererRef.current = null;
       }
     };
-  }, [sharedMemory]);
+  }, [sharedBuffer]);
 
   // Control renderer visibility based on isActive prop
   useEffect(() => {

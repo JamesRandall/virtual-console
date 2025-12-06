@@ -6,6 +6,7 @@
 
 import { CPU } from '../../../../console/src/cpu';
 import { MemoryBus } from '../../../../console/src/memoryBus';
+import { BankedMemory } from '../../../../console/src/bankedMemory';
 
 const TARGET_FREQUENCY = 3_000_000; // 3MHz
 const CYCLES_PER_MS = TARGET_FREQUENCY / 1000;
@@ -16,9 +17,12 @@ interface CpuSnapshot {
   programCounter: number;
   statusRegister: number;
   cycleCount: number;
+  currentBank: number;
 }
 
 let cpu: CPU;
+let memory: MemoryBus;
+let bankedMemory: BankedMemory;
 let isRunning = false;
 let lastTimestamp = 0;
 let accumulatedCycles = 0;
@@ -96,6 +100,7 @@ function createSnapshot(): CpuSnapshot {
     programCounter: cpu.getProgramCounter(),
     statusRegister: cpu.getStatus(),
     cycleCount: cpu.getCycles(),
+    currentBank: memory.getCurrentBank(),
   };
 }
 
@@ -107,13 +112,42 @@ self.onmessage = (event: MessageEvent) => {
 
   switch (type) {
     case 'init': {
-      // Initialize CPU with shared memory
-      const { sharedMemory } = payload;
-      const memoryArray = new Uint8Array(sharedMemory);
-      const memory = new MemoryBus(memoryArray);
+      // Initialize CPU with shared memory buffer
+      const { sharedBuffer } = payload;
+      bankedMemory = new BankedMemory(sharedBuffer);
+      memory = new MemoryBus(bankedMemory);
       cpu = new CPU(memory);
 
       self.postMessage({ type: 'initialized' });
+      break;
+    }
+
+    case 'mountCartridge': {
+      if (bankedMemory) {
+        try {
+          const { rom } = payload;
+          const romArray = new Uint8Array(rom);
+          bankedMemory.mountCartridge(romArray);
+
+          self.postMessage({
+            type: 'cartridgeMounted',
+            bankCount: bankedMemory.getCartridgeBankCount(),
+          });
+        } catch (error) {
+          self.postMessage({
+            type: 'error',
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      break;
+    }
+
+    case 'unmountCartridge': {
+      if (bankedMemory) {
+        bankedMemory.unmountCartridge();
+        self.postMessage({ type: 'cartridgeUnmounted' });
+      }
       break;
     }
 
@@ -170,6 +204,7 @@ self.onmessage = (event: MessageEvent) => {
         const wasRunning = isRunning;
         isRunning = false;
         cpu.reset();
+        memory.reset();
         self.postMessage({ type: 'reset' });
 
         if (wasRunning) {
@@ -195,6 +230,17 @@ self.onmessage = (event: MessageEvent) => {
       const { addresses } = payload;
       breakpointAddresses = new Set(addresses);
       self.postMessage({ type: 'breakpointsSet' });
+      break;
+    }
+
+    case 'getCartridgeInfo': {
+      if (bankedMemory) {
+        self.postMessage({
+          type: 'cartridgeInfo',
+          isMounted: bankedMemory.isCartridgeMounted(),
+          bankCount: bankedMemory.getCartridgeBankCount(),
+        });
+      }
       break;
     }
 
