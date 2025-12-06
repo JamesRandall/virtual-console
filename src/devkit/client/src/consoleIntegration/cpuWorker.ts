@@ -203,8 +203,10 @@ self.onmessage = (event: MessageEvent) => {
       if (cpu) {
         const wasRunning = isRunning;
         isRunning = false;
-        cpu.reset();
+        // Reset memory BEFORE cpu.reset() so that cpu.reset() can write
+        // the test pattern and default palette to clean memory
         memory.reset();
+        cpu.reset();
         self.postMessage({ type: 'reset' });
 
         if (wasRunning) {

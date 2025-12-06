@@ -19,6 +19,11 @@ const UPPER_MEMORY_START = 0x8000;
 const BANK_REG = 0x0100;
 const INT_STATUS = 0x0114;
 
+// Sprite registers
+const SPRITE_OVERFLOW = 0x0107;
+const COLLISION_FLAGS = 0x0108;
+const COLLISION_COUNT = 0x0109;
+
 /**
  * MemoryBus provides the CPU's view of memory with bank switching support
  */
@@ -114,6 +119,18 @@ export class MemoryBus {
       if (address === INT_STATUS) {
         const current = this.lowerMemory[address];
         this.lowerMemory[address] = current & ~value;
+        return;
+      }
+
+      // Special handling for COLLISION_FLAGS (0x0108) - write-1-to-clear
+      if (address === COLLISION_FLAGS) {
+        const current = this.lowerMemory[address];
+        this.lowerMemory[address] = current & ~value;
+        return;
+      }
+
+      // Read-only registers - ignore writes
+      if (address === SPRITE_OVERFLOW || address === COLLISION_COUNT) {
         return;
       }
 

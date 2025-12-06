@@ -3,10 +3,13 @@
  *
  * Renders Mode 0 (256×160 @ 4bpp) with scanline palette mapping.
  * Runs at 60fps using requestAnimationFrame.
+ * Includes sprite rendering support.
  */
 
 import { pollGamepads } from './gamePad';
 import { generateWGSLPaletteArray } from '../../../../console/src/systemPalette';
+import { SpriteRenderer } from './spriteRenderer';
+import { BankedMemory, LOWER_MEMORY_OFFSET } from '../../../../console/src/bankedMemory';
 
 // Memory layout constants for Mode 0
 const FRAMEBUFFER_START = 0xB000;
@@ -18,6 +21,13 @@ const SCANLINE_MAP_SIZE = 0x0100; // 256 bytes
 
 const TARGET_FPS = 60;
 const FRAME_TIME = 1000 / TARGET_FPS;
+
+// Screen dimensions for Mode 0
+const SCREEN_WIDTH = 256;
+const SCREEN_HEIGHT = 160;
+
+// Sprite enable register
+const SPRITE_ENABLE = 0x0104;
 
 /**
  * WebGPU Renderer Interface
@@ -52,14 +62,24 @@ export interface WebGPURenderer {
    * Capture the current frame as a PNG data URL
    */
   captureFrame(): Promise<string>;
+
+  /**
+   * Get the sprite renderer for debugging/inspection
+   */
+  getSpriteRenderer(): SpriteRenderer | null;
 }
 
 /**
  * Create a WebGPU renderer for the virtual console framebuffer
+ *
+ * @param canvas - HTML canvas element to render to
+ * @param sharedMemory - SharedArrayBuffer containing console memory
+ * @param bankedMemory - Optional BankedMemory for sprite graphics access
  */
 export async function createWebGPURenderer(
   canvas: HTMLCanvasElement,
-  sharedMemory: SharedArrayBuffer
+  sharedMemory: SharedArrayBuffer,
+  bankedMemory?: BankedMemory
 ): Promise<WebGPURenderer> {
   // Check WebGPU support
   if (!('gpu' in navigator)) {
@@ -76,6 +96,12 @@ export async function createWebGPURenderer(
 
   const device = await adapter.requestDevice();
 
+  // Handle device lost
+  device.lost.then((info) => {
+    console.error('WebGPU device was lost:', info.message);
+    console.error('Reason:', info.reason);
+  });
+
   // Configure canvas context
   const context = canvas.getContext('webgpu');
   if (!context) {
@@ -91,6 +117,33 @@ export async function createWebGPURenderer(
 
   // Create memory views
   const memory = new Uint8Array(sharedMemory);
+
+  // Create sprite renderer if banked memory is available
+  let spriteRenderer: SpriteRenderer | null = null;
+  if (bankedMemory) {
+    spriteRenderer = new SpriteRenderer(sharedMemory, bankedMemory);
+  }
+
+  // Sprite overlay buffer (written by sprite renderer, read by GPU)
+  // This buffer holds sprite pixels in 4bpp format that will be composited
+  const spriteOverlayBuffer = device.createBuffer({
+    size: FRAMEBUFFER_SIZE,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  // Sprite mask buffer (1 byte per pixel - indicates if sprite pixel is present)
+  const spriteMaskBuffer = device.createBuffer({
+    size: SCREEN_WIDTH * SCREEN_HEIGHT,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  // CPU-side buffers for sprite compositing
+  const spriteOverlayData = new Uint8Array(FRAMEBUFFER_SIZE);
+  const spriteMaskData = new Uint8Array(SCREEN_WIDTH * SCREEN_HEIGHT);
+
+  // Initialize sprite GPU buffers to zero (WebGPU buffers have undefined initial contents)
+  device.queue.writeBuffer(spriteOverlayBuffer, 0, spriteOverlayData);
+  device.queue.writeBuffer(spriteMaskBuffer, 0, spriteMaskData);
 
   // Create GPU buffers
   const framebufferBuffer = device.createBuffer({
@@ -149,6 +202,8 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 @group(0) @binding(0) var<storage, read> framebuffer: array<u32>;
 @group(0) @binding(1) var<storage, read> paletteRam: array<u32>;
 @group(0) @binding(2) var<storage, read> scanlineMap: array<u32>;
+@group(0) @binding(3) var<storage, read> spriteOverlay: array<u32>;
+@group(0) @binding(4) var<storage, read> spriteMask: array<u32>;
 
 // Helper function to read a byte from a u32 array
 fn readByte(buffer: ptr<storage, array<u32>, read>, byteIndex: u32) -> u32 {
@@ -225,6 +280,16 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
         visibility: GPUShaderStage.FRAGMENT,
         buffer: { type: 'read-only-storage' },
       },
+      {
+        binding: 3,
+        visibility: GPUShaderStage.FRAGMENT,
+        buffer: { type: 'read-only-storage' },
+      },
+      {
+        binding: 4,
+        visibility: GPUShaderStage.FRAGMENT,
+        buffer: { type: 'read-only-storage' },
+      },
     ],
   });
 
@@ -236,6 +301,8 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
       { binding: 0, resource: { buffer: framebufferBuffer } },
       { binding: 1, resource: { buffer: paletteBuffer } },
       { binding: 2, resource: { buffer: scanlineMapBuffer } },
+      { binding: 3, resource: { buffer: spriteOverlayBuffer } },
+      { binding: 4, resource: { buffer: spriteMaskBuffer } },
     ],
   });
 
@@ -269,6 +336,7 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
   let lastFrameTime = 0;
   let animationFrameId: number | null = null;
 
+
   /**
    * Render a single frame
    */
@@ -286,6 +354,50 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
 
     // Only perform GPU rendering if visible
     if (isVisible && context) {
+      // Always clear sprite buffers first
+      spriteMaskData.fill(0);
+
+      // Render sprites if sprite renderer is available and sprites are enabled
+      if (spriteRenderer && (memory[SPRITE_ENABLE] & 0x01) !== 0) {
+        // Clear overlay buffer
+        spriteOverlayData.fill(0);
+
+        // Reset sprite engine frame state
+        spriteRenderer.resetFrame();
+
+        // Render each scanline
+        for (let y = 0; y < SCREEN_HEIGHT; y++) {
+          const scanlineBuffer = spriteRenderer.renderScanline(y, SCREEN_WIDTH);
+
+          // Copy scanline to overlay and mask buffers
+          for (let x = 0; x < SCREEN_WIDTH; x++) {
+            const colorIndex = scanlineBuffer[x];
+            if (colorIndex !== 0) {
+              // Write to mask (sprite pixel present)
+              spriteMaskData[y * SCREEN_WIDTH + x] = 1;
+
+              // Write to overlay (4bpp format)
+              const pixelIndex = y * SCREEN_WIDTH + x;
+              const byteIndex = Math.floor(pixelIndex / 2);
+              if (pixelIndex % 2 === 0) {
+                // High nibble (even pixel)
+                spriteOverlayData[byteIndex] = (spriteOverlayData[byteIndex] & 0x0f) | ((colorIndex & 0x0f) << 4);
+              } else {
+                // Low nibble (odd pixel)
+                spriteOverlayData[byteIndex] = (spriteOverlayData[byteIndex] & 0xf0) | (colorIndex & 0x0f);
+              }
+            }
+          }
+        }
+
+        // Finalize frame (write collision data to memory)
+        spriteRenderer.finalizeFrame();
+      }
+
+      // Always upload sprite buffers to GPU
+      device.queue.writeBuffer(spriteOverlayBuffer, 0, spriteOverlayData);
+      device.queue.writeBuffer(spriteMaskBuffer, 0, spriteMaskData);
+
       // Write data from shared memory directly to GPU buffers
       // TypeScript's GPUQueue.writeBuffer types don't recognize SharedArrayBuffer-backed Uint8Array,
       // but it works correctly at runtime per WebGPU spec
@@ -359,6 +471,12 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
       framebufferBuffer.destroy();
       paletteBuffer.destroy();
       scanlineMapBuffer.destroy();
+      spriteOverlayBuffer.destroy();
+      spriteMaskBuffer.destroy();
+      // Unconfigure the context to release WebGPU resources
+      if (context) {
+        context.unconfigure();
+      }
     },
 
     isRunning() {
@@ -367,6 +485,10 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
 
     setVisible(visible: boolean) {
       isVisible = visible;
+    },
+
+    getSpriteRenderer(): SpriteRenderer | null {
+      return spriteRenderer;
     },
 
     async captureFrame(): Promise<string> {

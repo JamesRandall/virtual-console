@@ -98,7 +98,10 @@ export function AppToolbar() {
       // Step 2: Read the built cartridge ROM
       const rom = await readBinaryFile(currentProjectHandle, 'cartridge.rom');
 
-      // Step 3: Load code from ROM into memory using metadata
+      // Step 3: Mount cartridge ROM for runtime access to asset banks (sprites, palettes, etc.)
+      await virtualConsole.mountCartridge(rom);
+
+      // Step 4: Load code from ROM into memory using metadata
       const loadResult = loadCartridgeCode(rom, virtualConsole.memory);
 
       if (!loadResult) {
@@ -106,10 +109,10 @@ export function AppToolbar() {
         return;
       }
 
-      // Step 4: Set program counter to start address
+      // Step 5: Set program counter to start address
       virtualConsole.setProgramCounter(loadResult.startAddress);
 
-      // Step 5: Get source map and symbol table by re-assembling (for debugging)
+      // Step 6: Get source map and symbol table by re-assembling (for debugging)
       // We need these for breakpoints and source mapping
       const diskSourceFiles = await readAllSourceFiles(currentProjectHandle);
       const sourceFiles = new Map(diskSourceFiles);
@@ -137,7 +140,7 @@ export function AppToolbar() {
       // Update snapshots
       await updateVirtualConsoleSnapshot(virtualConsole, updateMemorySnapshot, updateCpuSnapshot);
 
-      // Step 6: Switch to debug mode and auto-start the emulator
+      // Step 7: Switch to debug mode and auto-start the emulator
       setAppMode('debug');
 
       // Sync breakpoints to worker before starting
@@ -169,13 +172,13 @@ export function AppToolbar() {
     setIsConsoleRunning,
   ]);
 
-  const handleStop = useCallback(() => {
+  const handleStop = useCallback(async () => {
     // Pause the emulator
     virtualConsole.pause();
     setIsConsoleRunning(false);
 
-    // Reset the CPU
-    virtualConsole.reset();
+    // Reset the CPU and wait for it to complete
+    await virtualConsole.reset();
 
     // Clear debug state so PC marker doesn't show in editor
     setSourceMap([]);

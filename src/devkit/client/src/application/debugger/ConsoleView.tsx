@@ -7,7 +7,7 @@ import { useDevkitStore } from '../../stores/devkitStore.ts';
 
 export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
   // Virtual console
-  const { sharedBuffer } = useVirtualConsole();
+  const { sharedBuffer, bankedMemory } = useVirtualConsole();
 
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -27,8 +27,8 @@ export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
 
     let mounted = true;
 
-    // Initialize renderer
-    createWebGPURenderer(canvas, sharedBuffer)
+    // Initialize renderer with sprite support
+    createWebGPURenderer(canvas, sharedBuffer, bankedMemory)
       .then((renderer) => {
         if (!mounted) {
           renderer.destroy();
@@ -52,6 +52,8 @@ export function ConsoleView({ isActive = true }: { isActive?: boolean } = {}) {
         rendererRef.current = null;
       }
     };
+  // Note: bankedMemory is stable (created once in VirtualConsoleProvider) so not needed in deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sharedBuffer]);
 
   // Control renderer visibility based on isActive prop

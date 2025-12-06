@@ -43,7 +43,7 @@ export interface VirtualConsoleController {
   step(): void;
 
   /** Reset the CPU to initial state */
-  reset(): void;
+  reset(): Promise<void>;
 
   /** Set the CPU program counter */
   setProgramCounter(address: number): void;
@@ -83,6 +83,7 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
   const snapshotIdRef = useRef(0);
   const cartridgeMountResolverRef = useRef<((result: { bankCount: number }) => void) | null>(null);
   const cartridgeUnmountResolverRef = useRef<(() => void) | null>(null);
+  const resetResolverRef = useRef<(() => void) | null>(null);
 
   // Store the ready promise and resolver in refs so they persist across re-renders
   const readyPromiseRef = useRef<Promise<void> | null>(null);
@@ -165,6 +166,12 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
           cartridgeUnmountResolverRef.current();
           cartridgeUnmountResolverRef.current = null;
         }
+      } else if (type === 'reset') {
+        // Reset completed - resolve promise
+        if (resetResolverRef.current) {
+          resetResolverRef.current();
+          resetResolverRef.current = null;
+        }
       } else if (type === 'error') {
         console.error('CPU Worker error:', error);
       }
@@ -198,8 +205,11 @@ export const VirtualConsoleProvider: React.FC<VirtualConsoleProviderProps> = ({
         worker.postMessage({ type: 'step' });
       },
 
-      reset() {
-        worker.postMessage({ type: 'reset' });
+      reset(): Promise<void> {
+        return new Promise((resolve) => {
+          resetResolverRef.current = resolve;
+          worker.postMessage({ type: 'reset' });
+        });
       },
 
       setProgramCounter(address: number) {
