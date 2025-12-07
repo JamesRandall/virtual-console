@@ -121,19 +121,6 @@ export function TilemapCanvas({
     return () => observer.disconnect();
   }, []);
 
-  // Get the palette block for rendering a placed tile (uses the tile's stored palette attribute)
-  const getPaletteBlockForPlacedTile = useCallback((tilePalette: number): number => {
-    return selectedPaletteBlock + tilePalette;
-  }, [selectedPaletteBlock]);
-
-  // Get the palette block for rendering a tile in preview (from config, for tile picker preview)
-  const getPaletteBlockForPreview = useCallback((tileIndex: number): number => {
-    if (spritePaletteConfigs && spritePaletteConfigs[tileIndex]) {
-      return spritePaletteConfigs[tileIndex].block;
-    }
-    return selectedPaletteBlock;
-  }, [spritePaletteConfigs, selectedPaletteBlock]);
-
   // Build a tile atlas - pre-render all tiles at 1x to an offscreen canvas
   const tileAtlas = useMemo(() => {
     if (!gbinData) return null;
