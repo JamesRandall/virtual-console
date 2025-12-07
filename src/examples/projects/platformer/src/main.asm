@@ -264,7 +264,7 @@ try_move_up:
     ; Calculate new Y position
     LD R0, [PLAYER_Y]
     CMP R0, #PLAYER_SPEED
-    BRC .move_up_done      ; Already at top edge
+    BRNC .move_up_done     ; Already at top edge (R0 < PLAYER_SPEED)
 
     SUB R0, #PLAYER_SPEED
     ST R0, [TEMP_Y]
@@ -293,9 +293,9 @@ try_move_down:
     LD R0, [PLAYER_Y]
     ADD R0, #PLAYER_SPEED
 
-    ; Check screen boundary (160 - 16 = 144)
-    CMP R0, #144
-    BRNC .move_down_done   ; Would go off screen
+    ; Check screen boundary (160 - 16 = 144, but allow 144 so check > 144)
+    CMP R0, #145
+    BRC .move_down_done    ; Would go off screen (R0 >= 145, i.e. R0 > 144)
 
     ST R0, [TEMP_Y]
 
@@ -322,7 +322,7 @@ try_move_left:
     ; Calculate new X position
     LD R0, [PLAYER_X]
     CMP R0, #PLAYER_SPEED
-    BRC .move_left_done    ; Already at left edge
+    BRNC .move_left_done   ; Already at left edge (R0 < PLAYER_SPEED)
 
     SUB R0, #PLAYER_SPEED
     ST R0, [TEMP_X]
@@ -351,9 +351,9 @@ try_move_right:
     LD R0, [PLAYER_X]
     ADD R0, #PLAYER_SPEED
 
-    ; Check screen boundary (256 - 16 = 240)
-    CMP R0, #240
-    BRNC .move_right_done  ; Would go off screen
+    ; Check screen boundary (256 - 16 = 240, but allow 240 so check > 240)
+    CMP R0, #241
+    BRC .move_right_done   ; Would go off screen (R0 >= 241, i.e. R0 > 240)
 
     ST R0, [TEMP_X]
 
