@@ -1,12 +1,17 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Dialog } from '../../components/Dialog.tsx';
 
 interface NewFileDialogProps {
   isOpen: boolean;
   onClose: () => void;
   folderPath: string;  // The folder where the file will be created (e.g., "src", "sprites")
-  onCreateFile: (fileName: string) => Promise<void>;
+  onCreateFile: (fileName: string, options?: { width?: number; height?: number }) => Promise<void>;
 }
+
+// Maximum file size for tbin is 32KB
+const MAX_TBIN_SIZE = 32768;
+const TBIN_HEADER_SIZE = 8;
+const MAX_TILES = Math.floor((MAX_TBIN_SIZE - TBIN_HEADER_SIZE) / 2);
 
 export function NewFileDialog({ isOpen, onClose, folderPath, onCreateFile }: NewFileDialogProps) {
   // Local state
@@ -14,18 +19,51 @@ export function NewFileDialog({ isOpen, onClose, folderPath, onCreateFile }: New
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Tilemap dimensions (for .tbin files) - stored as strings for natural input editing
+  const [tilemapWidthStr, setTilemapWidthStr] = useState('128');
+  const [tilemapHeightStr, setTilemapHeightStr] = useState('128');
+
+  // Parse dimensions to numbers (default to 0 if invalid/empty for validation)
+  const tilemapWidth = parseInt(tilemapWidthStr) || 0;
+  const tilemapHeight = parseInt(tilemapHeightStr) || 0;
+
   // Determine the expected file extension based on folder
   const getExpectedExtension = useCallback(() => {
     if (folderPath.includes('src')) return '.asm';
     if (folderPath.includes('sprites') || folderPath.includes('tiles')) return '.gbin';
-    if (folderPath.includes('maps')) return '.mbin';
+    if (folderPath.includes('maps')) return '.tbin';
     return '';
   }, [folderPath]);
+
+  // Check if we're creating a tbin file
+  const isTbinFile = useMemo(() => {
+    const expectedExt = getExpectedExtension();
+    return expectedExt === '.tbin' || fileName.toLowerCase().endsWith('.tbin');
+  }, [getExpectedExtension, fileName]);
+
+  // Validate tilemap dimensions
+  const dimensionError = useMemo(() => {
+    if (!isTbinFile) return null;
+    const totalTiles = tilemapWidth * tilemapHeight;
+    if (totalTiles > MAX_TILES) {
+      return `Tilemap too large: ${totalTiles} tiles (max ${MAX_TILES}). Reduce dimensions.`;
+    }
+    if (tilemapWidth <= 0 || tilemapHeight <= 0) {
+      return 'Width and height must be positive numbers.';
+    }
+    return null;
+  }, [isTbinFile, tilemapWidth, tilemapHeight]);
 
   // Event handlers
   const handleCreate = useCallback(async () => {
     if (!fileName.trim()) {
       setError('Please enter a file name');
+      return;
+    }
+
+    // Check dimension error for tbin files
+    if (isTbinFile && dimensionError) {
+      setError(dimensionError);
       return;
     }
 
@@ -41,20 +79,29 @@ export function NewFileDialog({ isOpen, onClose, folderPath, onCreateFile }: New
     setError(null);
 
     try {
-      await onCreateFile(finalFileName);
+      // Pass dimensions for tbin files
+      if (isTbinFile) {
+        await onCreateFile(finalFileName, { width: tilemapWidth, height: tilemapHeight });
+      } else {
+        await onCreateFile(finalFileName);
+      }
       setFileName('');
+      setTilemapWidthStr('128');
+      setTilemapHeightStr('128');
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create file');
     } finally {
       setIsCreating(false);
     }
-  }, [fileName, getExpectedExtension, onCreateFile, onClose]);
+  }, [fileName, getExpectedExtension, onCreateFile, onClose, isTbinFile, dimensionError, tilemapWidth, tilemapHeight]);
 
   const handleClose = useCallback(() => {
     if (!isCreating) {
       setFileName('');
       setError(null);
+      setTilemapWidthStr('128');
+      setTilemapHeightStr('128');
       onClose();
     }
   }, [isCreating, onClose]);
@@ -103,6 +150,50 @@ export function NewFileDialog({ isOpen, onClose, folderPath, onCreateFile }: New
             </p>
           )}
         </div>
+
+        {/* Tilemap dimensions (for .tbin files) */}
+        {isTbinFile && (
+          <div className="flex flex-col dk-gap-small">
+            <label className="dk-subsection-header">
+              Tilemap Dimensions
+            </label>
+            <div className="flex dk-gap-standard items-center">
+              <div className="flex items-center dk-gap-small">
+                <label htmlFor="tilemapWidth" className="dk-secondary-text text-sm">Width:</label>
+                <input
+                  id="tilemapWidth"
+                  type="number"
+                  min={1}
+                  max={256}
+                  value={tilemapWidthStr}
+                  onChange={(e) => setTilemapWidthStr(e.target.value)}
+                  className="dk-input w-20"
+                  disabled={isCreating}
+                />
+              </div>
+              <span className="dk-secondary-text">×</span>
+              <div className="flex items-center dk-gap-small">
+                <label htmlFor="tilemapHeight" className="dk-secondary-text text-sm">Height:</label>
+                <input
+                  id="tilemapHeight"
+                  type="number"
+                  min={1}
+                  max={256}
+                  value={tilemapHeightStr}
+                  onChange={(e) => setTilemapHeightStr(e.target.value)}
+                  className="dk-input w-20"
+                  disabled={isCreating}
+                />
+              </div>
+            </div>
+            <p className="dk-secondary-text text-xs">
+              Total tiles: {tilemapWidth * tilemapHeight} / {MAX_TILES} max
+            </p>
+            {dimensionError && (
+              <p className="text-red-400 text-xs">{dimensionError}</p>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex dk-gap-small justify-end">

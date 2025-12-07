@@ -233,7 +233,7 @@ export function ProjectExplorer() {
         return faFileCode;
       case 'gbin':
         return faImage;
-      case 'mbin':
+      case 'tbin':
         return faMap;
       case 'pbin':
         return faPalette;
@@ -280,8 +280,8 @@ export function ProjectExplorer() {
       }
 
       try {
-        // Handle binary files (.pbin, .gbin) differently
-        const isBinaryFile = node.id.endsWith('.pbin') || node.id.endsWith('.gbin');
+        // Handle binary files (.pbin, .gbin, .tbin) differently
+        const isBinaryFile = node.id.endsWith('.pbin') || node.id.endsWith('.gbin') || node.id.endsWith('.tbin');
         if (isBinaryFile) {
           const binaryData = await readBinaryFile(currentProjectHandle, node.id);
           // Convert binary to base64 for storage in openFiles
@@ -338,11 +338,18 @@ export function ProjectExplorer() {
   }, [contextMenu]);
 
   const handleCreateFileConfirm = useCallback(
-    async (fileName: string) => {
+    async (fileName: string, options?: { width?: number; height?: number }) => {
       if (!currentProjectHandle) return;
 
       try {
-        await createFile(currentProjectHandle, newFileDialog.folderPath, fileName, '');
+        // Check if this is a .tbin file that needs special initialization
+        if (fileName.endsWith('.tbin') && options?.width !== undefined && options?.height !== undefined) {
+          // Create tbin with header and empty tile data
+          const { createTbinFile } = await import('../../services/fileSystemService.ts');
+          await createTbinFile(currentProjectHandle, newFileDialog.folderPath, fileName, options.width, options.height);
+        } else {
+          await createFile(currentProjectHandle, newFileDialog.folderPath, fileName, '');
+        }
         refreshProjectTree();
       } catch (error) {
         console.error('Error creating file:', error);

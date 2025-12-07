@@ -324,6 +324,62 @@ export function canDeleteFile(path: string): boolean {
 }
 
 /**
+ * Create a new .tbin tilemap file with header and empty tile data
+ *
+ * File format:
+ * - Header (8 bytes):
+ *   - Bytes 0-1: Width in tiles (little-endian uint16)
+ *   - Bytes 2-3: Height in tiles (little-endian uint16)
+ *   - Bytes 4-7: Reserved (set to 0)
+ * - Tile data (width * height * 2 bytes):
+ *   - Each tile is 2 bytes: [tileIndex, attributes]
+ *   - All tiles initialized to 0 (empty)
+ */
+export async function createTbinFile(
+  directoryHandle: FileSystemDirectoryHandle,
+  folderPath: string,
+  fileName: string,
+  width: number,
+  height: number
+): Promise<void> {
+  const pathParts = folderPath.split('/').filter(p => p);
+  let currentHandle: FileSystemDirectoryHandle = directoryHandle;
+
+  // Navigate through directories
+  for (const part of pathParts) {
+    currentHandle = await currentHandle.getDirectoryHandle(part, { create: false });
+  }
+
+  // Calculate file size
+  const HEADER_SIZE = 8;
+  const tileDataSize = width * height * 2;
+  const totalSize = HEADER_SIZE + tileDataSize;
+
+  // Validate size
+  if (totalSize > 32768) {
+    throw new Error(`Tilemap too large: ${width}x${height} = ${width * height} tiles exceeds maximum`);
+  }
+
+  // Create the file data
+  const data = new Uint8Array(totalSize);
+
+  // Write header (little-endian)
+  data[0] = width & 0xFF;
+  data[1] = (width >> 8) & 0xFF;
+  data[2] = height & 0xFF;
+  data[3] = (height >> 8) & 0xFF;
+  // Bytes 4-7 are reserved (already 0)
+
+  // Tile data is already initialized to 0 (empty tiles)
+
+  // Create the file
+  const fileHandle = await currentHandle.getFileHandle(fileName, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(data.buffer as ArrayBuffer);
+  await writable.close();
+}
+
+/**
  * Recursively read all files with a given extension from a directory
  */
 async function readFilesRecursively(
