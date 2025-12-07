@@ -22,6 +22,12 @@
         "palette": "default",
         "block": 0
       }
+    ],
+    "objects": [
+      {
+        "palette": "default",
+        "block": 1
+      }
     ]
   }
 }

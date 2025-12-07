@@ -288,9 +288,10 @@ export function SpriteCanvas({
     return result;
   }, []);
 
-  // Generate ellipse pixels from bounding box using midpoint ellipse algorithm
+  // Generate ellipse pixels from bounding box
   const getEllipsePixels = useCallback((startRow: number, startCol: number, endRow: number, endCol: number): Array<{ row: number; col: number }> => {
     const result: Array<{ row: number; col: number }> = [];
+    const added = new Set<string>();
 
     // Calculate bounding box
     const minRow = Math.min(startRow, endRow);
@@ -298,86 +299,74 @@ export function SpriteCanvas({
     const minCol = Math.min(startCol, endCol);
     const maxCol = Math.max(startCol, endCol);
 
-    // Calculate center and radii
-    const centerRow = (minRow + maxRow) / 2;
-    const centerCol = (minCol + maxCol) / 2;
-    const radiusX = (maxCol - minCol) / 2;
-    const radiusY = (maxRow - minRow) / 2;
+    const width = maxCol - minCol + 1;
+    const height = maxRow - minRow + 1;
 
-    // Handle degenerate cases
-    if (radiusX === 0 && radiusY === 0) {
-      result.push({ row: Math.round(centerRow), col: Math.round(centerCol) });
+    // Handle degenerate cases (single point or lines)
+    if (width === 1 && height === 1) {
+      result.push({ row: minRow, col: minCol });
       return result;
     }
 
-    if (radiusX === 0) {
+    if (width === 1) {
       // Vertical line
       for (let row = minRow; row <= maxRow; row++) {
-        result.push({ row, col: Math.round(centerCol) });
+        result.push({ row, col: minCol });
       }
       return result;
     }
 
-    if (radiusY === 0) {
+    if (height === 1) {
       // Horizontal line
       for (let col = minCol; col <= maxCol; col++) {
-        result.push({ row: Math.round(centerRow), col });
+        result.push({ row: minRow, col });
       }
       return result;
     }
 
     const addPixel = (row: number, col: number) => {
-      const r = Math.round(row);
-      const c = Math.round(col);
-      if (r >= 0 && r < SPRITE_HEIGHT && c >= 0 && c < SPRITE_WIDTH) {
-        // Avoid duplicates
-        if (!result.some(p => p.row === r && p.col === c)) {
-          result.push({ row: r, col: c });
+      if (row >= 0 && row < SPRITE_HEIGHT && col >= 0 && col < SPRITE_WIDTH) {
+        const key = `${row},${col}`;
+        if (!added.has(key)) {
+          added.add(key);
+          result.push({ row, col });
         }
       }
     };
 
-    // Midpoint ellipse algorithm
-    const rx = radiusX;
-    const ry = radiusY;
-    const rx2 = rx * rx;
-    const ry2 = ry * ry;
+    // Use parametric approach: sample the ellipse and plot outline pixels
+    // Semi-axes (the ellipse touches the edges of the bounding box at center of edge pixels)
+    const a = (width - 1) / 2;  // horizontal semi-axis
+    const b = (height - 1) / 2; // vertical semi-axis
+    const centerX = minCol + a;
+    const centerY = minRow + b;
 
-    // Region 1
-    let x = 0;
-    let y = ry;
-    let p1 = ry2 - rx2 * ry + 0.25 * rx2;
-
-    while (ry2 * x < rx2 * y) {
-      addPixel(centerRow + y, centerCol + x);
-      addPixel(centerRow + y, centerCol - x);
-      addPixel(centerRow - y, centerCol + x);
-      addPixel(centerRow - y, centerCol - x);
-
-      x++;
-      if (p1 < 0) {
-        p1 += ry2 * (2 * x + 1);
-      } else {
-        y--;
-        p1 += ry2 * (2 * x + 1) - rx2 * (2 * y);
+    // For each column in the bounding box, find the ellipse boundary rows
+    for (let col = minCol; col <= maxCol; col++) {
+      const x = col - centerX;
+      // Ellipse equation: (x/a)^2 + (y/b)^2 = 1
+      // Solve for y: y = b * sqrt(1 - (x/a)^2)
+      const xNorm = x / a;
+      if (Math.abs(xNorm) <= 1) {
+        const yOffset = b * Math.sqrt(1 - xNorm * xNorm);
+        const topRow = Math.round(centerY - yOffset);
+        const bottomRow = Math.round(centerY + yOffset);
+        addPixel(topRow, col);
+        addPixel(bottomRow, col);
       }
     }
 
-    // Region 2
-    let p2 = ry2 * (x + 0.5) * (x + 0.5) + rx2 * (y - 1) * (y - 1) - rx2 * ry2;
-
-    while (y >= 0) {
-      addPixel(centerRow + y, centerCol + x);
-      addPixel(centerRow + y, centerCol - x);
-      addPixel(centerRow - y, centerCol + x);
-      addPixel(centerRow - y, centerCol - x);
-
-      y--;
-      if (p2 > 0) {
-        p2 -= rx2 * (2 * y + 1);
-      } else {
-        x++;
-        p2 += ry2 * (2 * x) - rx2 * (2 * y + 1);
+    // For each row in the bounding box, find the ellipse boundary columns
+    for (let row = minRow; row <= maxRow; row++) {
+      const y = row - centerY;
+      // Solve for x: x = a * sqrt(1 - (y/b)^2)
+      const yNorm = y / b;
+      if (Math.abs(yNorm) <= 1) {
+        const xOffset = a * Math.sqrt(1 - yNorm * yNorm);
+        const leftCol = Math.round(centerX - xOffset);
+        const rightCol = Math.round(centerX + xOffset);
+        addPixel(row, leftCol);
+        addPixel(row, rightCol);
       }
     }
 

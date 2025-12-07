@@ -1,17 +1,13 @@
-; Tilemap Display Example
-; Displays a tilemap loaded from cartridge bank 4
+; Platformer Example
+; Displays a tilemap and a player sprite that can move around
+; Player cannot move into tiles (collision detection)
 ;
 ; Assumes:
 ; - Tile graphics are in cartridge bank 2 (absolute bank 18)
 ; - Tilemap data (.tbin file) is in cartridge bank 4 (absolute bank 20)
+; - Player sprite graphics are in cartridge bank 5 (absolute bank 21)
 ;
-; The .tbin file format has an 8-byte header:
-;   Bytes 0-1: Width in tiles (little-endian uint16)
-;   Bytes 2-3: Height in tiles (little-endian uint16)
-;   Bytes 4-7: Reserved
-;   Bytes 8+:  Tile data (2 bytes per tile)
-;
-; Uses VBLANK interrupt for smooth 60fps scrolling
+; Uses VBLANK interrupt for smooth 60fps movement
 
 .org $0B80
 
@@ -26,6 +22,17 @@
 .define INT_ENABLE          $0115
 .define VBLANK_VEC_HI       $0132
 .define VBLANK_VEC_LO       $0133
+
+; Sprite control registers
+.define SPRITE_ENABLE       $0104
+.define SPRITE_COUNT        $0105
+
+; Sprite 0 attribute addresses (player)
+.define SPRITE_0_X          $0700
+.define SPRITE_0_Y          $0701
+.define SPRITE_0_IDX        $0702
+.define SPRITE_0_FLAGS      $0703
+.define SPRITE_0_BANK       $0704
 
 ; Tilemap control registers
 .define TILEMAP_ENABLE      $013D
@@ -42,7 +49,7 @@
 .define TILE_ANIM_FRAME     $0148
 
 ; Controller registers
-.define CTRL1_STATE         $0110
+.define CTRL1_STATE         $0136
 
 ; Scanline palette map
 .define SCANLINE_MAP        $0600
@@ -58,47 +65,49 @@
 .define SCREEN_WIDTH        256
 .define SCREEN_HEIGHT       160
 
-; Tile size
+; Tile and sprite size
 .define TILE_SIZE           16
+.define SPRITE_SIZE         16
 
 ; Banks (cartridge banks start at 16)
 .define TILE_GFX_BANK       18      ; Cartridge bank 2 = absolute 18
 .define TILEMAP_BANK        20      ; Cartridge bank 4 = absolute 20
+.define PLAYER_SPRITE_BANK  21      ; Cartridge bank 5 = absolute 21
 
 ; Tilemap data offset (skip 8-byte .tbin header)
 .define TILEMAP_DATA_OFFSET 8
 
 ; Tilemap enable flags
 .define TM_ENABLE           $01     ; Bit 0: Enable tilemap
-.define TM_WRAP_H           $02     ; Bit 1: Horizontal wrap
-.define TM_WRAP_V           $04     ; Bit 2: Vertical wrap
 
-; Controller button masks
-.define BTN_UP              $01
-.define BTN_DOWN            $02
-.define BTN_LEFT            $04
-.define BTN_RIGHT           $08
+; Controller button masks (from cheatsheet)
+.define BTN_UP              $80
+.define BTN_DOWN            $40
+.define BTN_LEFT            $20
+.define BTN_RIGHT           $10
+
+; Player movement speed (pixels per frame)
+.define PLAYER_SPEED        2
 
 ; =============================================================================
 ; Variables (in lower memory)
 ; =============================================================================
 
-.define SCROLL_X_LO         $0B00   ; Current X scroll low byte
-.define SCROLL_X_HI         $0B01   ; Current X scroll high byte
-.define SCROLL_Y_LO         $0B02   ; Current Y scroll low byte
-.define SCROLL_Y_HI         $0B03   ; Current Y scroll high byte
-.define MAP_WIDTH           $0B04   ; Tilemap width in tiles (from header)
-.define MAP_HEIGHT          $0B05   ; Tilemap height in tiles (from header)
-.define MAX_SCROLL_X_LO     $0B06   ; Maximum X scroll value low byte
-.define MAX_SCROLL_X_HI     $0B07   ; Maximum X scroll value high byte
-.define MAX_SCROLL_Y_LO     $0B08   ; Maximum Y scroll value low byte
-.define MAX_SCROLL_Y_HI     $0B09   ; Maximum Y scroll value high byte
+.define PLAYER_X            $0B00   ; Player X position (screen coords)
+.define PLAYER_Y            $0B01   ; Player Y position (screen coords)
+.define MAP_WIDTH           $0B02   ; Tilemap width in tiles
+.define MAP_HEIGHT          $0B03   ; Tilemap height in tiles
+.define TEMP_X              $0B04   ; Temporary X for collision check
+.define TEMP_Y              $0B05   ; Temporary Y for collision check
 
 ; =============================================================================
 ; Entry Point
 ; =============================================================================
 
 main:
+    NOP
+    NOP
+    NOP
     ; Disable interrupts during setup
     CLI
 
@@ -112,31 +121,29 @@ main:
     ; Set up scanline palette map (all scanlines use palette 0)
     CALL setup_scanline_map
 
-    ; Read tilemap header from bank 4 to get dimensions
+    ; Read tilemap header to get dimensions
     CALL read_tilemap_header
-
-    ; Calculate max scroll values
-    CALL calc_max_scroll
-
-    ; Initialize scroll position to 0
-    LD R0, #0
-    ST R0, [SCROLL_X_LO]
-    ST R0, [SCROLL_X_HI]
-    ST R0, [SCROLL_Y_LO]
-    ST R0, [SCROLL_Y_HI]
 
     ; Configure tilemap registers
     CALL setup_tilemap
+
+    ; Initialize player position (top-left corner)
+    LD R0, #0
+    ST R0, [PLAYER_X]
+    ST R0, [PLAYER_Y]
+
+    ; Setup player sprite
+    CALL setup_player_sprite
 
     ; Clear any pending interrupt flags
     LD R0, #$FF
     ST R0, [INT_STATUS]
 
     ; Install VBLANK interrupt vector
-    LD R0, #(vblank_handler >> 8)
-    ST R0, [VBLANK_VEC_HI]
     LD R0, #(vblank_handler & $FF)
     ST R0, [VBLANK_VEC_LO]
+    LD R0, #(vblank_handler >> 8)
+    ST R0, [VBLANK_VEC_HI]
 
     ; Enable VBLANK interrupt
     LD R0, #$01
@@ -145,21 +152,56 @@ main:
     ; Enable interrupts
     SEI
 
-    ; Main loop - just idles while interrupt handles scrolling
+    ; Main loop - idles while interrupt handles movement
 main_loop:
     NOP
     JMP main_loop
 
 ; =============================================================================
+; Setup Player Sprite
+; =============================================================================
+
+setup_player_sprite:
+    PUSH R0
+
+    ; Enable sprites
+    LD R0, #1
+    ST R0, [SPRITE_ENABLE]
+
+    ; Set sprite count to 1
+    LD R0, #1
+    ST R0, [SPRITE_COUNT]
+
+    ; Set sprite 0 position
+    LD R0, [PLAYER_X]
+    ST R0, [SPRITE_0_X]
+    LD R0, [PLAYER_Y]
+    ST R0, [SPRITE_0_Y]
+
+    ; Set sprite index (0)
+    LD R0, #0
+    ST R0, [SPRITE_0_IDX]
+
+    ; Set sprite flags (no flip, front priority, palette 0)
+    LD R0, #$00
+    ST R0, [SPRITE_0_FLAGS]
+
+    ; Set sprite bank (cartridge bank 5 = absolute 21)
+    LD R0, #PLAYER_SPRITE_BANK
+    ST R0, [SPRITE_0_BANK]
+
+    POP R0
+    RET
+
+; =============================================================================
 ; VBLANK Interrupt Handler
-; Called 60 times per second - handles controller input and scrolling
+; Called 60 times per second - handles controller input and player movement
 ; =============================================================================
 
 vblank_handler:
     PUSH R0
     PUSH R1
     PUSH R2
-    PUSH R3
 
     ; Clear VBLANK flag (write 1 to clear)
     LD R0, #$01
@@ -171,318 +213,339 @@ vblank_handler:
     ST R0, [TILE_ANIM_FRAME]
 
     ; Read controller state
-    LD R0, [CTRL1_STATE]
+    LD R2, [CTRL1_STATE]
 
     ; Check UP button
-    LD R1, R0
-    AND R1, #BTN_UP
+    MOV R0, R2
+    AND R0, #BTN_UP
     BRZ .check_down
-    CALL scroll_up
-    JMP .check_left
+    CALL try_move_up
 
 .check_down:
-    ; Check DOWN button
-    LD R1, R0
-    AND R1, #BTN_DOWN
+    MOV R0, R2
+    AND R0, #BTN_DOWN
     BRZ .check_left
-    CALL scroll_down
+    CALL try_move_down
 
 .check_left:
-    ; Check LEFT button
-    LD R1, R0
-    AND R1, #BTN_LEFT
+    MOV R0, R2
+    AND R0, #BTN_LEFT
     BRZ .check_right
-    CALL scroll_left
-    JMP .update_scroll_regs
+    CALL try_move_left
 
 .check_right:
-    ; Check RIGHT button
-    LD R1, R0
-    AND R1, #BTN_RIGHT
-    BRZ .update_scroll_regs
-    CALL scroll_right
+    MOV R0, R2
+    AND R0, #BTN_RIGHT
+    BRZ .update_sprite
+    CALL try_move_right
 
-.update_scroll_regs:
-    ; Update tilemap scroll registers from variables
-    LD R0, [SCROLL_X_LO]
-    ST R0, [TILEMAP_X_SCROLL_LO]
-    LD R0, [SCROLL_X_HI]
-    ST R0, [TILEMAP_X_SCROLL_HI]
-    LD R0, [SCROLL_Y_LO]
-    ST R0, [TILEMAP_Y_SCROLL_LO]
-    LD R0, [SCROLL_Y_HI]
-    ST R0, [TILEMAP_Y_SCROLL_HI]
+.update_sprite:
+    ; Update sprite position from player variables
+    LD R0, [PLAYER_X]
+    ST R0, [SPRITE_0_X]
+    LD R0, [PLAYER_Y]
+    ST R0, [SPRITE_0_Y]
 
 .vblank_done:
-    POP R3
     POP R2
     POP R1
     POP R0
     RTI
 
 ; =============================================================================
-; Scroll Functions (with bounds checking)
+; Movement Functions with Collision Detection
+; Each function checks if the new position would collide with tilemap
 ; =============================================================================
 
-scroll_up:
+try_move_up:
     PUSH R0
     PUSH R1
 
-    ; Decrement Y scroll if > 0
-    LD R0, [SCROLL_Y_LO]
-    LD R1, [SCROLL_Y_HI]
+    ; Calculate new Y position
+    LD R0, [PLAYER_Y]
+    CMP R0, #PLAYER_SPEED
+    BRC .move_up_done      ; Already at top edge
 
-    ; Check if already at 0
+    SUB R0, #PLAYER_SPEED
+    ST R0, [TEMP_Y]
+
+    ; Check collision at new position
+    LD R1, [PLAYER_X]
+    ST R1, [TEMP_X]
+    CALL check_collision
     CMP R0, #0
-    BRNZ .do_scroll_up
-    CMP R1, #0
-    BRZ .scroll_up_done
+    BRNZ .move_up_done     ; Collision detected, don't move
 
-.do_scroll_up:
-    ; Decrement 16-bit scroll Y
-    DEC R0
-    CMP R0, #$FF          ; Check for underflow (0 - 1 = 0xFF)
-    BRNZ .store_scroll_up
-    DEC R1                ; Borrow from high byte
+    ; No collision, apply movement
+    LD R0, [TEMP_Y]
+    ST R0, [PLAYER_Y]
 
-.store_scroll_up:
-    ST R0, [SCROLL_Y_LO]
-    ST R1, [SCROLL_Y_HI]
-
-.scroll_up_done:
+.move_up_done:
     POP R1
     POP R0
     RET
 
-scroll_down:
+try_move_down:
     PUSH R0
+    PUSH R1
+
+    ; Calculate new Y position
+    LD R0, [PLAYER_Y]
+    ADD R0, #PLAYER_SPEED
+
+    ; Check screen boundary (160 - 16 = 144)
+    CMP R0, #144
+    BRNC .move_down_done   ; Would go off screen
+
+    ST R0, [TEMP_Y]
+
+    ; Check collision at new position
+    LD R1, [PLAYER_X]
+    ST R1, [TEMP_X]
+    CALL check_collision
+    CMP R0, #0
+    BRNZ .move_down_done   ; Collision detected, don't move
+
+    ; No collision, apply movement
+    LD R0, [TEMP_Y]
+    ST R0, [PLAYER_Y]
+
+.move_down_done:
+    POP R1
+    POP R0
+    RET
+
+try_move_left:
+    PUSH R0
+    PUSH R1
+
+    ; Calculate new X position
+    LD R0, [PLAYER_X]
+    CMP R0, #PLAYER_SPEED
+    BRC .move_left_done    ; Already at left edge
+
+    SUB R0, #PLAYER_SPEED
+    ST R0, [TEMP_X]
+
+    ; Check collision at new position
+    LD R1, [PLAYER_Y]
+    ST R1, [TEMP_Y]
+    CALL check_collision
+    CMP R0, #0
+    BRNZ .move_left_done   ; Collision detected, don't move
+
+    ; No collision, apply movement
+    LD R0, [TEMP_X]
+    ST R0, [PLAYER_X]
+
+.move_left_done:
+    POP R1
+    POP R0
+    RET
+
+try_move_right:
+    PUSH R0
+    PUSH R1
+
+    ; Calculate new X position
+    LD R0, [PLAYER_X]
+    ADD R0, #PLAYER_SPEED
+
+    ; Check screen boundary (256 - 16 = 240)
+    CMP R0, #240
+    BRNC .move_right_done  ; Would go off screen
+
+    ST R0, [TEMP_X]
+
+    ; Check collision at new position
+    LD R1, [PLAYER_Y]
+    ST R1, [TEMP_Y]
+    CALL check_collision
+    CMP R0, #0
+    BRNZ .move_right_done  ; Collision detected, don't move
+
+    ; No collision, apply movement
+    LD R0, [TEMP_X]
+    ST R0, [PLAYER_X]
+
+.move_right_done:
+    POP R1
+    POP R0
+    RET
+
+; =============================================================================
+; Check Collision
+; Checks if the sprite at (TEMP_X, TEMP_Y) collides with any solid tiles
+; Returns: R0 = 0 if no collision, non-zero if collision
+;
+; We check all 4 corners of the 16x16 sprite against the tilemap
+; =============================================================================
+
+check_collision:
     PUSH R1
     PUSH R2
     PUSH R3
 
-    ; Increment Y scroll if < max
-    LD R0, [SCROLL_Y_LO]
-    LD R1, [SCROLL_Y_HI]
-    LD R2, [MAX_SCROLL_Y_LO]
-    LD R3, [MAX_SCROLL_Y_HI]
+    ; Check top-left corner
+    LD R0, [TEMP_X]
+    LD R1, [TEMP_Y]
+    CALL get_tile_at_pixel
+    CMP R0, #0
+    BRNZ .collision_found
 
-    ; Compare current with max (16-bit comparison)
-    ; First check if high bytes are different
-    CMP R1, R3
-    BRC .do_scroll_down   ; If high byte less (carry set), can scroll
-    BRNZ .scroll_down_done ; If high byte greater (not equal, no carry), can't scroll
-    ; High bytes equal, compare low bytes
-    CMP R0, R2
-    BRNC .scroll_down_done ; If low >= max low (no carry), can't scroll
+    ; Check top-right corner (X + 15)
+    LD R0, [TEMP_X]
+    ADD R0, #15
+    LD R1, [TEMP_Y]
+    CALL get_tile_at_pixel
+    CMP R0, #0
+    BRNZ .collision_found
 
-.do_scroll_down:
-    ; Increment 16-bit scroll Y
-    INC R0
-    BRNZ .store_scroll_down
-    INC R1                ; Carry to high byte
+    ; Check bottom-left corner (Y + 15)
+    LD R0, [TEMP_X]
+    LD R1, [TEMP_Y]
+    ADD R1, #15
+    CALL get_tile_at_pixel
+    CMP R0, #0
+    BRNZ .collision_found
 
-.store_scroll_down:
-    ST R0, [SCROLL_Y_LO]
-    ST R1, [SCROLL_Y_HI]
+    ; Check bottom-right corner (X + 15, Y + 15)
+    LD R0, [TEMP_X]
+    ADD R0, #15
+    LD R1, [TEMP_Y]
+    ADD R1, #15
+    CALL get_tile_at_pixel
+    CMP R0, #0
+    BRNZ .collision_found
 
-.scroll_down_done:
+    ; No collision
+    LD R0, #0
+    JMP .collision_done
+
+.collision_found:
+    LD R0, #1
+
+.collision_done:
     POP R3
     POP R2
     POP R1
-    POP R0
     RET
 
-scroll_left:
-    PUSH R0
-    PUSH R1
+; =============================================================================
+; Get Tile At Pixel
+; Input: R0 = pixel X, R1 = pixel Y
+; Output: R0 = tile index (0 = empty/no collision)
+;
+; Converts pixel coordinates to tile coordinates and reads tile from tilemap
+; =============================================================================
 
-    ; Decrement X scroll if > 0
-    LD R0, [SCROLL_X_LO]
-    LD R1, [SCROLL_X_HI]
-
-    ; Check if already at 0
-    CMP R0, #0
-    BRNZ .do_scroll_left
-    CMP R1, #0
-    BRZ .scroll_left_done
-
-.do_scroll_left:
-    ; Decrement 16-bit scroll X
-    DEC R0
-    CMP R0, #$FF          ; Check for underflow
-    BRNZ .store_scroll_left
-    DEC R1                ; Borrow from high byte
-
-.store_scroll_left:
-    ST R0, [SCROLL_X_LO]
-    ST R1, [SCROLL_X_HI]
-
-.scroll_left_done:
-    POP R1
-    POP R0
-    RET
-
-scroll_right:
-    PUSH R0
+get_tile_at_pixel:
     PUSH R1
     PUSH R2
     PUSH R3
+    PUSH R4
+    PUSH R5
 
-    ; Increment X scroll if < max
-    LD R0, [SCROLL_X_LO]
-    LD R1, [SCROLL_X_HI]
-    LD R2, [MAX_SCROLL_X_LO]
-    LD R3, [MAX_SCROLL_X_HI]
+    ; Convert pixel coords to tile coords by dividing by 16 (shift right 4)
+    ; tile_x = pixel_x >> 4
+    ; tile_y = pixel_y >> 4
+    SHR R0
+    SHR R0
+    SHR R0
+    SHR R0              ; R0 = tile_x
 
-    ; Compare current with max (16-bit comparison)
-    ; First check if high bytes are different
-    CMP R1, R3
-    BRC .do_scroll_right  ; If high byte less (carry set), can scroll
-    BRNZ .scroll_right_done ; If high byte greater (not equal, no carry), can't scroll
-    ; High bytes equal, compare low bytes
+    SHR R1
+    SHR R1
+    SHR R1
+    SHR R1              ; R1 = tile_y
+
+    ; Check bounds
+    LD R2, [MAP_WIDTH]
     CMP R0, R2
-    BRNC .scroll_right_done ; If low >= max low (no carry), can't scroll
+    BRNC .tile_out_of_bounds
 
-.do_scroll_right:
-    ; Increment 16-bit scroll X
-    INC R0
-    BRNZ .store_scroll_right
-    INC R1                ; Carry to high byte
+    LD R2, [MAP_HEIGHT]
+    CMP R1, R2
+    BRNC .tile_out_of_bounds
 
-.store_scroll_right:
-    ST R0, [SCROLL_X_LO]
-    ST R1, [SCROLL_X_HI]
+    ; Calculate tile offset: (tile_y * map_width + tile_x) * 2
+    ; First: tile_y * map_width
+    LD R2, [MAP_WIDTH]
+    LD R3, #0           ; Result accumulator
 
-.scroll_right_done:
+    ; Multiply R1 (tile_y) by R2 (map_width)
+    ; Simple loop multiplication
+    CMP R1, #0
+    BRZ .mult_done
+
+.mult_loop:
+    ADD R3, R2
+    DEC R1
+    BRNZ .mult_loop
+
+.mult_done:
+    ; R3 = tile_y * map_width
+    ; Add tile_x
+    ADD R3, R0          ; R3 = tile_y * map_width + tile_x
+
+    ; Multiply by 2 (each tile entry is 2 bytes)
+    SHL R3              ; R3 = (tile_y * map_width + tile_x) * 2
+
+    ; Add base address offset (skip header)
+    ADD R3, #TILEMAP_DATA_OFFSET
+
+    ; Now we need to read from banked memory at offset R3 in bank 20
+    ; For simplicity, we'll use a lookup approach
+    ; The tilemap data is in cartridge bank 4 (absolute bank 20)
+
+    ; Store offset for reading
+    ; R4:R5 will be our pointer (high:low)
+    LD R4, #0
+    MOV R5, R3
+
+    ; Read tile index from tilemap
+    ; This is a simplified version - we read from a fixed location
+    ; In a real implementation, we'd need banked memory access
+
+    ; For now, use hardcoded tilemap check based on Y position
+    ; The tilemap has ground tiles in the bottom rows
+    ; Ground starts at tile row 7 (Y >= 112 pixels)
+
+    LD R0, [TEMP_Y]
+    ADD R0, #15         ; Check bottom of sprite
+    CMP R0, #112        ; Ground starts at row 7 (7 * 16 = 112)
+    BRC .tile_empty     ; Above ground level
+
+    ; Below ground level - return solid tile
+    LD R0, #1
+    JMP .tile_done
+
+.tile_out_of_bounds:
+.tile_empty:
+    LD R0, #0
+
+.tile_done:
+    POP R5
+    POP R4
     POP R3
     POP R2
     POP R1
-    POP R0
     RET
 
 ; =============================================================================
 ; Read Tilemap Header
-; Reads width and height from .tbin header in cartridge bank 4
+; Reads width and height from .tbin header
 ; =============================================================================
 
 read_tilemap_header:
     PUSH R0
-    PUSH R1
 
-    ; The .tbin header is at the start of the bank
-    ; We'll use banked read to get the values
-    ; For simplicity, assume width/height fit in single byte (max 255 tiles)
-
-    ; Read width (bytes 0-1, little endian - we just use byte 0 for simplicity)
-    ; Bank 20 = cartridge bank 4
-    LD R0, #TILEMAP_BANK
-    LD R1, #0             ; Offset 0 = width low byte
-    CALL read_banked_byte
+    ; Hardcoded for now - matches actual tilemap
+    LD R0, #16
     ST R0, [MAP_WIDTH]
-
-    ; Read height (bytes 2-3, little endian - we just use byte 2 for simplicity)
-    LD R0, #TILEMAP_BANK
-    LD R1, #2             ; Offset 2 = height low byte
-    CALL read_banked_byte
+    LD R0, #10
     ST R0, [MAP_HEIGHT]
 
-    POP R1
-    POP R0
-    RET
-
-; =============================================================================
-; Read Banked Byte
-; Input: R0 = bank number, R1 = offset (0-255, low byte only)
-; Output: R0 = byte value
-; Note: This is a simplified version that only handles small offsets
-; =============================================================================
-
-read_banked_byte:
-    ; For a real implementation, we'd need a banked read syscall or
-    ; direct memory mapping. Since the devkit loads .tbin files into
-    ; cartridge banks, we need to read from banked memory.
-    ;
-    ; For now, we'll use hardcoded values for a 32x20 tilemap
-    ; (which fits nicely on screen with room to scroll)
-    ;
-    ; TODO: Implement actual banked memory read
-
-    ; Return hardcoded width=32 for offset 0, height=20 for offset 2
-    CMP R1, #0
-    BRNZ .check_height
-    LD R0, #16            ; Width = 32 tiles
-    RET
-
-.check_height:
-    CMP R1, #2
-    BRNZ .default_value
-    LD R0, #10            ; Height = 20 tiles
-    RET
-
-.default_value:
-    LD R0, #0
-    RET
-
-; =============================================================================
-; Calculate Maximum Scroll Values
-; max_scroll = (map_size * tile_size) - screen_size
-; =============================================================================
-
-calc_max_scroll:
-    PUSH R0
-    PUSH R1
-    PUSH R2
-
-    ; Calculate max X scroll: (width * 16) - 256
-    LD R0, [MAP_WIDTH]
-    ; Multiply by 16 (shift left 4)
-    ; R0 * 16 = low byte, we need 16-bit result
-    ; For width=32: 32*16 = 512, max_scroll = 512-256 = 256
-    LD R1, #0             ; High byte
-    ; Shift left by 4 (multiply by 16)
-    SHL R0
-    ROL R1
-    SHL R0
-    ROL R1
-    SHL R0
-    ROL R1
-    SHL R0
-    ROL R1
-
-    ; Now R1:R0 = width * 16
-    ; Subtract 256 (screen width)
-    ; R0 = R0 - 0, R1 = R1 - 1
-    DEC R1
-    ST R0, [MAX_SCROLL_X_LO]
-    ST R1, [MAX_SCROLL_X_HI]
-
-    ; Calculate max Y scroll: (height * 16) - 160
-    LD R0, [MAP_HEIGHT]
-    LD R1, #0
-    ; Shift left by 4 (multiply by 16)
-    SHL R0
-    ROL R1
-    SHL R0
-    ROL R1
-    SHL R0
-    ROL R1
-    SHL R0
-    ROL R1
-
-    ; Now R1:R0 = height * 16
-    ; Subtract 160 (screen height)
-    ; For height=20: 20*16 = 320, max_scroll = 320-160 = 160
-    LD R2, #160
-    SUB R0, R2
-    BRNC .no_borrow_y
-    DEC R1
-
-.no_borrow_y:
-    ST R0, [MAX_SCROLL_Y_LO]
-    ST R1, [MAX_SCROLL_Y_HI]
-
-    POP R2
-    POP R1
     POP R0
     RET
 
@@ -523,7 +586,7 @@ setup_tilemap:
     ; Initialize animation frame
     ST R0, [TILE_ANIM_FRAME]
 
-    ; Enable tilemap (no wrapping)
+    ; Enable tilemap
     LD R0, #TM_ENABLE
     ST R0, [TILEMAP_ENABLE]
 

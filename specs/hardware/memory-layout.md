@@ -53,10 +53,10 @@ Fast access memory for pointers, frequently accessed variables, and temporary st
 | 0x0115 | INT_ENABLE            | Interrupt enable control                                       |
 | 0x0116-0x0128 | Audio Registers       | 4-channel audio system (see Audio Registers)                   |
 | 0x0129-0x0131 | Text Registers        | Hardware text rendering system (see Text Registers)            |
-| 0x0132 | VBLANK_VEC_LO         | VBlank interrupt handler address (low byte)                    |
-| 0x0133 | VBLANK_VEC_HI         | VBlank interrupt handler address (high byte)                   |
-| 0x0134 | SCANLINE_VEC_LO       | Scanline interrupt handler address (low byte)                  |
-| 0x0135 | SCANLINE_VEC_HI       | Scanline interrupt handler address (high byte)                 |
+| 0x0132 | VBLANK_VEC_HI         | VBlank interrupt handler address (high byte)                   |
+| 0x0133 | VBLANK_VEC_LO         | VBlank interrupt handler address (low byte)                    |
+| 0x0134 | SCANLINE_VEC_HI       | Scanline interrupt handler address (high byte)                 |
+| 0x0135 | SCANLINE_VEC_LO       | Scanline interrupt handler address (low byte)                  |
 | 0x0136 | CONTROLLER_1_BUTTONS  | Controller 1 main buttons (read-only)                          |
 | 0x0137 | CONTROLLER_1_EXTENDED | Controller 1 extended buttons (read-only)                      |
 | 0x0138 | CONTROLLER_2_BUTTONS  | Controller 2 main buttons (read-only)                          |

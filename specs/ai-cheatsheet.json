@@ -335,10 +335,10 @@
     "interrupts": {
       "sources": ["VBlank (60Hz)", "Scanline (variable)"],
       "vectors": {
-        "VBLANK_VEC_LO": "0x0132",
-        "VBLANK_VEC_HI": "0x0133",
-        "SCANLINE_VEC_LO": "0x0134",
-        "SCANLINE_VEC_HI": "0x0135"
+        "VBLANK_VEC_HI": "0x0132",
+        "VBLANK_VEC_LO": "0x0133",
+        "SCANLINE_VEC_HI": "0x0134",
+        "SCANLINE_VEC_LO": "0x0135"
       },
       "enable_conditions": [
         "I flag set (via SEI)",
@@ -800,11 +800,11 @@
     "vblank_interrupt_setup": {
       "description": "Setup VBlank interrupt handler",
       "code": [
-        "; Install handler",
-        "LD R0, #<vblank_handler",
-        "ST R0, [$0132]        ; VBLANK_VEC_LO",
+        "; Install handler (big-endian: high byte at lower address)",
         "LD R0, #>vblank_handler",
-        "ST R0, [$0133]        ; VBLANK_VEC_HI",
+        "ST R0, [$0132]        ; VBLANK_VEC_HI",
+        "LD R0, #<vblank_handler",
+        "ST R0, [$0133]        ; VBLANK_VEC_LO",
         "; Enable interrupt",
         "LD R0, #$01",
         "ST R0, [$0115]        ; INT_ENABLE",
