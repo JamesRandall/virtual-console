@@ -43,6 +43,21 @@ Main Thread - Render Loop (60Hz)
 | Banks 16-31 | 512 KB | Tile graphics (convention) |
 | Banks 32+ | Variable | Tilemap data storage |
 
+### Devkit File Format (.tbin)
+
+The devkit stores tilemaps in `.tbin` files with an 8-byte header:
+
+```
+Bytes 0-1: Width in tiles (little-endian uint16)
+Bytes 2-3: Height in tiles (little-endian uint16)
+Bytes 4-7: Reserved (set to 0)
+Bytes 8+:  Tile data (2 bytes per tile, row-major order)
+```
+
+**Important:** The entire `.tbin` file (header + tile data) is loaded into the cartridge bank. The header remains in memory so runtime code can read the dimensions and configure the tilemap registers. The `TILEMAP_ADDR` register should be set to point past the header (bank base + 8).
+
+See the hardware spec (`tilemap.md`) for example assembly code showing how to load a tilemap at runtime.
+
 ---
 
 ## Phase 1: TilemapEngine Core

@@ -342,6 +342,8 @@ export function ProjectExplorer() {
       if (!currentProjectHandle) return;
 
       try {
+        const filePath = newFileDialog.folderPath ? `${newFileDialog.folderPath}/${fileName}` : fileName;
+
         // Check if this is a .tbin file that needs special initialization
         if (fileName.endsWith('.tbin') && options?.width !== undefined && options?.height !== undefined) {
           // Create tbin with header and empty tile data
@@ -351,12 +353,28 @@ export function ProjectExplorer() {
           await createFile(currentProjectHandle, newFileDialog.folderPath, fileName, '');
         }
         refreshProjectTree();
+
+        // Open the newly created file
+        const isBinaryFile = fileName.endsWith('.pbin') || fileName.endsWith('.gbin') || fileName.endsWith('.tbin');
+        if (isBinaryFile) {
+          const binaryData = await readBinaryFile(currentProjectHandle, filePath);
+          let binary = '';
+          const len = binaryData.byteLength;
+          for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(binaryData[i]);
+          }
+          const base64 = btoa(binary);
+          openFile(filePath, base64);
+        } else {
+          const content = await readFile(currentProjectHandle, filePath);
+          openFile(filePath, content);
+        }
       } catch (error) {
         console.error('Error creating file:', error);
         throw error;
       }
     },
-    [currentProjectHandle, newFileDialog.folderPath, refreshProjectTree]
+    [currentProjectHandle, newFileDialog.folderPath, refreshProjectTree, openFile]
   );
 
   const handleDeleteFileConfirm = useCallback(async () => {

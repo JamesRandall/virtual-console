@@ -69,6 +69,34 @@ export function PaletteEditor({ filePath, content, showIndexes = true }: Palette
     markFileDirty(filePath, true);
   }, [paletteData, blockSize, filePath, updateFileContent, markFileDirty]);
 
+  // Handle block reorder (swap blocks)
+  const handleBlockReorder = useCallback((fromIndex: number, toIndex: number) => {
+    const newData = new Uint8Array(paletteData);
+
+    // Extract both blocks
+    const fromOffset = fromIndex * blockSize;
+    const toOffset = toIndex * blockSize;
+    const fromBlock = paletteData.slice(fromOffset, fromOffset + blockSize);
+    const toBlock = paletteData.slice(toOffset, toOffset + blockSize);
+
+    // Swap the blocks
+    newData.set(toBlock, fromOffset);
+    newData.set(fromBlock, toOffset);
+
+    // Encode back to base64
+    let binary = '';
+    for (let i = 0; i < newData.length; i++) {
+      binary += String.fromCharCode(newData[i]);
+    }
+    const base64 = btoa(binary);
+
+    // Update file content in store
+    updateFileContent(filePath, base64);
+
+    // Mark file as dirty
+    markFileDirty(filePath, true);
+  }, [paletteData, blockSize, filePath, updateFileContent, markFileDirty]);
+
   // projectConfig should always be available (config.json is mandatory)
   if (!projectConfig) {
     return (
@@ -96,6 +124,7 @@ export function PaletteEditor({ filePath, content, showIndexes = true }: Palette
                 blockSize={blockSize}
                 blockCount={blockCount}
                 onColorChange={handleColorChange}
+                onBlockReorder={handleBlockReorder}
                 showIndexes={shouldShowIndexes}
               />
             </div>

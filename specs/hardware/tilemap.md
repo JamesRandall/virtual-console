@@ -132,7 +132,7 @@ Byte 1: Tile Attributes
 
 ### Tilemap Memory Layout
 
-Tilemaps are stored in **row-major order**:
+At runtime, tilemaps are stored in **row-major order** in banked memory:
 
 ```
 Address = TILEMAP_ADDR + ((y × TILEMAP_WIDTH) + x) × 2
@@ -150,6 +150,65 @@ Example - 128×128 tilemap:
 64×64 tilemap:   64 × 64 × 2 = 8,192 bytes (8KB)
 128×128 tilemap: 128 × 128 × 2 = 32,768 bytes (32KB, fills one bank)
 255×255 tilemap: 255 × 255 × 2 = 130,050 bytes (127KB, needs 4 banks)
+```
+
+### Devkit File Format (.tbin)
+
+The devkit stores tilemaps in `.tbin` files with an 8-byte header. The entire file (header + tile data) is loaded into the cartridge bank. The header remains in memory so runtime code can read the dimensions.
+
+**Header (8 bytes):**
+```
+Bytes 0-1: Width in tiles (little-endian uint16)
+Bytes 2-3: Height in tiles (little-endian uint16)
+Bytes 4-7: Reserved (set to 0)
+```
+
+**Tile Data (remaining bytes):**
+- Follows immediately after header at offset 8
+- Same 2-byte tile entry format as runtime
+- Row-major order
+
+**Size Constraints:**
+```
+Maximum file size: 32KB
+Header: 8 bytes
+Maximum tile data: 32,760 bytes (16,380 tiles)
+Validation: width × height × 2 + 8 ≤ 32,768
+```
+
+**Runtime Loading:**
+When using a `.tbin` tilemap at runtime:
+1. Set `TILEMAP_DATA_BANK` to the bank containing the tilemap
+2. Read width from bytes 0-1 of the bank, store in `TILEMAP_WIDTH`
+3. Read height from bytes 2-3 of the bank, store in `TILEMAP_HEIGHT`
+4. Set `TILEMAP_ADDR` to point past the header (e.g., bank base + 8)
+
+**Example assembly for loading a tilemap from bank 32:**
+```assembly
+; Load tilemap from bank 32
+LD R0, #32
+ST R0, [$0145]        ; TILEMAP_DATA_BANK
+
+; Switch to bank to read header
+ST R0, [$0100]        ; BANK_REG
+
+; Read width (little-endian)
+LD R0, [$8000]        ; Width low byte
+ST R0, [$0143]        ; TILEMAP_WIDTH (assumes width < 256)
+
+; Read height (little-endian)
+LD R0, [$8002]        ; Height low byte
+ST R0, [$0144]        ; TILEMAP_HEIGHT (assumes height < 256)
+
+; Set tilemap address to skip header (base + 8)
+LD R0, #$80
+ST R0, [$0146]        ; TILEMAP_ADDR_HI
+LD R0, #$08
+ST R0, [$0147]        ; TILEMAP_ADDR_LO (0x8008 = 0x8000 + 8)
+
+; Enable tilemap
+LD R0, #$01
+ST R0, [$013D]        ; TILEMAP_ENABLE
 ```
 
 ---

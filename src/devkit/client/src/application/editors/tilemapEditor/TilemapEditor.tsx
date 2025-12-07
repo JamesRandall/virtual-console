@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Allotment } from 'allotment';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faUndo, faRedo } from '@fortawesome/free-solid-svg-icons';
@@ -96,6 +96,9 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
   const updateFileContent = useDevkitStore((state) => state.updateFileContent);
   const markFileDirty = useDevkitStore((state) => state.markFileDirty);
 
+  // Track whether we've initialized from content to avoid re-parsing on our own saves
+  const initialContentRef = useRef<string | null>(null);
+
   // Tilemap dimensions
   const [width, setWidth] = useState(128);
   const [height, setHeight] = useState(128);
@@ -122,13 +125,22 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
   const [availablePbins, setAvailablePbins] = useState<string[]>([]);
 
   // Tool state
-  const [selectedTool, setSelectedTool] = useState<TilemapTool>('pen');
+  const [selectedTool, setSelectedToolInternal] = useState<TilemapTool>('pen');
   const [selectedTileIndex, setSelectedTileIndex] = useState(1); // Start at 1 (0 is empty)
   const [selectedPaletteBlock, setSelectedPaletteBlock] = useState(0);
   const [zoom, setZoom] = useState(2);
 
   // Selection state
   const [selection, setSelection] = useState<TileSelection | null>(null);
+
+  // Wrap setSelectedTool to clear selection when switching to non-selection tools
+  const setSelectedTool = useCallback((tool: TilemapTool) => {
+    setSelectedToolInternal(tool);
+    // Clear selection when switching away from selection-related tools
+    if (tool !== 'select' && tool !== 'move' && tool !== 'pointer') {
+      setSelection(null);
+    }
+  }, []);
   const [clipboard, setClipboard] = useState<TileClipboard | null>(null);
   const [pastePreview, setPastePreview] = useState<PastePreview | null>(null);
 
@@ -140,6 +152,9 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
   // Display options
   const [showOnlyNonEmpty, setShowOnlyNonEmpty] = useState(false);
   const [showOnlyInPaletteRange, setShowOnlyInPaletteRange] = useState(false);
+
+  // Cursor position (reported from canvas)
+  const [cursorPos, setCursorPos] = useState<{ row: number; col: number } | null>(null);
 
   // Get sprite palette configs from project config
   const spritePaletteConfigs = useMemo((): SpritePaletteConfig[] | undefined => {
@@ -254,9 +269,21 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
     loadPbin();
   }, [currentProjectHandle, selectedPbin]);
 
-  // Parse content on mount
+  // Parse content on initial mount only
+  // We track the initial content and only re-parse if the content changes externally
+  // (not from our own saves)
   useEffect(() => {
     if (!content) return;
+
+    // If this is the same content we already initialized from, skip
+    // This prevents our own saveToStore() from triggering a re-parse
+    if (initialContentRef.current === content) {
+      return;
+    }
+
+    // Only parse on first load or if content changed externally
+    // After first parse, we track it so subsequent updates from our saves are ignored
+    initialContentRef.current = content;
 
     try {
       // Decode base64
@@ -330,6 +357,8 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
       binaryString += String.fromCharCode(bytes[i]);
     }
     const base64 = btoa(binaryString);
+    // Update the ref so we don't re-parse our own save
+    initialContentRef.current = base64;
     updateFileContent(filePath, base64);
     markFileDirty(filePath, true);
   }, [serializeTilemap, updateFileContent, markFileDirty, filePath]);
@@ -714,6 +743,11 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
               <option value={8}>8x</option>
             </select>
           </div>
+
+          {/* Cursor position */}
+          <span className="text-xs text-zinc-500">
+            Cursor: {cursorPos ? `${cursorPos.col}, ${cursorPos.row}` : '-, -'}
+          </span>
         </div>
 
         {/* Right side: undo/redo */}
@@ -755,7 +789,7 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
 
           {/* Center: Canvas */}
           <Allotment.Pane>
-            <div className="h-full overflow-auto bg-zinc-900 p-4">
+            <div className="h-full overflow-auto bg-zinc-900">
               <TilemapCanvas
                 tiles={tiles}
                 width={width}
@@ -776,6 +810,7 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
                 onTilesChange={handleTilesChange}
                 onOperationEnd={handleOperationEnd}
                 onStartMove={handleStartMove}
+                onCursorChange={setCursorPos}
               />
             </div>
           </Allotment.Pane>

@@ -267,8 +267,7 @@ export function TilePicker({
         <div className="flex-1" />
 
         <span className="text-xs text-zinc-500">
-          Selected: {selectedIndex}
-          {hoveredIndex !== null && ` | Hover: ${hoveredIndex}`}
+          Selected: {selectedIndex} | Hover: {hoveredIndex ?? '-'}
           {showOnlyNonEmpty && ` | ${nonEmptyTiles.length} tiles`}
         </span>
       </div>

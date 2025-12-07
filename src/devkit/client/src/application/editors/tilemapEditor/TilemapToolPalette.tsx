@@ -34,6 +34,7 @@ interface ToolButton {
 }
 
 const tools: ToolButton[] = [
+  { tool: 'pointer', icon: faMousePointer, title: 'Pointer (Edit Attributes)', shortcut: 'A' },
   { tool: 'pen', icon: faPen, title: 'Pen', shortcut: 'P' },
   { tool: 'eraser', icon: faEraser, title: 'Eraser', shortcut: 'E' },
   { tool: 'fill', icon: faFillDrip, title: 'Fill', shortcut: 'F' },
@@ -41,7 +42,6 @@ const tools: ToolButton[] = [
   { tool: 'rectangle', icon: faSquare, title: 'Rectangle', shortcut: 'R' },
   { tool: 'select', icon: faObjectGroup, title: 'Select', shortcut: 'S' },
   { tool: 'move', icon: faArrowsUpDownLeftRight, title: 'Move', shortcut: 'M' },
-  { tool: 'pointer', icon: faMousePointer, title: 'Pointer (Edit Attributes)', shortcut: 'A' },
 ];
 
 export function TilemapToolPalette({

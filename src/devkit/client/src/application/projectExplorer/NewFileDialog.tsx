@@ -13,6 +13,18 @@ const MAX_TBIN_SIZE = 32768;
 const TBIN_HEADER_SIZE = 8;
 const MAX_TILES = Math.floor((MAX_TBIN_SIZE - TBIN_HEADER_SIZE) / 2);
 
+// Mode 0 screen size in tiles (256x160 pixels / 16x16 tiles = 16x10 tiles)
+const SCREEN_WIDTH_TILES = 16;
+const SCREEN_HEIGHT_TILES = 10;
+
+// Preset screen sizes
+const SCREEN_PRESETS = [
+  { label: '1×1', width: 1, height: 1 },
+  { label: '2×1', width: 2, height: 1 },
+  { label: '1×2', width: 1, height: 2 },
+  { label: '2×2', width: 2, height: 2 },
+] as const;
+
 export function NewFileDialog({ isOpen, onClose, folderPath, onCreateFile }: NewFileDialogProps) {
   // Local state
   const [fileName, setFileName] = useState('');
@@ -20,8 +32,9 @@ export function NewFileDialog({ isOpen, onClose, folderPath, onCreateFile }: New
   const [error, setError] = useState<string | null>(null);
 
   // Tilemap dimensions (for .tbin files) - stored as strings for natural input editing
-  const [tilemapWidthStr, setTilemapWidthStr] = useState('128');
-  const [tilemapHeightStr, setTilemapHeightStr] = useState('128');
+  // Default to 1 screen (16x10 tiles for Mode 0)
+  const [tilemapWidthStr, setTilemapWidthStr] = useState(String(SCREEN_WIDTH_TILES));
+  const [tilemapHeightStr, setTilemapHeightStr] = useState(String(SCREEN_HEIGHT_TILES));
 
   // Parse dimensions to numbers (default to 0 if invalid/empty for validation)
   const tilemapWidth = parseInt(tilemapWidthStr) || 0;
@@ -86,8 +99,8 @@ export function NewFileDialog({ isOpen, onClose, folderPath, onCreateFile }: New
         await onCreateFile(finalFileName);
       }
       setFileName('');
-      setTilemapWidthStr('128');
-      setTilemapHeightStr('128');
+      setTilemapWidthStr(String(SCREEN_WIDTH_TILES));
+      setTilemapHeightStr(String(SCREEN_HEIGHT_TILES));
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create file');
@@ -100,11 +113,17 @@ export function NewFileDialog({ isOpen, onClose, folderPath, onCreateFile }: New
     if (!isCreating) {
       setFileName('');
       setError(null);
-      setTilemapWidthStr('128');
-      setTilemapHeightStr('128');
+      setTilemapWidthStr(String(SCREEN_WIDTH_TILES));
+      setTilemapHeightStr(String(SCREEN_HEIGHT_TILES));
       onClose();
     }
   }, [isCreating, onClose]);
+
+  // Set dimensions from screen preset
+  const handlePresetClick = useCallback((widthScreens: number, heightScreens: number) => {
+    setTilemapWidthStr(String(widthScreens * SCREEN_WIDTH_TILES));
+    setTilemapHeightStr(String(heightScreens * SCREEN_HEIGHT_TILES));
+  }, []);
 
   // Render
   return (
@@ -157,6 +176,24 @@ export function NewFileDialog({ isOpen, onClose, folderPath, onCreateFile }: New
             <label className="dk-subsection-header">
               Tilemap Dimensions
             </label>
+
+            {/* Screen size presets */}
+            <div className="flex items-center dk-gap-small">
+              <span className="dk-secondary-text text-sm">Screens:</span>
+              {SCREEN_PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => handlePresetClick(preset.width, preset.height)}
+                  disabled={isCreating}
+                  className="dk-btn-secondary text-xs py-1 px-2"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Manual dimension inputs */}
             <div className="flex dk-gap-standard items-center">
               <div className="flex items-center dk-gap-small">
                 <label htmlFor="tilemapWidth" className="dk-secondary-text text-sm">Width:</label>
@@ -188,6 +225,7 @@ export function NewFileDialog({ isOpen, onClose, folderPath, onCreateFile }: New
             </div>
             <p className="dk-secondary-text text-xs">
               Total tiles: {tilemapWidth * tilemapHeight} / {MAX_TILES} max
+              {' '}({Math.ceil(tilemapWidth / SCREEN_WIDTH_TILES)}×{Math.ceil(tilemapHeight / SCREEN_HEIGHT_TILES)} screens)
             </p>
             {dimensionError && (
               <p className="text-red-400 text-xs">{dimensionError}</p>
