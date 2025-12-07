@@ -64,15 +64,17 @@ Fast access memory for pointers, frequently accessed variables, and temporary st
 | 0x013A-0x013C | Reserved              | Reserved for future use                                        |
 | 0x013D | TILEMAP_ENABLE        | Tilemap control flags                                          |
 | 0x013E | TILEMAP_GRAPHICS_BANK | Bank containing tile graphics                                  |
-| 0x013F | TILEMAP_X_SCROLL      | X scroll offset (0-255)                                        |
-| 0x0140 | TILEMAP_Y_SCROLL      | Y scroll offset (0-255)                                        |
-| 0x0141 | TILEMAP_WIDTH         | Tilemap width in tiles                                         |
-| 0x0142 | TILEMAP_HEIGHT        | Tilemap height in tiles                                        |
-| 0x0143 | TILEMAP_DATA_BANK     | Bank containing tilemap data                                   |
-| 0x0144 | TILEMAP_ADDR_HI       | Tilemap data address high byte                                 |
-| 0x0145 | TILEMAP_ADDR_LO       | Tilemap data address low byte                                  |
-| 0x0146 | TILE_ANIM_FRAME       | Global tile animation frame counter                            |
-| 0x0147-0x01FF | Reserved              | Additional hardware registers                                  |
+| 0x013F | TILEMAP_X_SCROLL_LO   | X scroll offset (low byte)                                     |
+| 0x0140 | TILEMAP_X_SCROLL_HI   | X scroll offset (high byte)                                    |
+| 0x0141 | TILEMAP_Y_SCROLL_LO   | Y scroll offset (low byte)                                     |
+| 0x0142 | TILEMAP_Y_SCROLL_HI   | Y scroll offset (high byte)                                    |
+| 0x0143 | TILEMAP_WIDTH         | Tilemap width in tiles                                         |
+| 0x0144 | TILEMAP_HEIGHT        | Tilemap height in tiles                                        |
+| 0x0145 | TILEMAP_DATA_BANK     | Bank containing tilemap data                                   |
+| 0x0146 | TILEMAP_ADDR_HI       | Tilemap data address high byte                                 |
+| 0x0147 | TILEMAP_ADDR_LO       | Tilemap data address low byte                                  |
+| 0x0148 | TILE_ANIM_FRAME       | Global tile animation frame counter                            |
+| 0x0149-0x01FF | Reserved              | Additional hardware registers                                  |
 
 **256 bytes**
 
@@ -124,21 +126,28 @@ Fast access memory for pointers, frequently accessed variables, and temporary st
 - Bank number containing tile graphics/pixel data (0-255)
 - Convention: Banks 16-31 for tile graphics
 
-**TILEMAP_X_SCROLL / TILEMAP_Y_SCROLL (0x013F-0x0140)**
-- Scroll offset in pixels (0-255)
+**TILEMAP_X_SCROLL (0x013F-0x0140)**
+- 16-bit X scroll offset in pixels
+- 0x013F: Low byte, 0x0140: High byte
+- Full range: 0-65535 pixels (supports maps up to 4096 tiles wide)
 
-**TILEMAP_WIDTH / TILEMAP_HEIGHT (0x0141-0x0142)**
+**TILEMAP_Y_SCROLL (0x0141-0x0142)**
+- 16-bit Y scroll offset in pixels
+- 0x0141: Low byte, 0x0142: High byte
+- Full range: 0-65535 pixels (supports maps up to 4096 tiles tall)
+
+**TILEMAP_WIDTH / TILEMAP_HEIGHT (0x0143-0x0144)**
 - Dimensions of tilemap in tiles (e.g., 128×128)
 
-**TILEMAP_DATA_BANK (0x0143)**
+**TILEMAP_DATA_BANK (0x0145)**
 - Bank number containing tilemap data (2-byte tile entries)
 
-**TILEMAP_ADDR (0x0144-0x0145)**
-- 16-bit address (big-endian: high byte, then low byte)
+**TILEMAP_ADDR (0x0146-0x0147)**
+- 16-bit address (big-endian: high byte at 0x0146, low byte at 0x0147)
 - Points to tilemap data within TILEMAP_DATA_BANK
 - Typically 0x8000 (start of bankable region)
 
-**TILE_ANIM_FRAME (0x0146)**
+**TILE_ANIM_FRAME (0x0148)**
 - Global animation frame counter (0-255)
 - Auto-increments each frame or every N frames
 - Used by hardware to select animated tile frames
@@ -677,25 +686,27 @@ The framebuffer is positioned at the end of memory space ending at **0xFFFF** wi
 
 **Tilemap data** (in level bank, e.g., Bank 32+):
 
-Each tile = 1 byte:
-- **Bit 7:** Flip horizontal
-- **Bits 6-0:** Tile type (0-127)
+Each tile = 2 bytes:
+- **Byte 0:** Tile index (0-255)
+- **Byte 1:** Tile attributes
+  - Bit 7: Flip horizontal
+  - Bit 6: Flip vertical
+  - Bit 5: Priority (0=behind sprites, 1=in front)
+  - Bits 4-3: Palette offset (4bpp modes: 0-3)
+  - Bit 2: Reserved
+  - Bits 1-0: Bank offset (added to TILEMAP_GRAPHICS_BANK)
 
 **Example 128×128 tilemap:**
-- 16,384 bytes (128 × 128)
-- Leaves ~16KB free in bank for:
-    - Multiple maps/levels
-    - Enemy spawn data
-    - Trigger zones
-    - Level-specific assets
+- 32,768 bytes (128 × 128 × 2)
+- Fills one 32KB bank exactly
 
 **Tilemap layout in memory:**
 ```
 Row-major order: [y][x]
-Address = TILEMAP_ADDR + (y * TILEMAP_WIDTH) + x
+Address = TILEMAP_ADDR + ((y * TILEMAP_WIDTH) + x) * 2
 
 Example for 128-wide map:
-Tile at (10, 5) = TILEMAP_ADDR + (5 * 128) + 10
+Tile at (10, 5) = TILEMAP_ADDR + ((5 * 128) + 10) * 2
 ```
 
 ---

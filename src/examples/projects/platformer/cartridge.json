@@ -1,0 +1,8 @@
+{
+  "banks": [
+    "metadata.bin",
+    "code.bin",
+    "sprites/sprites.gbin",
+    "palettes/default.pbin"
+  ]
+}

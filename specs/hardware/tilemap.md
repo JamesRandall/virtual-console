@@ -148,20 +148,22 @@ Example - 128×128 tilemap:
 
 ## Hardware Registers
 
-### Register Map (0x013D - 0x0146)
+### Register Map (0x013D - 0x0148)
 
 | Address | Register | Access | Description |
 |---------|----------|--------|-------------|
 | 0x013D | TILEMAP_ENABLE | R/W | Tilemap control flags |
 | 0x013E | TILEMAP_GRAPHICS_BANK | R/W | Bank containing tile graphics |
-| 0x013F | TILEMAP_X_SCROLL | R/W | X scroll offset (0-255) |
-| 0x0140 | TILEMAP_Y_SCROLL | R/W | Y scroll offset (0-255) |
-| 0x0141 | TILEMAP_WIDTH | R/W | Tilemap width in tiles |
-| 0x0142 | TILEMAP_HEIGHT | R/W | Tilemap height in tiles |
-| 0x0143 | TILEMAP_DATA_BANK | R/W | Bank containing tilemap data |
-| 0x0144 | TILEMAP_ADDR_HI | R/W | Tilemap address (high byte) |
-| 0x0145 | TILEMAP_ADDR_LO | R/W | Tilemap address (low byte) |
-| 0x0146 | TILE_ANIM_FRAME | R/W | Global animation counter |
+| 0x013F | TILEMAP_X_SCROLL_LO | R/W | X scroll offset (low byte) |
+| 0x0140 | TILEMAP_X_SCROLL_HI | R/W | X scroll offset (high byte) |
+| 0x0141 | TILEMAP_Y_SCROLL_LO | R/W | Y scroll offset (low byte) |
+| 0x0142 | TILEMAP_Y_SCROLL_HI | R/W | Y scroll offset (high byte) |
+| 0x0143 | TILEMAP_WIDTH | R/W | Tilemap width in tiles |
+| 0x0144 | TILEMAP_HEIGHT | R/W | Tilemap height in tiles |
+| 0x0145 | TILEMAP_DATA_BANK | R/W | Bank containing tilemap data |
+| 0x0146 | TILEMAP_ADDR_HI | R/W | Tilemap address (high byte) |
+| 0x0147 | TILEMAP_ADDR_LO | R/W | Tilemap address (low byte) |
+| 0x0148 | TILE_ANIM_FRAME | R/W | Global animation counter |
 
 ### TILEMAP_ENABLE (0x013D)
 
@@ -223,29 +225,49 @@ LD R0, #16
 ST R0, [$013E]
 ```
 
-### TILEMAP_X_SCROLL / TILEMAP_Y_SCROLL (0x013F-0x0140)
+### TILEMAP_X_SCROLL (0x013F-0x0140)
 
-Pixel offset for camera scrolling.
+16-bit X scroll offset in pixels.
 
 ```
-Value: 0-255
-  Pixel offset (scrolls in 256-pixel increments)
+0x013F: TILEMAP_X_SCROLL_LO (low byte, 0-255)
+0x0140: TILEMAP_X_SCROLL_HI (high byte, 0-255)
 
-For larger maps:
-  - Software tracks full scroll position (16-bit or larger)
-  - Update register with low 8 bits
-  - Calculate tile offset based on high bits
+Full scroll range: 0-65535 pixels (0-4095 tiles at 16px)
+
+16-bit scroll calculation:
+  scroll_pixels = (SCROLL_HI << 8) | SCROLL_LO
 ```
 
-**Smooth scrolling example:**
+**Simple scrolling (maps ≤256 pixels):**
 ```assembly
 ; Scroll right at 2 pixels per frame
-LD R0, [$013F]        ; Read current X scroll
+LD R0, [$013F]        ; Read current X scroll low byte
 ADD R0, #2            ; Add 2 pixels
-ST R0, [$013F]        ; Update (wraps at 256)
+ST R0, [$013F]        ; Update
 ```
 
-### TILEMAP_WIDTH / TILEMAP_HEIGHT (0x0141-0x0142)
+**Large map scrolling:**
+```assembly
+; Set scroll to pixel position 1000 (0x03E8)
+LD R0, #$E8
+ST R0, [$013F]        ; TILEMAP_X_SCROLL_LO
+LD R0, #$03
+ST R0, [$0140]        ; TILEMAP_X_SCROLL_HI
+```
+
+### TILEMAP_Y_SCROLL (0x0141-0x0142)
+
+16-bit Y scroll offset in pixels.
+
+```
+0x0141: TILEMAP_Y_SCROLL_LO (low byte, 0-255)
+0x0142: TILEMAP_Y_SCROLL_HI (high byte, 0-255)
+
+Same format as X scroll.
+```
+
+### TILEMAP_WIDTH / TILEMAP_HEIGHT (0x0143-0x0144)
 
 Dimensions of tilemap in tiles.
 
@@ -265,11 +287,11 @@ Examples:
 ```assembly
 ; Setup 128×128 tile map (2048×2048 pixels)
 LD R0, #128
-ST R0, [$0141]        ; TILEMAP_WIDTH
-ST R0, [$0142]        ; TILEMAP_HEIGHT
+ST R0, [$0143]        ; TILEMAP_WIDTH
+ST R0, [$0144]        ; TILEMAP_HEIGHT
 ```
 
-### TILEMAP_DATA_BANK (0x0143)
+### TILEMAP_DATA_BANK (0x0145)
 
 Specifies which bank contains tilemap data (2-byte tile entries).
 
@@ -286,17 +308,17 @@ Address calculation:
 ```assembly
 ; Tilemap data in bank 32
 LD R0, #32
-ST R0, [$0143]
+ST R0, [$0145]
 ```
 
-### TILEMAP_ADDR (0x0144-0x0145)
+### TILEMAP_ADDR (0x0146-0x0147)
 
 16-bit address where tilemap data starts within the tilemap data bank.
 
 ```
 Format: Big-endian (high byte first)
-  0x0144: High byte
-  0x0145: Low byte
+  0x0146: High byte
+  0x0147: Low byte
 
 Typical values:
   0x8000: Start of bankable region
@@ -311,12 +333,12 @@ Tile lookup:
 ```assembly
 ; Tilemap data starts at 0x8000 in the data bank
 LD R0, #$80
-ST R0, [$0144]        ; TILEMAP_ADDR_HI
+ST R0, [$0146]        ; TILEMAP_ADDR_HI
 LD R0, #$00
-ST R0, [$0145]        ; TILEMAP_ADDR_LO
+ST R0, [$0147]        ; TILEMAP_ADDR_LO
 ```
 
-### TILE_ANIM_FRAME (0x0146)
+### TILE_ANIM_FRAME (0x0148)
 
 Global animation frame counter for hardware tile animation.
 
@@ -338,9 +360,9 @@ Animation algorithm:
 ```assembly
 ; Auto-increment each frame in VBlank handler
 vblank:
-  LD R0, [$0146]
+  LD R0, [$0148]
   INC R0
-  ST R0, [$0146]      ; TILE_ANIM_FRAME++
+  ST R0, [$0148]      ; TILE_ANIM_FRAME++
   RTI
 ```
 
@@ -348,7 +370,7 @@ vblank:
 
 ## Tile Properties and Animation
 
-### Tile Properties Table (0x0B00-0x0B7F)
+### Tile Properties Table (0x0A80-0x0AFF)
 
 Each tile type (0-127) has a properties byte defining behavior:
 
@@ -385,15 +407,15 @@ Bits 1-0: Frame count
 ```assembly
 ; Tile 10: Water (animated, 4 frames, medium speed)
 LD R0, #%00010110     ; Animated, speed=01, frames=10 (4 frames)
-ST R0, [$0B0A]        ; properties[10]
+ST R0, [$0A8A]        ; properties[10]
 
 ; Tile 42: Spike (hazard, solid)
 LD R0, #%11000000     ; Solid + hazard
-ST R0, [$0B2A]        ; properties[42]
+ST R0, [$0AAA]        ; properties[42]
 
 ; Tile 5: Brick (solid, static)
 LD R0, #%10000000     ; Solid only
-ST R0, [$0B05]        ; properties[5]
+ST R0, [$0A85]        ; properties[5]
 ```
 
 ### Hardware Animation System
@@ -528,9 +550,9 @@ For each pixel (x, y):
 **Single-screen scrolling (0-255 pixels):**
 ```assembly
 game_loop:
-  LD R0, [$010D]      ; Read X scroll
+  LD R0, [$013F]      ; Read TILEMAP_X_SCROLL
   ADD R0, #1          ; Move right 1 pixel
-  ST R0, [$010D]      ; Update (wraps at 256)
+  ST R0, [$013F]      ; Update (wraps at 256)
 
   ; Wait for VBlank
   JMP game_loop
@@ -538,9 +560,14 @@ game_loop:
 
 ### Large Map Scrolling
 
-**For maps larger than 256 pixels, software tracks full position:**
+**For maps larger than 256 pixels, use full 16-bit scroll registers:**
+
+The hardware provides 16-bit scroll capability with paired lo/hi registers:
+- X scroll: `TILEMAP_X_SCROLL_LO` (0x013F) + `TILEMAP_X_SCROLL_HI` (0x0140)
+- Y scroll: `TILEMAP_Y_SCROLL_LO` (0x0141) + `TILEMAP_Y_SCROLL_HI` (0x0142)
+
 ```assembly
-; 16-bit scroll position
+; 16-bit scroll position tracking
 .define scroll_x_hi $0B00
 .define scroll_x_lo $0B01
 
@@ -558,9 +585,11 @@ scroll_right:
   ST R0, [scroll_x_hi]
 
 .no_carry:
-  ; Update hardware register (low 8 bits)
+  ; Update hardware registers (full 16-bit)
   LD R0, [scroll_x_lo]
-  ST R0, [$010D]      ; TILEMAP_X_SCROLL
+  ST R0, [$013F]      ; TILEMAP_X_SCROLL_LO
+  LD R0, [scroll_x_hi]
+  ST R0, [$0140]      ; TILEMAP_X_SCROLL_HI
 
   RET
 ```
@@ -579,7 +608,7 @@ update_scroll:
   ST R0, [camera_x]
 
   ; Foreground = camera_x (1:1)
-  ST R0, [$010D]      ; TILEMAP_X_SCROLL
+  ST R0, [$013F]      ; TILEMAP_X_SCROLL
 
   ; Background = camera_x / 2 (requires second layer)
   SHR R0              ; Divide by 2
@@ -652,7 +681,7 @@ get_tile_at:
   SHR R3              ; y / 16
 
   ; Calculate tile offset = (y * width + x) * 2
-  LD R4, [$010F]      ; TILEMAP_WIDTH
+  LD R4, [$0143]      ; TILEMAP_WIDTH
   ; ... multiply R3 × R4 ...
   ; ... add R2 ...
   ; ... multiply by 2 ...
@@ -749,16 +778,16 @@ setup_map:
   ST R0, [$013E]         ; TILEMAP_GRAPHICS_BANK
 
   LD R0, #32
-  ST R0, [$0141]         ; TILEMAP_WIDTH
-  ST R0, [$0142]         ; TILEMAP_HEIGHT
+  ST R0, [$0143]         ; TILEMAP_WIDTH
+  ST R0, [$0144]         ; TILEMAP_HEIGHT
 
   LD R0, #32
-  ST R0, [$0143]         ; TILEMAP_DATA_BANK
+  ST R0, [$0145]         ; TILEMAP_DATA_BANK
 
   LD R0, #$80
-  ST R0, [$0144]         ; TILEMAP_ADDR_HI
+  ST R0, [$0146]         ; TILEMAP_ADDR_HI
   LD R0, #$00
-  ST R0, [$0145]         ; TILEMAP_ADDR_LO
+  ST R0, [$0147]         ; TILEMAP_ADDR_LO
 
   LD R0, #$01            ; Enable only
   ST R0, [$013D]         ; TILEMAP_ENABLE
@@ -774,7 +803,7 @@ setup_map:
 setup_water:
   ; Define tile 10 as animated water (4 frames, medium speed)
   LD R0, #%00010110      ; Animated, speed=01, frames=01 (4 frames)
-  ST R0, [$0B0A]         ; properties[10]
+  ST R0, [$0A8A]         ; properties[10]
 
   ; Tiles 10-13 contain the 4 animation frames
   ; (Graphics already loaded to bank 16)
@@ -800,9 +829,9 @@ setup_water:
 vblank:
   PUSH R0
 
-  LD R0, [$0116]         ; TILE_ANIM_FRAME
+  LD R0, [$0148]         ; TILE_ANIM_FRAME
   INC R0
-  ST R0, [$0116]         ; Hardware uses this for animation
+  ST R0, [$0148]         ; Hardware uses this for animation
 
   POP R0
   RTI
@@ -831,12 +860,12 @@ update_camera:
   SUB R1, #80            ; Center Y
   ST R1, [camera_y]
 
-  ; Update hardware scroll registers
+  ; Update hardware scroll registers (low bytes only for simple case)
   LD R0, [camera_x]
-  ST R0, [$013F]         ; TILEMAP_X_SCROLL
+  ST R0, [$013F]         ; TILEMAP_X_SCROLL_LO
 
   LD R0, [camera_y]
-  ST R0, [$0140]         ; TILEMAP_Y_SCROLL
+  ST R0, [$0141]         ; TILEMAP_Y_SCROLL_LO
 
   RET
 ```
@@ -921,14 +950,16 @@ create_checkerboard:
 |---------|------|--------|-------------|
 | 0x013D | TILEMAP_ENABLE | R/W | Enable, wrap modes, priority |
 | 0x013E | TILEMAP_GRAPHICS_BANK | R/W | Bank with tile graphics |
-| 0x013F | TILEMAP_X_SCROLL | R/W | X scroll offset (0-255) |
-| 0x0140 | TILEMAP_Y_SCROLL | R/W | Y scroll offset (0-255) |
-| 0x0141 | TILEMAP_WIDTH | R/W | Map width in tiles |
-| 0x0142 | TILEMAP_HEIGHT | R/W | Map height in tiles |
-| 0x0143 | TILEMAP_DATA_BANK | R/W | Bank with tilemap data |
-| 0x0144 | TILEMAP_ADDR_HI | R/W | Tilemap address (high) |
-| 0x0145 | TILEMAP_ADDR_LO | R/W | Tilemap address (low) |
-| 0x0146 | TILE_ANIM_FRAME | R/W | Animation counter |
+| 0x013F | TILEMAP_X_SCROLL_LO | R/W | X scroll offset (low byte) |
+| 0x0140 | TILEMAP_X_SCROLL_HI | R/W | X scroll offset (high byte) |
+| 0x0141 | TILEMAP_Y_SCROLL_LO | R/W | Y scroll offset (low byte) |
+| 0x0142 | TILEMAP_Y_SCROLL_HI | R/W | Y scroll offset (high byte) |
+| 0x0143 | TILEMAP_WIDTH | R/W | Map width in tiles |
+| 0x0144 | TILEMAP_HEIGHT | R/W | Map height in tiles |
+| 0x0145 | TILEMAP_DATA_BANK | R/W | Bank with tilemap data |
+| 0x0146 | TILEMAP_ADDR_HI | R/W | Tilemap address (high) |
+| 0x0147 | TILEMAP_ADDR_LO | R/W | Tilemap address (low) |
+| 0x0148 | TILE_ANIM_FRAME | R/W | Animation counter |
 
 ---
 
@@ -936,8 +967,8 @@ create_checkerboard:
 
 | Address Range | Size | Description |
 |---------------|------|-------------|
-| 0x013D-0x0146 | 10 B | Tilemap control registers |
-| 0x0B00-0x0B7F | 128 B | Tile properties (128 tile types) |
+| 0x013D-0x0148 | 12 B | Tilemap control registers |
+| 0x0A80-0x0AFF | 128 B | Tile properties (128 tile types) |
 | Banks 16-31 | 512 KB | Tile graphics storage |
 | Banks 32+ | Variable | Tilemap data storage |
 

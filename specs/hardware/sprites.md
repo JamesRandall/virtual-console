@@ -541,9 +541,9 @@ CMP R1, #0
 BRZ no_sprite_collision
 
 ; Process first collision
-LD R2, [$0A00]         ; sprite_id
-LD R3, [$0A01]         ; other sprite ID or tile type
-LD R4, [$0A02]         ; type_flags
+LD R2, [$0980]         ; sprite_id
+LD R3, [$0981]         ; other sprite ID or tile type
+LD R4, [$0982]         ; type_flags
 
 ; Check collision type
 AND R4, #$80           ; Test bit 7

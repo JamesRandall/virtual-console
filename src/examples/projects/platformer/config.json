@@ -1,0 +1,27 @@
+{
+  "mode": 0,
+  "sprite-editor": {
+    "sprites": [
+      {
+        "palette": "default",
+        "block": 0
+      },
+      {
+        "palette": "default",
+        "block": 4
+      },
+      {
+        "palette": "default",
+        "block": 4
+      },
+      {
+        "palette": "default",
+        "block": 4
+      },
+      {
+        "palette": "default",
+        "block": 4
+      }
+    ]
+  }
+}
