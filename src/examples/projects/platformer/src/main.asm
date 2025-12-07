@@ -1069,8 +1069,8 @@ setup_scanline_map:
     LD R2, #$06
     LD R3, #$00
 
-    ; All 160 scanlines = palette block 0
-    LD R0, #0
+    ; All 160 scanlines = palette block 1
+    LD R0, #1
     LD R4, #160
 
 .scanline_loop:
