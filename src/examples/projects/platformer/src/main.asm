@@ -15,6 +15,7 @@
 ; Hardware Register Constants
 ; =============================================================================
 
+.define BANK_REG            $0100
 .define VIDEO_MODE          $0101
 
 ; Interrupt registers
@@ -459,17 +460,18 @@ get_tile_at_pixel:
     SHR R1
     SHR R1              ; R1 = tile_y
 
-    ; Check bounds
+    ; Check bounds - branch if out of bounds (R0 >= MAP_WIDTH or R1 >= MAP_HEIGHT)
     LD R2, [MAP_WIDTH]
     CMP R0, R2
-    BRNC .tile_out_of_bounds
+    BRC .tile_out_of_bounds     ; Branch if R0 >= R2 (carry set)
 
     LD R2, [MAP_HEIGHT]
     CMP R1, R2
-    BRNC .tile_out_of_bounds
+    BRC .tile_out_of_bounds     ; Branch if R1 >= R2 (carry set)
 
-    ; Calculate tile offset: (tile_y * map_width + tile_x) * 2
-    ; First: tile_y * map_width
+    ; Calculate tile offset: (tile_y * map_width + tile_x) * 2 + header
+    ; Use R4:R5 as 16-bit accumulator (R4=high, R5=low)
+    ; First: tile_y * map_width (8-bit result is fine for small maps)
     LD R2, [MAP_WIDTH]
     LD R3, #0           ; Result accumulator
 
@@ -488,40 +490,34 @@ get_tile_at_pixel:
     ; Add tile_x
     ADD R3, R0          ; R3 = tile_y * map_width + tile_x
 
-    ; Multiply by 2 (each tile entry is 2 bytes)
-    SHL R3              ; R3 = (tile_y * map_width + tile_x) * 2
+    ; Now build 16-bit address in R4:R5
+    ; Start with base address $8000 + TILEMAP_DATA_OFFSET = $8008
+    LD R4, #$80
+    LD R5, #TILEMAP_DATA_OFFSET
 
-    ; Add base address offset (skip header)
-    ADD R3, #TILEMAP_DATA_OFFSET
+    ; Add (tile_index * 2) to R5, with carry to R4
+    ; First add R3 (this is tile_index)
+    ADD R5, R3
+    BRNC .no_carry1
+    INC R4
+.no_carry1:
+    ; Add R3 again (multiply by 2)
+    ADD R5, R3
+    BRNC .no_carry2
+    INC R4
+.no_carry2:
 
-    ; Now we need to read from banked memory at offset R3 in bank 20
-    ; For simplicity, we'll use a lookup approach
-    ; The tilemap data is in cartridge bank 4 (absolute bank 20)
+    ; Switch to tilemap data bank
+    LD R0, #TILEMAP_BANK
+    ST R0, [BANK_REG]
 
-    ; Store offset for reading
-    ; R4:R5 will be our pointer (high:low)
-    LD R4, #0
-    MOV R5, R3
+    ; Read tile index from banked memory at R4:R5
+    LD R0, [R4:R5]
 
-    ; Read tile index from tilemap
-    ; This is a simplified version - we read from a fixed location
-    ; In a real implementation, we'd need banked memory access
-
-    ; For now, use hardcoded tilemap check based on Y position
-    ; The tilemap has ground tiles in the bottom rows
-    ; Ground starts at tile row 7 (Y >= 112 pixels)
-
-    LD R0, [TEMP_Y]
-    ADD R0, #15         ; Check bottom of sprite
-    CMP R0, #112        ; Ground starts at row 7 (7 * 16 = 112)
-    BRC .tile_empty     ; Above ground level
-
-    ; Below ground level - return solid tile
-    LD R0, #1
+    ; Tile index 0 = empty/no collision, non-zero = solid
     JMP .tile_done
 
 .tile_out_of_bounds:
-.tile_empty:
     LD R0, #0
 
 .tile_done:
