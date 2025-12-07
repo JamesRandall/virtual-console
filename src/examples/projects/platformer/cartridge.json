@@ -3,6 +3,7 @@
     "metadata.bin",
     "code.bin",
     "sprites/sprites.gbin",
-    "palettes/default.pbin"
+    "palettes/default.pbin",
+    "maps/level01.tbin"
   ]
 }

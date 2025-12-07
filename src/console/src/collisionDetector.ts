@@ -24,16 +24,18 @@ export const TILE_ANIMATED = 0x10;
 export const TILE_PROPERTIES_START = 0x0a80;
 export const TILE_PROPERTIES_END = 0x0aff;
 
-// Tilemap registers
+// Tilemap registers (matching tilemap.md spec)
 export const TILEMAP_ENABLE = 0x013d;
 export const TILEMAP_GRAPHICS_BANK = 0x013e;
-export const TILEMAP_X_SCROLL = 0x013f;
-export const TILEMAP_Y_SCROLL = 0x0140;
-export const TILEMAP_WIDTH = 0x0141;
-export const TILEMAP_HEIGHT = 0x0142;
-export const TILEMAP_DATA_BANK = 0x0143;
-export const TILEMAP_ADDR_HI = 0x0144;
-export const TILEMAP_ADDR_LO = 0x0145;
+export const TILEMAP_X_SCROLL_LO = 0x013f;
+export const TILEMAP_X_SCROLL_HI = 0x0140;
+export const TILEMAP_Y_SCROLL_LO = 0x0141;
+export const TILEMAP_Y_SCROLL_HI = 0x0142;
+export const TILEMAP_WIDTH = 0x0143;
+export const TILEMAP_HEIGHT = 0x0144;
+export const TILEMAP_DATA_BANK = 0x0145;
+export const TILEMAP_ADDR_HI = 0x0146;
+export const TILEMAP_ADDR_LO = 0x0147;
 
 const TILE_SIZE = 16;
 
@@ -59,17 +61,21 @@ export class CollisionDetector {
   }
 
   /**
-   * Get tilemap scroll X
+   * Get tilemap scroll X (16-bit)
    */
   getScrollX(): number {
-    return this.lowerMemory[TILEMAP_X_SCROLL];
+    const lo = this.lowerMemory[TILEMAP_X_SCROLL_LO];
+    const hi = this.lowerMemory[TILEMAP_X_SCROLL_HI];
+    return (hi << 8) | lo;
   }
 
   /**
-   * Get tilemap scroll Y
+   * Get tilemap scroll Y (16-bit)
    */
   getScrollY(): number {
-    return this.lowerMemory[TILEMAP_Y_SCROLL];
+    const lo = this.lowerMemory[TILEMAP_Y_SCROLL_LO];
+    const hi = this.lowerMemory[TILEMAP_Y_SCROLL_HI];
+    return (hi << 8) | lo;
   }
 
   /**

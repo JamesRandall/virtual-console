@@ -9,6 +9,7 @@
 import { pollGamepads } from './gamePad';
 import { generateWGSLPaletteArray } from '../../../../console/src/systemPalette';
 import { SpriteRenderer } from './spriteRenderer';
+import { TilemapRenderer } from './tilemapRenderer';
 import { BankedMemory } from '../../../../console/src/bankedMemory';
 
 // Memory layout constants for Mode 0
@@ -28,6 +29,9 @@ const SCREEN_HEIGHT = 160;
 
 // Sprite enable register
 const SPRITE_ENABLE = 0x0104;
+
+// Tilemap enable register
+const TILEMAP_ENABLE = 0x013d;
 
 /**
  * WebGPU Renderer Interface
@@ -67,6 +71,11 @@ export interface WebGPURenderer {
    * Get the sprite renderer for debugging/inspection
    */
   getSpriteRenderer(): SpriteRenderer | null;
+
+  /**
+   * Get the tilemap renderer for debugging/inspection
+   */
+  getTilemapRenderer(): TilemapRenderer | null;
 }
 
 /**
@@ -124,6 +133,12 @@ export async function createWebGPURenderer(
     spriteRenderer = new SpriteRenderer(sharedMemory, bankedMemory);
   }
 
+  // Create tilemap renderer if banked memory is available
+  let tilemapRenderer: TilemapRenderer | null = null;
+  if (bankedMemory) {
+    tilemapRenderer = new TilemapRenderer(sharedMemory, bankedMemory);
+  }
+
   // Sprite overlay buffer (written by sprite renderer, read by GPU)
   // This buffer holds sprite pixels in 4bpp format that will be composited
   const spriteOverlayBuffer = device.createBuffer({
@@ -144,6 +159,27 @@ export async function createWebGPURenderer(
   // Initialize sprite GPU buffers to zero (WebGPU buffers have undefined initial contents)
   device.queue.writeBuffer(spriteOverlayBuffer, 0, spriteOverlayData);
   device.queue.writeBuffer(spriteMaskBuffer, 0, spriteMaskData);
+
+  // Tilemap overlay buffer (written by tilemap renderer, read by GPU)
+  // This buffer holds tilemap pixels as master palette indices (already resolved)
+  const tilemapOverlayBuffer = device.createBuffer({
+    size: SCREEN_WIDTH * SCREEN_HEIGHT,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  // Tilemap mask buffer (1 byte per pixel - indicates if tilemap pixel is present)
+  const tilemapMaskBuffer = device.createBuffer({
+    size: SCREEN_WIDTH * SCREEN_HEIGHT,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  // CPU-side buffers for tilemap compositing
+  const tilemapOverlayData = new Uint8Array(SCREEN_WIDTH * SCREEN_HEIGHT);
+  const tilemapMaskData = new Uint8Array(SCREEN_WIDTH * SCREEN_HEIGHT);
+
+  // Initialize tilemap GPU buffers to zero
+  device.queue.writeBuffer(tilemapOverlayBuffer, 0, tilemapOverlayData);
+  device.queue.writeBuffer(tilemapMaskBuffer, 0, tilemapMaskData);
 
   // Create GPU buffers
   const framebufferBuffer = device.createBuffer({
@@ -204,6 +240,8 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 @group(0) @binding(2) var<storage, read> scanlineMap: array<u32>;
 @group(0) @binding(3) var<storage, read> spriteOverlay: array<u32>;
 @group(0) @binding(4) var<storage, read> spriteMask: array<u32>;
+@group(0) @binding(5) var<storage, read> tilemapOverlay: array<u32>;
+@group(0) @binding(6) var<storage, read> tilemapMask: array<u32>;
 
 // Helper function to read a byte from a u32 array
 fn readByte(buffer: ptr<storage, array<u32>, read>, byteIndex: u32) -> u32 {
@@ -228,36 +266,42 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
   let pixelIndex = y * 256u + x;
   let byteIndex = pixelIndex / 2u;
 
-  // Check if there's a sprite pixel at this location
+  // Check layer presence
   let hasSpritePixel = readByte(&spriteMask, pixelIndex) != 0u;
+  let hasTilemapPixel = readByte(&tilemapMask, pixelIndex) != 0u;
 
-  var colorIndex: u32;
+  var masterPaletteIndex: u32;
 
+  // Layer priority (front to back): sprites > tilemap > framebuffer
   if (hasSpritePixel) {
-    // Read sprite color from overlay buffer (4bpp format)
+    // Sprite: read color index and apply scanline palette map
     let spriteByte = readByte(&spriteOverlay, byteIndex);
+    var colorIndex: u32;
     if ((pixelIndex & 1u) == 0u) {
       colorIndex = (spriteByte >> 4u) & 0xFu; // High nibble (even pixel)
     } else {
       colorIndex = spriteByte & 0xFu; // Low nibble (odd pixel)
     }
+    let paletteSelector = readByte(&scanlineMap, y);
+    let paletteIndex = paletteSelector * 16u + colorIndex;
+    masterPaletteIndex = readByte(&paletteRam, paletteIndex);
+  } else if (hasTilemapPixel) {
+    // Tilemap: palette already resolved by TilemapEngine
+    // tilemapOverlay contains master palette indices directly (1 byte per pixel)
+    masterPaletteIndex = readByte(&tilemapOverlay, pixelIndex);
   } else {
-    // Read background color from framebuffer (4bpp format)
+    // Framebuffer: read color index and apply scanline palette map
     let byte = readByte(&framebuffer, byteIndex);
+    var colorIndex: u32;
     if ((pixelIndex & 1u) == 0u) {
       colorIndex = (byte >> 4u) & 0xFu; // High nibble (even pixel)
     } else {
       colorIndex = byte & 0xFu; // Low nibble (odd pixel)
     }
+    let paletteSelector = readByte(&scanlineMap, y);
+    let paletteIndex = paletteSelector * 16u + colorIndex;
+    masterPaletteIndex = readByte(&paletteRam, paletteIndex);
   }
-
-  // Get palette selector for this scanline
-  let paletteSelector = readByte(&scanlineMap, y);
-
-  // Calculate palette RAM address
-  // Each palette is 16 bytes (16 colors for 4bpp)
-  let paletteIndex = paletteSelector * 16u + colorIndex;
-  let masterPaletteIndex = readByte(&paletteRam, paletteIndex);
 
   // Look up final RGB color from master palette
   let rgb = PALETTE[masterPaletteIndex];
@@ -302,6 +346,16 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
         visibility: GPUShaderStage.FRAGMENT,
         buffer: { type: 'read-only-storage' },
       },
+      {
+        binding: 5,
+        visibility: GPUShaderStage.FRAGMENT,
+        buffer: { type: 'read-only-storage' },
+      },
+      {
+        binding: 6,
+        visibility: GPUShaderStage.FRAGMENT,
+        buffer: { type: 'read-only-storage' },
+      },
     ],
   });
 
@@ -315,6 +369,8 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
       { binding: 2, resource: { buffer: scanlineMapBuffer } },
       { binding: 3, resource: { buffer: spriteOverlayBuffer } },
       { binding: 4, resource: { buffer: spriteMaskBuffer } },
+      { binding: 5, resource: { buffer: tilemapOverlayBuffer } },
+      { binding: 6, resource: { buffer: tilemapMaskBuffer } },
     ],
   });
 
@@ -366,7 +422,36 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
 
     // Only perform GPU rendering if visible
     if (isVisible && context) {
-      // Always clear sprite buffers first
+      // Clear tilemap buffers
+      tilemapMaskData.fill(0);
+
+      // Render tilemap if tilemap renderer is available and enabled
+      if (tilemapRenderer && (memory[TILEMAP_ENABLE] & 0x01) !== 0) {
+        // Clear overlay buffer
+        tilemapOverlayData.fill(0);
+
+        // Render each scanline
+        for (let y = 0; y < SCREEN_HEIGHT; y++) {
+          const scanlineBuffer = tilemapRenderer.renderScanline(y, SCREEN_WIDTH);
+
+          // Copy scanline to overlay and mask buffers
+          // Tilemap overlay stores master palette indices directly (1 byte per pixel)
+          for (let x = 0; x < SCREEN_WIDTH; x++) {
+            const masterPaletteIndex = scanlineBuffer[x];
+            if (masterPaletteIndex !== 0) {
+              const pixelIndex = y * SCREEN_WIDTH + x;
+              tilemapMaskData[pixelIndex] = 1;
+              tilemapOverlayData[pixelIndex] = masterPaletteIndex;
+            }
+          }
+        }
+      }
+
+      // Always upload tilemap buffers to GPU
+      device.queue.writeBuffer(tilemapOverlayBuffer, 0, tilemapOverlayData);
+      device.queue.writeBuffer(tilemapMaskBuffer, 0, tilemapMaskData);
+
+      // Clear sprite buffers
       spriteMaskData.fill(0);
 
       // Render sprites if sprite renderer is available and sprites are enabled
@@ -485,6 +570,8 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
       scanlineMapBuffer.destroy();
       spriteOverlayBuffer.destroy();
       spriteMaskBuffer.destroy();
+      tilemapOverlayBuffer.destroy();
+      tilemapMaskBuffer.destroy();
       // Unconfigure the context to release WebGPU resources
       if (context) {
         context.unconfigure();
@@ -501,6 +588,10 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
 
     getSpriteRenderer(): SpriteRenderer | null {
       return spriteRenderer;
+    },
+
+    getTilemapRenderer(): TilemapRenderer | null {
+      return tilemapRenderer;
     },
 
     async captureFrame(): Promise<string> {
