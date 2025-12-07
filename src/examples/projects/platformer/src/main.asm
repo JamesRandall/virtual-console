@@ -55,8 +55,12 @@
 ; Scanline palette map
 .define SCANLINE_MAP        $0600
 
-; Framebuffer
+; Palette RAM
+.define PALETTE_RAM         $0200
+
+; Framebuffer (in bank 0)
 .define FRAMEBUFFER_START   $B000
+.define FRAMEBUFFER_BANK    0       ; Framebuffer is in RAM bank 0
 
 ; =============================================================================
 ; Constants
@@ -137,6 +141,23 @@
 .define ON_GROUND           $0B0A   ; 1 if player is standing on ground, 0 if airborne
 .define JUMP_HELD           $0B0B   ; Tracks if jump button was held (prevents re-jump)
 
+; Starfield variables
+.define STAR_X_RAM          $0B10   ; 96 bytes for star X positions ($0B10-$0B6F)
+.define STAR_FRAME          $0B70   ; Frame counter for star animation
+
+; Starfield constants
+.define STAR_COUNT          96      ; Total stars (32 per layer)
+.define STARS_PER_LAYER     32
+.define SPEED_FAST          3       ; White stars (fastest)
+.define SPEED_MED           2       ; Medium gray stars
+.define SPEED_SLOW          1       ; Dark gray stars (slowest)
+
+; Star colors (palette indices in palette block 1)
+.define STAR_COLOR_BLACK    0
+.define STAR_COLOR_WHITE    1
+.define STAR_COLOR_MED      2
+.define STAR_COLOR_DARK     3
+
 ; =============================================================================
 ; Entry Point
 ; =============================================================================
@@ -181,6 +202,10 @@ main:
 
     ; Setup player sprite
     CALL setup_player_sprite
+
+    ; Initialize starfield
+    CALL setup_star_palette
+    CALL init_star_positions
 
     ; Clear any pending interrupt flags
     LD R0, #$FF
@@ -250,6 +275,8 @@ vblank_handler:
     PUSH R1
     PUSH R2
     PUSH R3
+    PUSH R4
+    PUSH R5
 
     ; Clear VBLANK flag (write 1 to clear)
     LD R0, #$01
@@ -259,6 +286,11 @@ vblank_handler:
     LD R0, [TILE_ANIM_FRAME]
     INC R0
     ST R0, [TILE_ANIM_FRAME]
+
+    ; ===================
+    ; Update Starfield (runs every frame in framebuffer bank 0)
+    ; ===================
+    CALL update_starfield
 
     ; Read controller state into R2 (used throughout)
     LD R2, [CTRL1_STATE]
@@ -292,6 +324,8 @@ vblank_handler:
     LD R0, [PLAYER_Y]
     ST R0, [SPRITE_0_Y]
 
+    POP R5
+    POP R4
     POP R3
     POP R2
     POP R1
@@ -1096,6 +1130,10 @@ clear_screen:
     PUSH R3
     PUSH R4
 
+    ; Switch to framebuffer bank (bank 0)
+    LD R0, #FRAMEBUFFER_BANK
+    ST R0, [BANK_REG]
+
     ; R2:R3 = address pointer (0xB000)
     LD R2, #$B0
     LD R3, #$00
@@ -1119,3 +1157,409 @@ clear_screen:
     POP R2
     POP R0
     RET
+
+; =============================================================================
+; Starfield Routines
+; =============================================================================
+
+; -----------------------------------------------------------------------------
+; Setup star palette colors in palette block 1
+; -----------------------------------------------------------------------------
+setup_star_palette:
+    PUSH R0
+
+    ; Palette block 1 starts at PALETTE_RAM + 16
+    ; Color 0: Black (transparent) - use system palette index for black
+    LD R0, #253             ; Black in system palette
+    ST R0, [PALETTE_RAM + 16]
+
+    ; Color 1: White (brightest stars)
+    LD R0, #255             ; White in system palette
+    ST R0, [PALETTE_RAM + 17]
+
+    ; Color 2: Medium Gray
+    LD R0, #225             ; Medium gray in system palette
+    ST R0, [PALETTE_RAM + 18]
+
+    ; Color 3: Dark Gray (dimmest stars)
+    LD R0, #229             ; Dark gray in system palette
+    ST R0, [PALETTE_RAM + 19]
+
+    POP R0
+    RET
+
+; -----------------------------------------------------------------------------
+; Initialize star positions by copying from ROM to RAM
+; -----------------------------------------------------------------------------
+init_star_positions:
+    PUSH R0
+    PUSH R1
+    PUSH R2
+    PUSH R3
+    PUSH R4
+    PUSH R5
+
+    ; Source address: star_x_coords_init
+    LD R0, #(star_x_coords_init >> 8)
+    LD R1, #(star_x_coords_init & $FF)
+
+    ; Destination address: STAR_X_RAM
+    LD R2, #(STAR_X_RAM >> 8)
+    LD R3, #(STAR_X_RAM & $FF)
+
+    ; Counter: 96 bytes to copy
+    LD R4, #STAR_COUNT
+
+.copy_loop:
+    ; Load byte from source
+    LD R5, [R0:R1]
+
+    ; Store to destination
+    ST R5, [R2:R3]
+
+    ; Increment source address
+    INC R1
+    BRNZ .no_carry_src
+    INC R0
+.no_carry_src:
+
+    ; Increment destination address
+    INC R3
+    BRNZ .no_carry_dst
+    INC R2
+.no_carry_dst:
+
+    ; Decrement counter
+    DEC R4
+    BRNZ .copy_loop
+
+    ; Initialize frame counter
+    LD R0, #0
+    ST R0, [STAR_FRAME]
+
+    POP R5
+    POP R4
+    POP R3
+    POP R2
+    POP R1
+    POP R0
+    RET
+
+; -----------------------------------------------------------------------------
+; Update Starfield - called every frame
+; Erases old stars, updates positions, draws new stars
+; -----------------------------------------------------------------------------
+update_starfield:
+    PUSH R0
+    PUSH R1
+    PUSH R2
+    PUSH R3
+    PUSH R4
+    PUSH R5
+
+    ; Switch to framebuffer bank (bank 0) for drawing
+    LD R0, #FRAMEBUFFER_BANK
+    ST R0, [BANK_REG]
+
+    ; Toggle frame counter for half-speed updates
+    LD R0, [STAR_FRAME]
+    XOR R0, #1
+    ST R0, [STAR_FRAME]
+
+    ; If frame counter is 1, skip erase/update and just draw
+    CMP R0, #1
+    BRZ .skip_update
+
+    ; --- Erase all stars (draw in black) ---
+    LD R0, #0              ; Start index
+    LD R1, #STARS_PER_LAYER
+    LD R2, #STAR_COLOR_BLACK
+    CALL draw_stars
+
+    LD R0, #32             ; Start index
+    LD R1, #STARS_PER_LAYER
+    LD R2, #STAR_COLOR_BLACK
+    CALL draw_stars
+
+    LD R0, #64             ; Start index
+    LD R1, #STARS_PER_LAYER
+    LD R2, #STAR_COLOR_BLACK
+    CALL draw_stars
+
+    ; --- Update star positions ---
+    ; White stars (fastest)
+    LD R0, #0
+    LD R1, #STARS_PER_LAYER
+    LD R2, #SPEED_FAST
+    CALL update_star_positions
+
+    ; Medium gray stars
+    LD R0, #32
+    LD R1, #STARS_PER_LAYER
+    LD R2, #SPEED_MED
+    CALL update_star_positions
+
+    ; Dark gray stars (slowest)
+    LD R0, #64
+    LD R1, #STARS_PER_LAYER
+    LD R2, #SPEED_SLOW
+    CALL update_star_positions
+
+.skip_update:
+    ; --- Draw all stars in color ---
+    LD R0, #0
+    LD R1, #STARS_PER_LAYER
+    LD R2, #STAR_COLOR_WHITE
+    CALL draw_stars
+
+    LD R0, #32
+    LD R1, #STARS_PER_LAYER
+    LD R2, #STAR_COLOR_MED
+    CALL draw_stars
+
+    LD R0, #64
+    LD R1, #STARS_PER_LAYER
+    LD R2, #STAR_COLOR_DARK
+    CALL draw_stars
+
+    POP R5
+    POP R4
+    POP R3
+    POP R2
+    POP R1
+    POP R0
+    RET
+
+; -----------------------------------------------------------------------------
+; Update star X positions (move left and wrap)
+; Inputs: R0 = start index, R1 = count, R2 = speed
+; -----------------------------------------------------------------------------
+update_star_positions:
+    PUSH R0
+    PUSH R1
+    PUSH R2
+    PUSH R3
+    PUSH R4
+    PUSH R5
+
+    MOV R3, R0             ; R3 = current index
+    MOV R4, R1             ; R4 = remaining count
+    MOV R5, R2             ; R5 = speed
+
+.usp_loop:
+    CMP R4, #0
+    BRZ .usp_done
+
+    ; Get address of X coordinate in RAM
+    LD R0, #(STAR_X_RAM >> 8)
+    LD R1, #(STAR_X_RAM & $FF)
+    ADD R1, R3
+    BRNC .usp_no_carry
+    INC R0
+.usp_no_carry:
+
+    ; Load current X position
+    LD R2, [R0:R1]
+
+    ; Subtract speed (move left)
+    SUB R2, R5
+
+    ; Check if wrapped below 0 (carry flag CLEAR means borrow/underflow)
+    BRNC .usp_wrap
+
+    ; No wrap, store back
+    ST R2, [R0:R1]
+    JMP .usp_next
+
+.usp_wrap:
+    ; Wrapped below 0, reset to right side (255)
+    LD R2, #255
+    ST R2, [R0:R1]
+
+.usp_next:
+    INC R3
+    DEC R4
+    JMP .usp_loop
+
+.usp_done:
+    POP R5
+    POP R4
+    POP R3
+    POP R2
+    POP R1
+    POP R0
+    RET
+
+; -----------------------------------------------------------------------------
+; Draw a set of stars
+; Inputs: R0 = start index, R1 = count, R2 = color
+; -----------------------------------------------------------------------------
+draw_stars:
+    PUSH R0
+    PUSH R1
+    PUSH R2
+    PUSH R3
+    PUSH R4
+    PUSH R5
+
+    MOV R3, R0             ; R3 = current index
+    MOV R4, R1             ; R4 = remaining count
+    MOV R5, R2             ; R5 = color
+
+.ds_loop:
+    CMP R4, #0
+    BRZ .ds_done
+
+    ; Get X coordinate from RAM
+    LD R0, #(STAR_X_RAM >> 8)
+    LD R1, #(STAR_X_RAM & $FF)
+    ADD R1, R3
+    BRNC .ds_no_carry_x
+    INC R0
+.ds_no_carry_x:
+    LD R0, [R0:R1]         ; R0 = X coordinate
+
+    ; Get Y coordinate from ROM table
+    PUSH R0                ; Save X
+    LD R0, #(star_y_coords >> 8)
+    LD R1, #(star_y_coords & $FF)
+    ADD R1, R3
+    BRNC .ds_no_carry_y
+    INC R0
+.ds_no_carry_y:
+    LD R1, [R0:R1]         ; R1 = Y coordinate
+    POP R0                 ; Restore X
+
+    ; Draw the pixel (R0=X, R1=Y, R2=color)
+    MOV R2, R5
+    CALL draw_pixel
+
+    ; Next star
+    INC R3
+    DEC R4
+    JMP .ds_loop
+
+.ds_done:
+    POP R5
+    POP R4
+    POP R3
+    POP R2
+    POP R1
+    POP R0
+    RET
+
+; -----------------------------------------------------------------------------
+; Draw pixel at (X, Y) with color
+; Inputs: R0 = X (0-255), R1 = Y (0-159), R2 = color (0-15)
+; Note: Assumes bank 0 is already selected
+; -----------------------------------------------------------------------------
+draw_pixel:
+    PUSH R0
+    PUSH R1
+    PUSH R2
+    PUSH R3
+    PUSH R4
+    PUSH R5
+
+    ; Bounds check Y
+    CMP R1, #160
+    BRC .dp_exit           ; Exit if Y >= 160
+
+    ; Calculate address: 0xB000 + (Y * 128) + (X / 2)
+    LD R3, #0              ; R3 = high byte of offset
+    MOV R4, R1             ; R4 = low byte (Y value)
+
+    ; Shift R3:R4 left by 7 (multiply Y by 128)
+    SHL R4
+    ROL R3
+    SHL R4
+    ROL R3
+    SHL R4
+    ROL R3
+    SHL R4
+    ROL R3
+    SHL R4
+    ROL R3
+    SHL R4
+    ROL R3
+    SHL R4
+    ROL R3
+
+    ; Add X/2 to the low byte
+    MOV R5, R0             ; Copy X to R5
+    SHR R5                 ; R5 = X / 2
+    ADD R4, R5
+    BRNC .dp_no_carry
+    INC R3
+.dp_no_carry:
+
+    ; Add framebuffer base address (0xB000) to high byte
+    ADD R3, #$B0
+
+    ; Load current byte at this address
+    LD R5, [R3:R4]
+
+    ; Check if X is even or odd
+    AND R0, #1
+    BRNZ .dp_odd_pixel
+
+    ; Even pixel: modify high nibble
+    AND R5, #$0F           ; Clear high nibble
+    SHL R2
+    SHL R2
+    SHL R2
+    SHL R2                 ; Shift color to high nibble
+    OR R5, R2
+    JMP .dp_write
+
+.dp_odd_pixel:
+    ; Odd pixel: modify low nibble
+    AND R5, #$F0           ; Clear low nibble
+    AND R2, #$0F           ; Ensure color is only in low nibble
+    OR R5, R2
+
+.dp_write:
+    ST R5, [R3:R4]
+
+.dp_exit:
+    POP R5
+    POP R4
+    POP R3
+    POP R2
+    POP R1
+    POP R0
+    RET
+
+; =============================================================================
+; Starfield Data Tables
+; =============================================================================
+
+; Initial star X coordinates (copied to RAM at startup)
+star_x_coords_init:
+    .byte 23, 156, 89, 200, 45, 178, 12, 234
+    .byte 67, 145, 203, 34, 189, 78, 223, 56
+    .byte 134, 201, 92, 167, 28, 215, 101, 189
+    .byte 43, 198, 125, 76, 231, 103, 172, 39
+    .byte 87, 159, 213, 98, 44, 182, 126, 201
+    .byte 71, 149, 227, 109, 183, 52, 197, 88
+    .byte 164, 38, 207, 119, 185, 64, 142, 223
+    .byte 95, 176, 29, 203, 81, 155, 237, 112
+    .byte 47, 192, 135, 73, 219, 99, 168, 31
+    .byte 206, 124, 59, 187, 146, 84, 229, 107
+    .byte 175, 51, 196, 118, 241, 93, 163, 26
+    .byte 209, 137, 68, 195, 115, 173, 49, 221
+
+; Star Y coordinates (static, read from ROM)
+star_y_coords:
+    .byte 45, 123, 78, 12, 156, 89, 134, 23
+    .byte 98, 145, 67, 112, 34, 152, 91, 128
+    .byte 56, 103, 142, 89, 15, 138, 72, 119
+    .byte 149, 28, 95, 136, 61, 108, 143, 82
+    .byte 17, 124, 87, 151, 42, 99, 133, 68
+    .byte 105, 38, 147, 79, 116, 53, 129, 94
+    .byte 31, 118, 85, 139, 64, 111, 146, 26
+    .byte 92, 135, 71, 107, 48, 122, 157, 83
+    .byte 19, 101, 144, 76, 126, 59, 97, 141
+    .byte 24, 114, 88, 131, 52, 109, 148, 73
+    .byte 36, 120, 93, 154, 66, 104, 137, 47
+    .byte 81, 125, 58, 96, 140, 69, 113, 150
