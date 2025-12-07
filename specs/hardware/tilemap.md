@@ -25,6 +25,12 @@ The Virtual Console Tilemap System provides hardware-accelerated tile-based back
 - Simplifies hardware rendering pipeline
 - Reduces number of tiles needed vs 8×8
 
+**Reserved tile index:**
+- **Tile index 0 is reserved as transparent/empty**
+- When a tile entry has index 0, the tile is not rendered (fully transparent)
+- No graphics fetch occurs for tile index 0, improving performance
+- Usable tile indices are 1-255 (255 unique tile graphics)
+
 **4bpp mode (Modes 0 & 3):**
 - 16×16 pixels = 256 pixels
 - 256 pixels ÷ 2 (4 bits per pixel) = **128 bytes per tile**
