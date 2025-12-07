@@ -16,6 +16,14 @@ Now look at the existing IDE editors in this folder:
 
     /Users/jamesrandall/code/virtual-console/src/devkit/client/src/application/editors
 
+We make specific reference to the sprite editor in this spec:
+
+    /Users/jamesrandall/code/virtual-console/src/devkit/client/src/application/editors/spriteEditor
+
+And the project explorer in this folder:
+
+    /Users/jamesrandall/code/virtual-console/src/devkit/client/src/application/projectExplorer
+
 We want to add an editor that lets us work on tilemap files. This will require adding a "tilemap" folder to our project explorer. It should be added to the default project structure. Within these folder we should be able to create tilemaps that are .tbin files. The tilemaps are basically a 32k chunk of ROM/RAM that we can bundle into the cartridge and use with the tilemap system. The tilemap.md spec outlines the format.
 
 Our tilemap editor should have the following features:
@@ -32,3 +40,13 @@ Our tilemap editor should have the following features:
 * On the right hand side we need an "attribute" editor that lets us edit the attributes of a selected tile
 * Note that our config.json file in the root of the project will associate a graphic/sprite in an sbin with its palette. This isn't encoded into the gbin files but can be used to select the default palette for the tile attributes for a tile. We should show the sprites in the sprite picker using the correct palettes
     - In the components folder you will find an existing sprite picker that you may be able to adapt and reuse
+
+
+We also need to update the cartridge editor and bundler to let us include these .tbin files. The editor can be found here:
+
+    /Users/jamesrandall/code/virtual-console/src/devkit/client/src/application/editors/cartridge
+
+And the bundler is here:
+
+    /Users/jamesrandall/code/virtual-console/src/devkit/client/src/services/cartridgeBundler.ts
+
