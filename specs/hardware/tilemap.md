@@ -101,11 +101,13 @@ Byte 1: Tile Attributes
   Bit 7:   Flip horizontal (0=normal, 1=flipped)
   Bit 6:   Flip vertical (0=normal, 1=flipped)
   Bit 5:   Priority (0=behind sprites, 1=in front of sprites)
-  Bits 4-3: Palette offset (4bpp modes only)
+  Bits 4-3: Palette selection (4bpp modes only)
             00 = Palette 0 (colors 0-15)
             01 = Palette 1 (colors 16-31)
             10 = Palette 2 (colors 32-47)
             11 = Palette 3 (colors 48-63)
+            Note: This is independent of the scanline palette map.
+            Adjacent tiles can use different palettes freely.
   Bit 2:   Reserved (must be 0)
   Bits 1-0: Bank offset (0-3)
             Added to TILEMAP_GRAPHICS_BANK for this tile
@@ -143,6 +145,46 @@ Example - 128×128 tilemap:
 128×128 tilemap: 128 × 128 × 2 = 32,768 bytes (32KB, fills one bank)
 255×255 tilemap: 255 × 255 × 2 = 130,050 bytes (127KB, needs 4 banks)
 ```
+
+---
+
+## Palette System
+
+### Per-Tile Palette Selection
+
+The tilemap uses **per-tile palette selection**, independent of the scanline palette map. Each tile's attribute byte (bits 4-3) selects one of 4 palettes:
+
+| Bits 4-3 | Palette | Color Range |
+|----------|---------|-------------|
+| 00 | Palette 0 | Colors 0-15 |
+| 01 | Palette 1 | Colors 16-31 |
+| 10 | Palette 2 | Colors 32-47 |
+| 11 | Palette 3 | Colors 48-63 |
+
+This allows adjacent tiles to use completely different color sets. A grass tile (palette 0 = greens) can sit next to a brick tile (palette 1 = browns) and a water tile (palette 2 = blues) on the same scanline.
+
+### Scanline Palette Map Does Not Apply
+
+The scanline palette map (0x0600-0x06FF) affects **sprites and direct framebuffer rendering only**. The tilemap ignores it entirely.
+
+This separation matches classic console hardware (NES, SNES, Game Boy) where:
+- Background tiles had fixed per-tile palette assignments
+- Scanline-based palette effects required manual CPU intervention via raster interrupts
+
+### Combined Effects
+
+This architecture enables powerful visual combinations:
+
+| Layer | Palette Source | Use Case |
+|-------|---------------|----------|
+| Tilemap | Per-tile attribute (bits 4-3) | Varied terrain, mixed environment tiles |
+| Sprites | Scanline palette map | Gradient skies, underwater tints, flash effects |
+| Framebuffer | Scanline palette map | Raster bars, color cycling, split-screen tints |
+
+**Example:** A platformer level with:
+- Tilemap: Green grass tiles (palette 0), brown platforms (palette 1), blue water (palette 2)
+- Sprites: Gradient sunset sky effect (scanline 0-40 use warm palette, 40-80 use cooler palette)
+- Both render simultaneously with independent color control
 
 ---
 

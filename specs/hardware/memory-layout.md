@@ -490,12 +490,18 @@ Indexed palette storage. Each byte is an index (0-255) into the master Tailwind 
 
 ### Scanline Palette Map (0x0600-0x06FF)
 
-Per-scanline palette selection. Each byte selects which palette (0-3 or higher) to use for that scanline.
+Per-scanline palette selection for **sprites and direct framebuffer rendering only**. Each byte selects which palette (0-3 or higher) to use for that scanline.
 
 - **0x0600:** Scanline 0 palette selector
 - **0x0601:** Scanline 1 palette selector
 - ...
 - **0x06B0:** Scanline 176 palette selector (Mode 3, tallest mode)
+
+**Note:** The tilemap system does **not** use the scanline palette map. Tiles use per-tile palette selection via the tile attribute byte (bits 4-3), allowing adjacent tiles to use different palettes independently. This matches classic console hardware where background tiles had fixed palette assignments.
+
+This separation enables powerful effects:
+- **Tilemap:** Varied terrain colors (grass=palette 0, brick=palette 1, water=palette 2) all on the same scanline
+- **Sprites/Framebuffer:** Gradient skies, underwater tints, screen flash effects via per-scanline palette changes
 
 **256 bytes**
 
