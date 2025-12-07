@@ -86,20 +86,56 @@
 .define BTN_DOWN            $40
 .define BTN_LEFT            $20
 .define BTN_RIGHT           $10
+.define BTN_C               $02     ; Jump button (B0 on gamepad)
 
-; Player movement speed (pixels per frame)
-.define PLAYER_SPEED        2
+; =============================================================================
+; Physics Constants (tweak these for feel)
+; =============================================================================
+
+; Gravity applied per frame (in 1/16 pixel units)
+; Lower = floatier, Higher = snappier
+.define GRAVITY             4
+
+; Maximum fall speed (in 1/16 pixel units per frame)
+; Prevents falling through floors at high speeds
+.define MAX_FALL_SPEED      64      ; 4 pixels per frame max
+
+; Jump initial velocity (in 1/16 pixel units, negative = up)
+; Higher = higher jump
+.define JUMP_VELOCITY       84      ; ~5.25 pixels per frame initial upward
+
+; Horizontal movement speed (in 1/16 pixel units per frame)
+.define MOVE_SPEED          32      ; 2 pixels per frame
+
+; Horizontal acceleration (added per frame when pressing direction)
+.define MOVE_ACCEL          8       ; Takes 4 frames to reach full speed
+
+; Horizontal friction/deceleration (subtracted per frame when not pressing)
+.define MOVE_FRICTION       6       ; Takes ~5 frames to stop
 
 ; =============================================================================
 ; Variables (in lower memory)
 ; =============================================================================
 
-.define PLAYER_X            $0B00   ; Player X position (screen coords)
-.define PLAYER_Y            $0B01   ; Player Y position (screen coords)
+.define PLAYER_X            $0B00   ; Player X position (screen coords, whole pixels)
+.define PLAYER_Y            $0B01   ; Player Y position (screen coords, whole pixels)
 .define MAP_WIDTH           $0B02   ; Tilemap width in tiles
 .define MAP_HEIGHT          $0B03   ; Tilemap height in tiles
 .define TEMP_X              $0B04   ; Temporary X for collision check
 .define TEMP_Y              $0B05   ; Temporary Y for collision check
+
+; Velocity variables (signed, in 1/16 pixel units for sub-pixel precision)
+; Positive vel_y = moving down, Negative vel_y = moving up
+.define VEL_X               $0B06   ; Horizontal velocity (signed)
+.define VEL_Y               $0B07   ; Vertical velocity (signed)
+
+; Sub-pixel accumulators (fractional part of position)
+.define SUB_X               $0B08   ; X sub-pixel accumulator
+.define SUB_Y               $0B09   ; Y sub-pixel accumulator
+
+; State flags
+.define ON_GROUND           $0B0A   ; 1 if player is standing on ground, 0 if airborne
+.define JUMP_HELD           $0B0B   ; Tracks if jump button was held (prevents re-jump)
 
 ; =============================================================================
 ; Entry Point
@@ -128,10 +164,20 @@ main:
     ; Configure tilemap registers
     CALL setup_tilemap
 
-    ; Initialize player position (top-left corner)
-    LD R0, #0
+    ; Initialize player position (start near top-left, will fall to ground)
+    LD R0, #32
     ST R0, [PLAYER_X]
+    LD R0, #16
     ST R0, [PLAYER_Y]
+
+    ; Initialize velocity and physics state
+    LD R0, #0
+    ST R0, [VEL_X]
+    ST R0, [VEL_Y]
+    ST R0, [SUB_X]
+    ST R0, [SUB_Y]
+    ST R0, [ON_GROUND]
+    ST R0, [JUMP_HELD]
 
     ; Setup player sprite
     CALL setup_player_sprite
@@ -196,13 +242,14 @@ setup_player_sprite:
 
 ; =============================================================================
 ; VBLANK Interrupt Handler
-; Called 60 times per second - handles controller input and player movement
+; Called 60 times per second - handles physics and input
 ; =============================================================================
 
 vblank_handler:
     PUSH R0
     PUSH R1
     PUSH R2
+    PUSH R3
 
     ; Clear VBLANK flag (write 1 to clear)
     LD R0, #$01
@@ -213,165 +260,583 @@ vblank_handler:
     INC R0
     ST R0, [TILE_ANIM_FRAME]
 
-    ; Read controller state
+    ; Read controller state into R2 (used throughout)
     LD R2, [CTRL1_STATE]
 
-    ; Check UP button
-    MOV R0, R2
-    AND R0, #BTN_UP
-    BRZ .check_down
-    CALL try_move_up
+    ; ===================
+    ; Horizontal Input
+    ; ===================
+    CALL handle_horizontal_input
 
-.check_down:
-    MOV R0, R2
-    AND R0, #BTN_DOWN
-    BRZ .check_left
-    CALL try_move_down
+    ; ===================
+    ; Jump Input
+    ; ===================
+    CALL handle_jump_input
 
-.check_left:
-    MOV R0, R2
-    AND R0, #BTN_LEFT
-    BRZ .check_right
-    CALL try_move_left
+    ; ===================
+    ; Apply Gravity
+    ; ===================
+    CALL apply_gravity
 
-.check_right:
-    MOV R0, R2
-    AND R0, #BTN_RIGHT
-    BRZ .update_sprite
-    CALL try_move_right
+    ; ===================
+    ; Apply Velocities & Collision
+    ; ===================
+    CALL apply_horizontal_velocity
+    CALL apply_vertical_velocity
 
-.update_sprite:
-    ; Update sprite position from player variables
+    ; ===================
+    ; Update Sprite
+    ; ===================
     LD R0, [PLAYER_X]
     ST R0, [SPRITE_0_X]
     LD R0, [PLAYER_Y]
     ST R0, [SPRITE_0_Y]
 
-.vblank_done:
+    POP R3
     POP R2
     POP R1
     POP R0
     RTI
 
 ; =============================================================================
-; Movement Functions with Collision Detection
-; Each function checks if the new position would collide with tilemap
+; Physics Functions
 ; =============================================================================
 
-try_move_up:
+; -----------------------------------------------------------------------------
+; Handle Horizontal Input
+; Reads left/right from controller (in R2), updates VEL_X with acceleration
+; -----------------------------------------------------------------------------
+handle_horizontal_input:
     PUSH R0
     PUSH R1
 
-    ; Calculate new Y position
-    LD R0, [PLAYER_Y]
-    CMP R0, #PLAYER_SPEED
-    BRNC .move_up_done     ; Already at top edge (R0 < PLAYER_SPEED)
+    ; Check LEFT button
+    MOV R0, R2
+    AND R0, #BTN_LEFT
+    BRZ .check_right_input
 
-    SUB R0, #PLAYER_SPEED
-    ST R0, [TEMP_Y]
+    ; Left pressed - accelerate left (decrease VEL_X)
+    LD R0, [VEL_X]
+    ; Check if already at max left speed (VEL_X <= -MOVE_SPEED)
+    ; -MOVE_SPEED = -32 = 0xE0 in two's complement
+    ; If VEL_X is negative and <= -32, don't accelerate more
+    SUB R0, #MOVE_ACCEL
+    ; Clamp to -MOVE_SPEED (0xE0 = -32)
+    ; Check if we went below -32 (i.e., value < 0xE0 when interpreted as signed)
+    ; Since -32 = 0xE0, values 0x80-0xDF are "more negative" (< -32)
+    ; We need: if R0 < 0xE0 (signed), clamp to 0xE0
+    ; Approach: if high bit set AND R0 < 0xE0 (unsigned), clamp
+    MOV R1, R0
+    AND R1, #$80
+    BRZ .store_vel_x_left      ; If positive, just store (shouldn't happen when moving left)
+    ; R0 is negative - check if too negative
+    CMP R0, #$E0
+    BRC .store_vel_x_left      ; If R0 >= 0xE0 (unsigned), it's fine (-32 to -1)
+    ; R0 < 0xE0 (unsigned), meaning more negative than -32
+    LD R0, #$E0               ; Clamp to -32
 
-    ; Check collision at new position
-    LD R1, [PLAYER_X]
-    ST R1, [TEMP_X]
-    CALL check_collision
+.store_vel_x_left:
+    ST R0, [VEL_X]
+    JMP .horiz_done
+
+.check_right_input:
+    MOV R0, R2
+    AND R0, #BTN_RIGHT
+    BRZ .apply_friction
+
+    ; Right pressed - accelerate right (increase VEL_X)
+    LD R0, [VEL_X]
+    ADD R0, #MOVE_ACCEL
+    ; Clamp to +MOVE_SPEED (32 = 0x20)
+    ; Check if positive and > 32
+    MOV R1, R0
+    AND R1, #$80
+    BRNZ .store_vel_x_right    ; If negative, just store (shouldn't happen when moving right)
+    ; R0 is positive - check if too fast
+    CMP R0, #MOVE_SPEED
+    BRNC .store_vel_x_right    ; If R0 < MOVE_SPEED, it's fine
+    ; R0 >= MOVE_SPEED, clamp
+    LD R0, #MOVE_SPEED
+
+.store_vel_x_right:
+    ST R0, [VEL_X]
+    JMP .horiz_done
+
+.apply_friction:
+    ; No left/right pressed - apply friction to slow down
+    LD R0, [VEL_X]
     CMP R0, #0
-    BRNZ .move_up_done     ; Collision detected, don't move
+    BRZ .horiz_done           ; Already stopped
 
-    ; No collision, apply movement
-    LD R0, [TEMP_Y]
-    ST R0, [PLAYER_Y]
+    ; Check if positive or negative
+    MOV R1, R0
+    AND R1, #$80
+    BRNZ .friction_negative
 
-.move_up_done:
+    ; Positive velocity - subtract friction
+    CMP R0, #MOVE_FRICTION
+    BRNC .friction_to_zero_pos  ; If VEL_X < FRICTION, just set to 0
+    SUB R0, #MOVE_FRICTION
+    ST R0, [VEL_X]
+    JMP .horiz_done
+
+.friction_to_zero_pos:
+    LD R0, #0
+    ST R0, [VEL_X]
+    JMP .horiz_done
+
+.friction_negative:
+    ; Negative velocity - add friction (towards zero)
+    ADD R0, #MOVE_FRICTION
+    ; Check if we crossed zero (became positive)
+    MOV R1, R0
+    AND R1, #$80
+    BRZ .friction_to_zero_neg  ; If now positive, we overshot - set to 0
+    ST R0, [VEL_X]
+    JMP .horiz_done
+
+.friction_to_zero_neg:
+    LD R0, #0
+    ST R0, [VEL_X]
+
+.horiz_done:
     POP R1
     POP R0
     RET
 
-try_move_down:
+; -----------------------------------------------------------------------------
+; Handle Jump Input
+; If on ground and C button pressed (and wasn't held), initiate jump
+; -----------------------------------------------------------------------------
+handle_jump_input:
     PUSH R0
     PUSH R1
 
-    ; Calculate new Y position
-    LD R0, [PLAYER_Y]
-    ADD R0, #PLAYER_SPEED
+    ; Check if C button (jump) is pressed
+    MOV R0, R2
+    AND R0, #BTN_C
+    BRZ .jump_not_pressed
 
-    ; Check screen boundary (160 - 16 = 144, but allow 144 so check > 144)
-    CMP R0, #145
-    BRC .move_down_done    ; Would go off screen (R0 >= 145, i.e. R0 > 144)
-
-    ST R0, [TEMP_Y]
-
-    ; Check collision at new position
-    LD R1, [PLAYER_X]
-    ST R1, [TEMP_X]
-    CALL check_collision
+    ; Jump button is pressed
+    ; Check if it was already held (prevent repeated jumps while holding)
+    LD R0, [JUMP_HELD]
     CMP R0, #0
-    BRNZ .move_down_done   ; Collision detected, don't move
+    BRNZ .jump_done           ; Already held, don't jump again
 
-    ; No collision, apply movement
-    LD R0, [TEMP_Y]
-    ST R0, [PLAYER_Y]
+    ; Check if on ground
+    LD R0, [ON_GROUND]
+    CMP R0, #0
+    BRZ .jump_done            ; Not on ground, can't jump
 
-.move_down_done:
+    ; Initiate jump! Set upward velocity (negative)
+    ; -JUMP_VELOCITY = -84 = 0xAC
+    LD R0, #$AC               ; -84 in two's complement (-JUMP_VELOCITY)
+    ST R0, [VEL_Y]
+
+    ; Clear on_ground flag
+    LD R0, #0
+    ST R0, [ON_GROUND]
+
+    ; Mark jump as held
+    LD R0, #1
+    ST R0, [JUMP_HELD]
+    JMP .jump_done
+
+.jump_not_pressed:
+    ; Jump button released - clear held flag
+    LD R0, #0
+    ST R0, [JUMP_HELD]
+
+.jump_done:
     POP R1
     POP R0
     RET
 
-try_move_left:
+; -----------------------------------------------------------------------------
+; Apply Gravity
+; Add gravity to VEL_Y, clamp to MAX_FALL_SPEED
+; -----------------------------------------------------------------------------
+apply_gravity:
     PUSH R0
     PUSH R1
 
-    ; Calculate new X position
+    ; Don't apply gravity if on ground with zero/positive velocity
+    LD R0, [ON_GROUND]
+    CMP R0, #0
+    BRZ .do_gravity
+
+    ; On ground - check if velocity is upward (jumping)
+    LD R0, [VEL_Y]
+    MOV R1, R0
+    AND R1, #$80
+    BRNZ .do_gravity          ; Negative velocity = jumping, apply gravity
+    ; On ground with non-negative velocity - don't apply gravity
+    JMP .gravity_done
+
+.do_gravity:
+    LD R0, [VEL_Y]
+    ADD R0, #GRAVITY
+
+    ; Check for overflow into "very negative" territory (wrapped around)
+    ; This happens if we were at e.g. 120 and added 8 to get 128 (0x80 = -128)
+    ; We want to detect if we went from positive to very negative due to overflow
+
+    ; Clamp to MAX_FALL_SPEED (64 = 0x40)
+    ; First check if positive
+    MOV R1, R0
+    AND R1, #$80
+    BRNZ .gravity_store       ; Negative = still going up, no clamp needed
+
+    ; Positive - check if > MAX_FALL_SPEED
+    CMP R0, #MAX_FALL_SPEED
+    BRNC .gravity_store       ; R0 < MAX_FALL_SPEED, fine
+    LD R0, #MAX_FALL_SPEED    ; Clamp to max
+
+.gravity_store:
+    ST R0, [VEL_Y]
+
+.gravity_done:
+    POP R1
+    POP R0
+    RET
+
+; -----------------------------------------------------------------------------
+; Apply Horizontal Velocity
+; Converts VEL_X to pixel movement, handles collision
+; -----------------------------------------------------------------------------
+apply_horizontal_velocity:
+    PUSH R0
+    PUSH R1
+    PUSH R3
+
+    LD R0, [VEL_X]
+    CMP R0, #0
+    BRNZ .has_horiz_vel       ; Has horizontal velocity
+    JMP .horiz_vel_done       ; No horizontal velocity
+
+.has_horiz_vel:
+    ; Check direction (sign of VEL_X)
+    MOV R1, R0
+    AND R1, #$80
+    BRNZ .move_left_vel
+
+    ; Moving right (positive velocity)
+    ; Add VEL_X to SUB_X
+    LD R1, [SUB_X]
+    ADD R1, R0
+    ; Check if we accumulated a full pixel (>= 16)
+    MOV R3, R1
+    SHR R3
+    SHR R3
+    SHR R3
+    SHR R3                    ; R3 = pixels to move
+    CMP R3, #0
+    BRZ .store_sub_x_right
+
+    ; Move R3 pixels right (usually 1 or 2)
+.move_right_loop:
+    CALL try_move_right_1px
+    CMP R0, #0
+    BRZ .hit_wall_right       ; Collision - stop
+    DEC R3
+    BRNZ .move_right_loop
+    ; Successful moves - keep fractional part
+    AND R1, #$0F              ; Keep only lower 4 bits (0-15)
+    JMP .store_sub_x_right
+
+.hit_wall_right:
+    ; Hit wall - zero out velocity and sub-pixel
+    LD R0, #0
+    ST R0, [VEL_X]
+    LD R1, #0
+
+.store_sub_x_right:
+    ST R1, [SUB_X]
+    JMP .horiz_vel_done
+
+.move_left_vel:
+    ; Moving left (negative velocity)
+    ; Negate VEL_X to get positive magnitude
+    XOR R0, #$FF
+    INC R0                    ; R0 = |VEL_X| (positive magnitude)
+
+    ; Add magnitude to SUB_X (same as right, we accumulate)
+    LD R1, [SUB_X]
+    ADD R1, R0
+    ; Check if we accumulated a full pixel (>= 16)
+    MOV R3, R1
+    SHR R3
+    SHR R3
+    SHR R3
+    SHR R3                    ; R3 = pixels to move
+    CMP R3, #0
+    BRZ .store_sub_x_left
+
+    ; Move R3 pixels left (usually 1 or 2)
+.move_left_loop:
+    CALL try_move_left_1px
+    CMP R0, #0
+    BRZ .hit_wall_left        ; Collision - stop
+    DEC R3
+    BRNZ .move_left_loop
+    ; Successful moves - keep fractional part
+    AND R1, #$0F              ; Keep only lower 4 bits (0-15)
+    JMP .store_sub_x_left
+
+.hit_wall_left:
+    ; Hit wall - zero out velocity and sub-pixel
+    LD R0, #0
+    ST R0, [VEL_X]
+    LD R1, #0
+
+.store_sub_x_left:
+    ST R1, [SUB_X]
+
+.horiz_vel_done:
+    POP R3
+    POP R1
+    POP R0
+    RET
+
+; -----------------------------------------------------------------------------
+; Apply Vertical Velocity
+; Converts VEL_Y to pixel movement, handles collision, updates ON_GROUND
+; -----------------------------------------------------------------------------
+apply_vertical_velocity:
+    PUSH R0
+    PUSH R1
+    PUSH R3
+
+    LD R0, [VEL_Y]
+    CMP R0, #0
+    BRNZ .has_vert_vel        ; Has vertical velocity
+    JMP .check_ground_below   ; No velocity, but check if we're still on ground
+
+.has_vert_vel:
+    ; Check direction
+    MOV R1, R0
+    AND R1, #$80
+    BRNZ .move_up_vel
+
+    ; Moving down (positive velocity = falling)
+    ; Clear on_ground since we're moving down
+    LD R1, #0
+    ST R1, [ON_GROUND]
+
+    ; Add VEL_Y to SUB_Y
+    LD R1, [SUB_Y]
+    ADD R1, R0
+    ; Calculate pixels to move
+    MOV R3, R1
+    SHR R3
+    SHR R3
+    SHR R3
+    SHR R3                    ; R3 = pixels to move
+    CMP R3, #0
+    BRZ .store_sub_y_down
+
+.move_down_loop:
+    CALL try_move_down_1px
+    CMP R0, #0
+    BRZ .hit_ground           ; Collision - landed
+    DEC R3
+    BRNZ .move_down_loop
+    ; Successful moves
+    AND R1, #$0F
+    JMP .store_sub_y_down
+
+.hit_ground:
+    ; Landed on ground
+    LD R0, #1
+    ST R0, [ON_GROUND]
+    LD R0, #0
+    ST R0, [VEL_Y]
+    LD R1, #0
+
+.store_sub_y_down:
+    ST R1, [SUB_Y]
+    JMP .vert_vel_done
+
+.move_up_vel:
+    ; Moving up (negative velocity = jumping)
+    LD R1, #0
+    ST R1, [ON_GROUND]        ; Definitely not on ground when moving up
+
+    ; Negate VEL_Y to get magnitude
+    XOR R0, #$FF
+    INC R0                    ; R0 = |VEL_Y|
+
+    ; Add magnitude to SUB_Y (same accumulation as downward)
+    LD R1, [SUB_Y]
+    ADD R1, R0
+    ; Check if we accumulated a full pixel (>= 16)
+    MOV R3, R1
+    SHR R3
+    SHR R3
+    SHR R3
+    SHR R3                    ; R3 = pixels to move
+    CMP R3, #0
+    BRZ .store_sub_y_up
+
+    ; Move R3 pixels up
+.move_up_loop:
+    CALL try_move_up_1px
+    CMP R0, #0
+    BRZ .hit_ceiling          ; Collision - stop
+    DEC R3
+    BRNZ .move_up_loop
+    ; Successful moves - keep fractional part
+    AND R1, #$0F
+    JMP .store_sub_y_up
+
+.hit_ceiling:
+    ; Hit ceiling - stop upward movement
+    LD R0, #0
+    ST R0, [VEL_Y]
+    LD R1, #0
+
+.store_sub_y_up:
+    ST R1, [SUB_Y]
+    JMP .vert_vel_done
+
+.check_ground_below:
+    ; No vertical velocity - check if still on ground
+    ; Try to move down 1 pixel to see if there's ground
     LD R0, [PLAYER_X]
-    CMP R0, #PLAYER_SPEED
-    BRNC .move_left_done   ; Already at left edge (R0 < PLAYER_SPEED)
-
-    SUB R0, #PLAYER_SPEED
     ST R0, [TEMP_X]
+    LD R0, [PLAYER_Y]
+    INC R0                    ; Check 1 pixel below
+    ST R0, [TEMP_Y]
+    CALL check_collision
+    CMP R0, #0
+    BRNZ .still_on_ground
+    ; No ground below - start falling
+    LD R0, #0
+    ST R0, [ON_GROUND]
+    JMP .vert_vel_done
 
-    ; Check collision at new position
+.still_on_ground:
+    LD R0, #1
+    ST R0, [ON_GROUND]
+
+.vert_vel_done:
+    POP R3
+    POP R1
+    POP R0
+    RET
+
+; -----------------------------------------------------------------------------
+; Single Pixel Movement Functions (for physics)
+; Return R0 = 1 if moved successfully, 0 if collision
+; -----------------------------------------------------------------------------
+
+try_move_right_1px:
+    PUSH R1
+
+    LD R0, [PLAYER_X]
+    CMP R0, #240              ; Screen boundary (256 - 16)
+    BRC .right_1px_blocked    ; At edge
+
+    INC R0
+    ST R0, [TEMP_X]
     LD R1, [PLAYER_Y]
     ST R1, [TEMP_Y]
     CALL check_collision
     CMP R0, #0
-    BRNZ .move_left_done   ; Collision detected, don't move
+    BRNZ .right_1px_blocked
 
-    ; No collision, apply movement
+    ; Success - apply move
     LD R0, [TEMP_X]
     ST R0, [PLAYER_X]
+    LD R0, #1
+    JMP .right_1px_done
 
-.move_left_done:
+.right_1px_blocked:
+    LD R0, #0
+
+.right_1px_done:
     POP R1
-    POP R0
     RET
 
-try_move_right:
-    PUSH R0
+try_move_left_1px:
     PUSH R1
 
-    ; Calculate new X position
     LD R0, [PLAYER_X]
-    ADD R0, #PLAYER_SPEED
+    CMP R0, #1
+    BRNC .left_1px_blocked    ; At edge (R0 < 1)
 
-    ; Check screen boundary (256 - 16 = 240, but allow 240 so check > 240)
-    CMP R0, #241
-    BRC .move_right_done   ; Would go off screen (R0 >= 241, i.e. R0 > 240)
-
+    DEC R0
     ST R0, [TEMP_X]
-
-    ; Check collision at new position
     LD R1, [PLAYER_Y]
     ST R1, [TEMP_Y]
     CALL check_collision
     CMP R0, #0
-    BRNZ .move_right_done  ; Collision detected, don't move
+    BRNZ .left_1px_blocked
 
-    ; No collision, apply movement
     LD R0, [TEMP_X]
     ST R0, [PLAYER_X]
+    LD R0, #1
+    JMP .left_1px_done
 
-.move_right_done:
+.left_1px_blocked:
+    LD R0, #0
+
+.left_1px_done:
     POP R1
-    POP R0
+    RET
+
+try_move_down_1px:
+    PUSH R1
+
+    LD R0, [PLAYER_Y]
+    CMP R0, #144              ; Screen boundary (160 - 16)
+    BRC .down_1px_blocked     ; At edge
+
+    INC R0
+    ST R0, [TEMP_Y]
+    LD R1, [PLAYER_X]
+    ST R1, [TEMP_X]
+    CALL check_collision
+    CMP R0, #0
+    BRNZ .down_1px_blocked
+
+    LD R0, [TEMP_Y]
+    ST R0, [PLAYER_Y]
+    LD R0, #1
+    JMP .down_1px_done
+
+.down_1px_blocked:
+    LD R0, #0
+
+.down_1px_done:
+    POP R1
+    RET
+
+try_move_up_1px:
+    PUSH R1
+
+    LD R0, [PLAYER_Y]
+    CMP R0, #1
+    BRNC .up_1px_blocked      ; At edge
+
+    DEC R0
+    ST R0, [TEMP_Y]
+    LD R1, [PLAYER_X]
+    ST R1, [TEMP_X]
+    CALL check_collision
+    CMP R0, #0
+    BRNZ .up_1px_blocked
+
+    LD R0, [TEMP_Y]
+    ST R0, [PLAYER_Y]
+    LD R0, #1
+    JMP .up_1px_done
+
+.up_1px_blocked:
+    LD R0, #0
+
+.up_1px_done:
+    POP R1
     RET
 
 ; =============================================================================
