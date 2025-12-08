@@ -27,6 +27,22 @@
       {
         "palette": "default",
         "block": 1
+      },
+      {
+        "palette": "default",
+        "block": 4
+      },
+      {
+        "palette": "default",
+        "block": 4
+      },
+      {
+        "palette": "default",
+        "block": 4
+      },
+      {
+        "palette": "default",
+        "block": 4
       }
     ]
   },

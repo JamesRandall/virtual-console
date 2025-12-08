@@ -420,7 +420,7 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
     setSelectedTool(tool);
   }, [pastePreview, handlePixelsChange, getPasteChanges]);
 
-  // Handle actions (cut, copy, paste)
+  // Handle actions (cut, copy, paste, flipH, flipV)
   const handleAction = useCallback((action: Action) => {
     if (action === 'cut' && selection) {
       // Cut: copy to clipboard and clear selection
@@ -460,8 +460,18 @@ export function SpriteEditor({ filePath, content }: SpriteEditorProps) {
         data: clipboard,
       });
       setSelection(null);
+    } else if (action === 'flipH') {
+      // Flip horizontal: reverse each row
+      pushUndoState();
+      const flippedPixels = spritePixels.map(row => [...row].reverse());
+      applyPixelState(flippedPixels);
+    } else if (action === 'flipV') {
+      // Flip vertical: reverse the row order
+      pushUndoState();
+      const flippedPixels = [...spritePixels].reverse().map(row => [...row]);
+      applyPixelState(flippedPixels);
     }
-  }, [selection, clipboard, pastePreview, handlePixelsChange, extractSelectionPixels, getPasteChanges]);
+  }, [selection, clipboard, pastePreview, handlePixelsChange, extractSelectionPixels, getPasteChanges, pushUndoState, spritePixels, applyPixelState]);
 
   // Commit paste preview to actual pixels
   const handleCommitPaste = useCallback(() => {

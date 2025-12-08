@@ -11,6 +11,8 @@ import {
   faCopy,
   faPaste,
   faHand,
+  faArrowsLeftRight,
+  faArrowsUpDown,
 } from '@fortawesome/free-solid-svg-icons';
 import { type IconDefinition } from '@fortawesome/fontawesome-svg-core';
 
@@ -26,7 +28,7 @@ export type Tool =
   | 'move';
 
 // Actions that execute immediately
-export type Action = 'cut' | 'copy' | 'paste';
+export type Action = 'cut' | 'copy' | 'paste' | 'flipH' | 'flipV';
 
 interface ToolConfig {
   id: Tool;
@@ -58,6 +60,8 @@ const ACTIONS: ActionConfig[] = [
   { id: 'cut', icon: faScissors, label: 'Cut Selection' },
   { id: 'copy', icon: faCopy, label: 'Copy Selection' },
   { id: 'paste', icon: faPaste, label: 'Paste' },
+  { id: 'flipH', icon: faArrowsLeftRight, label: 'Flip Horizontal' },
+  { id: 'flipV', icon: faArrowsUpDown, label: 'Flip Vertical' },
 ];
 
 interface ToolPaletteProps {
@@ -84,6 +88,7 @@ export function ToolPalette({
     if (action === 'paste') {
       return hasClipboard;
     }
+    // flipH and flipV are always enabled
     return true;
   };
 

@@ -6,7 +6,7 @@
  * Includes sprite rendering support.
  */
 
-import { pollGamepads } from './gamePad';
+import { pollGamepads, initKeyboardInput, cleanupKeyboardInput } from './gamePad';
 import { generateWGSLPaletteArray } from '../../../../console/src/systemPalette';
 import { SpriteRenderer } from './spriteRenderer';
 import { TilemapRenderer } from './tilemapRenderer';
@@ -551,6 +551,9 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
   };
 
 
+  // Initialize keyboard input for controller emulation
+  initKeyboardInput();
+
   // Return renderer interface
   return {
     start() {
@@ -565,6 +568,7 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
 
     destroy() {
       stop();
+      cleanupKeyboardInput();
       framebufferBuffer.destroy();
       paletteBuffer.destroy();
       scanlineMapBuffer.destroy();

@@ -278,7 +278,7 @@ setup_player_sprite:
     ST R0, [SPRITE_0_Y]
 
     ; Set sprite index (0)
-    LD R0, #0
+    LD R0, #1
     ST R0, [SPRITE_0_IDX]
 
     ; Set sprite flags (no flip, front priority, palette 0)
@@ -1398,7 +1398,7 @@ setup_scanline_map:
     LD R3, #$00
 
     ; All 160 scanlines = palette block 1
-    LD R0, #1
+    LD R0, #4
     LD R4, #160
 
 .scanline_loop:

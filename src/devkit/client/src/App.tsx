@@ -19,11 +19,11 @@ function App() {
             <AppToolbar />
             <div className="flex-1 min-h-0">
                 <Allotment>
-                    {showProjectExplorer && (
-                        <Allotment.Pane minSize={200} preferredSize={250}>
-                            <ProjectExplorer />
-                        </Allotment.Pane>
-                    )}
+                    {/* ProjectExplorer must stay mounted to avoid react-dnd HTML5Backend conflicts */}
+                    {/* when it remounts. Use visible prop instead of conditional rendering. */}
+                    <Allotment.Pane minSize={200} preferredSize={250} visible={showProjectExplorer}>
+                        <ProjectExplorer />
+                    </Allotment.Pane>
                     {appMode === 'debug' && (
                         <Allotment.Pane>
                             <DebugView />
