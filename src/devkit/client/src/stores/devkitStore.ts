@@ -86,6 +86,10 @@ interface DevkitState {
 
   // Memory view state
   shouldScrollToPC: boolean;         // Flag to trigger scroll to PC in memory view
+  scrollToAddress: number | null;    // Address to scroll to and highlight in memory view
+
+  // Editor navigation state
+  navigateToLine: { file: string; line: number } | null;  // Navigate editor to specific file/line
 
   // AI Chat state
   chatMessages: ChatMessage[];
@@ -107,6 +111,8 @@ interface DevkitState {
   clearAllBreakpoints: () => void;
   setCodeChangedSinceAssembly: (changed: boolean) => void;
   setShouldScrollToPC: (shouldScroll: boolean) => void;
+  setScrollToAddress: (address: number | null) => void;
+  setNavigateToLine: (nav: { file: string; line: number } | null) => void;
 
   // AI Chat actions
   addChatMessage: (message: ChatMessage) => void;
@@ -164,6 +170,8 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   breakpointAddresses: new Set<number>(),
   codeChangedSinceAssembly: false,
   shouldScrollToPC: false,
+  scrollToAddress: null,
+  navigateToLine: null,
 
   // AI Chat initial state
   chatMessages: [],
@@ -244,6 +252,10 @@ export const useDevkitStore = create<DevkitState>((set) => ({
   setCodeChangedSinceAssembly: (changed: boolean) => set({ codeChangedSinceAssembly: changed }),
 
   setShouldScrollToPC: (shouldScroll: boolean) => set({ shouldScrollToPC: shouldScroll }),
+
+  setScrollToAddress: (address: number | null) => set({ scrollToAddress: address }),
+
+  setNavigateToLine: (nav: { file: string; line: number } | null) => set({ navigateToLine: nav }),
 
   // AI Chat actions
   addChatMessage: (message: ChatMessage) => set((state) => ({

@@ -23,6 +23,8 @@ export function MemoryView() {
     const setViewSize = useDevkitStore((state) => state.setViewSize);
     const shouldScrollToPC = useDevkitStore((state) => state.shouldScrollToPC);
     const setShouldScrollToPC = useDevkitStore((state) => state.setShouldScrollToPC);
+    const scrollToAddress = useDevkitStore((state) => state.scrollToAddress);
+    const setScrollToAddress = useDevkitStore((state) => state.setScrollToAddress);
 
     // Refs
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -50,14 +52,15 @@ export function MemoryView() {
                     bytes.push({
                         hex: byte.toString(16).padStart(2, '0').toUpperCase(),
                         address: address,
-                        isPC: address === programCounter
+                        isPC: address === programCounter,
+                        isHighlighted: address === scrollToAddress
                     });
                     ascii.push({
                         char: isPrintable(byte) ? String.fromCharCode(byte) : '.',
                         isPrintable: isPrintable(byte)
                     });
                 } else {
-                    bytes.push({ hex: '  ', address: address, isPC: false });
+                    bytes.push({ hex: '  ', address: address, isPC: false, isHighlighted: false });
                     ascii.push({ char: ' ', isPrintable: true });
                 }
             }
@@ -70,40 +73,55 @@ export function MemoryView() {
         }
 
         return rows;
-    }, [memorySnapshot, viewSize, firstRowAddress, programCounter]);
+    }, [memorySnapshot, viewSize, firstRowAddress, programCounter, scrollToAddress]);
 
     const rows = useMemo(() => generateHexDump(), [generateHexDump]);
+
+    // Helper to scroll to a specific address within the view
+    const scrollToAddressInView = useCallback((targetAddress: number) => {
+        if (!scrollContainerRef.current) return;
+
+        // Check if address is within the visible range
+        if (targetAddress < firstRowAddress || targetAddress >= firstRowAddress + viewSize) {
+            return;
+        }
+
+        // Calculate which row the address is on (0-indexed)
+        const rowIndex = Math.floor((targetAddress - firstRowAddress) / BYTES_PER_ROW);
+
+        // Get the row elements
+        const rowElements = scrollContainerRef.current.children;
+        if (rowIndex >= 0 && rowIndex < rowElements.length) {
+            const rowElement = rowElements[rowIndex] as HTMLElement;
+
+            // Scroll the row into view (centered if possible)
+            rowElement.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+            });
+        }
+    }, [firstRowAddress, viewSize]);
 
     // Effect to scroll to PC when crosshairs button is clicked
     useEffect(() => {
         // Only scroll if the flag is set
         if (!shouldScrollToPC) return;
-        if (!scrollContainerRef.current) return;
 
-        // Check if PC is within the visible range
-        if (programCounter < firstRowAddress || programCounter >= firstRowAddress + viewSize) {
-            setShouldScrollToPC(false);
-            return;
-        }
-
-        // Calculate which row the PC is on (0-indexed)
-        const pcRowIndex = Math.floor((programCounter - firstRowAddress) / BYTES_PER_ROW);
-
-        // Get the row elements
-        const rowElements = scrollContainerRef.current.children;
-        if (pcRowIndex >= 0 && pcRowIndex < rowElements.length) {
-            const pcRowElement = rowElements[pcRowIndex] as HTMLElement;
-
-            // Scroll the row into view (centered if possible)
-            pcRowElement.scrollIntoView({
-                behavior: 'smooth',
-                block: 'center'
-            });
-        }
+        scrollToAddressInView(programCounter);
 
         // Reset the flag after scrolling
         setShouldScrollToPC(false);
-    }, [shouldScrollToPC, firstRowAddress, programCounter, viewSize, setShouldScrollToPC]);
+    }, [shouldScrollToPC, programCounter, scrollToAddressInView, setShouldScrollToPC]);
+
+    // Effect to scroll to a specific address when set
+    useEffect(() => {
+        if (scrollToAddress === null) return;
+
+        // Use requestAnimationFrame to ensure the DOM has updated after firstRowAddress change
+        requestAnimationFrame(() => {
+            scrollToAddressInView(scrollToAddress);
+        });
+    }, [scrollToAddress, scrollToAddressInView, firstRowAddress]);
 
     // Render
     return <div className="flex flex-col min-h-0 overflow-hidden">
@@ -130,7 +148,10 @@ export function MemoryView() {
                         {row.bytes.map((byte, byteIdx) => (
                             <span
                                 key={byteIdx}
-                                className={byte.isPC ? 'dk-text-danger-strong' : ''}
+                                className={
+                                    byte.isHighlighted ? 'dk-text-success-strong' :
+                                    byte.isPC ? 'dk-text-danger-strong' : ''
+                                }
                             >
                                 {byte.hex}
                             </span>

@@ -43,6 +43,8 @@ export function AssemblyEditor({ content, filePath, onChange }: AssemblyEditorPr
     const setCodeChangedSinceAssembly = useDevkitStore((state) => state.setCodeChangedSinceAssembly);
     const openFiles = useDevkitStore((state) => state.openFiles);
     const currentProjectHandle = useDevkitStore((state) => state.currentProjectHandle);
+    const navigateToLine = useDevkitStore((state) => state.navigateToLine);
+    const setNavigateToLine = useDevkitStore((state) => state.setNavigateToLine);
 
     // Virtual console hook
     const virtualConsole = useVirtualConsole();
@@ -135,6 +137,24 @@ export function AssemblyEditor({ content, filePath, onChange }: AssemblyEditorPr
             }
         }
     }, [content]);
+
+    // Handle navigation to a specific line
+    useEffect(() => {
+        if (!navigateToLine) return;
+        if (navigateToLine.file !== filePath) return;
+        if (!editorRef.current) return;
+
+        const editor = editorRef.current;
+        const line = navigateToLine.line;
+
+        // Set cursor position and reveal the line in center
+        editor.setPosition({ lineNumber: line, column: 1 });
+        editor.revealLineInCenter(line);
+        editor.focus();
+
+        // Clear the navigation request
+        setNavigateToLine(null);
+    }, [navigateToLine, filePath, setNavigateToLine]);
 
     // Validation function - uses multi-file assembly to properly resolve includes
     const validateCode = useCallback(async (code: string) => {

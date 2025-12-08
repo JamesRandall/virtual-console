@@ -3,16 +3,18 @@ import { DebugToolbar } from "./DebugToolbar.tsx";
 import { MemoryView } from "./MemoryView.tsx";
 import { RegisterView } from "./RegisterView.tsx";
 import { ConsoleView } from "./ConsoleView.tsx";
+import { SymbolTableView } from "./SymbolTableView.tsx";
 import { TabStrip, type Tab } from "../../components/TabStrip.tsx";
 import {useDevkitStore} from "../../stores/devkitStore.ts";
 import {useVirtualConsole} from "../../consoleIntegration/virtualConsole.tsx";
 import {updateVirtualConsoleSnapshot} from "../../stores/utilities.ts";
 
-type TabId = 'debug' | 'console';
+type TabId = 'debug' | 'console' | 'symbols';
 
 const TABS: Tab[] = [
     { id: 'debug', label: 'Debug' },
     { id: 'console', label: 'Console' },
+    { id: 'symbols', label: 'Symbols' },
 ];
 
 export function DebugView() {
@@ -58,6 +60,13 @@ export function DebugView() {
                     <div className="h-full grid grid-rows-[1fr_auto]">
                         <MemoryView />
                         <RegisterView />
+                    </div>
+                )}
+
+                {/* Symbols view - only render when active */}
+                {activeTab === 'symbols' && (
+                    <div className="h-full">
+                        <SymbolTableView onNavigateToDebug={() => setActiveTab('debug')} />
                     </div>
                 )}
             </div>
