@@ -169,7 +169,7 @@ export function AssetPalette({ onAssetClick, existingBanks }: AssetPaletteProps)
                     key={asset.path}
                     className={`
                       flex items-center dk-gap-small dk-padding-minimal rounded cursor-pointer
-                      ${isAdded ? 'dk-bg-secondary dk-text-muted' : 'hover:dk-bg-hover'}
+                      ${isAdded ? 'dk-bg-secondary' : 'hover:dk-bg-hover'}
                     `}
                     draggable={!isAdded}
                     onDragStart={(e) => handleDragStart(e, asset)}
@@ -178,9 +178,9 @@ export function AssetPalette({ onAssetClick, existingBanks }: AssetPaletteProps)
                   >
                     <FontAwesomeIcon
                       icon={isAdded ? faCheck : getAssetIcon(asset.type)}
-                      className={`w-3 ${isAdded ? 'text-green-600' : 'dk-text-secondary'}`}
+                      className={`w-3 ${isAdded ? 'text-green-500' : 'dk-text-secondary'}`}
                     />
-                    <span className={`text-xs truncate flex-1 ${isAdded ? 'line-through' : ''}`}>
+                    <span className={`text-xs truncate flex-1 ${isAdded ? 'dk-text-muted line-through' : 'dk-text-primary'}`}>
                       {asset.path}
                     </span>
                   </div>
