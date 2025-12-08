@@ -310,6 +310,61 @@ Align the assembly address to the next boundary (filled with zeros).
 - If current address is already aligned, no padding is added
 - Padding bytes are filled with `$00`
 
+### 4.8 .include - Include Source File
+
+Include the contents of another assembly source file at the current location.
+
+**Syntax:** `.include "filepath"` or `.include 'filepath'`
+
+**Examples:**
+```assembly
+.include "constants.asm"        ; Include from same directory
+.include "lib/math.asm"         ; Include from subdirectory
+.include "../shared/utils.asm"  ; Include from parent directory
+```
+
+**Path Resolution:**
+- Paths are relative to the file containing the `.include` directive
+- Supports `./` for current directory (optional)
+- Supports `../` for parent directory navigation
+- Paths are normalized (e.g., `foo/../bar` becomes `bar`)
+
+**Behavior:**
+- The included file's contents are inserted at the `.include` location
+- Labels in included files are added to the global symbol table
+- Circular includes are detected and prevented (each file is included only once)
+- A label on the same line as `.include` is defined at the include location
+
+**Multi-File Assembly:**
+The assembler supports multi-file projects:
+- Entry point file (default: `main.asm`)
+- Source files provided as a map of path → content
+- Optional file resolver function for dynamic loading
+
+**Example Project Structure:**
+```
+src/
+├── main.asm          ; Entry point
+├── constants.asm     ; Shared constants
+├── graphics/
+│   └── sprites.asm   ; Sprite routines
+└── lib/
+    └── math.asm      ; Math utilities
+```
+
+**main.asm:**
+```assembly
+.include "constants.asm"
+.include "lib/math.asm"
+.include "graphics/sprites.asm"
+
+.org $8000
+main:
+    CALL init_sprites
+    CALL multiply_8x8
+    ; ...
+```
+
 ---
 
 ## 5. Number Formats
@@ -575,22 +630,26 @@ The assembler maintains a **program counter (PC)** during assembly:
 
 Each instruction is encoded according to the CPU specification:
 
-**1-byte instructions:**
-- Register-only operations: `MOV R0, R1`
-
 **2-byte instructions:**
-- Immediate: `LD R0, #42`
-- Zero page: `LD R0, [$80]`
-- Extended instructions: `PUSH R0`
+- Register-only operations: `MOV R0, R1`
+- Register pair indirect: `LD R0, [R2:R3]`
+- Extended instructions (no operand): `RET`, `RTI`, `SEI`, `CLI`
 
 **3-byte instructions:**
+- Immediate: `LD R0, #42`
+- Zero page: `LD R0, [$80]`
+- Zero page indexed: `LD R0, [$80+R1]`
+- Extended instructions (with register): `PUSH R0`, `POP R0`, `INC R0`
+- Branch instructions: `BRZ loop`
+
+**4-byte instructions:**
 - Absolute: `LD R0, [$1234]`
-- Jumps: `JMP $8000`
+- Jumps/Calls (absolute): `JMP $8000`, `CALL subroutine`
 
 **Branch offset calculation:**
 - Branches use relative addressing (±127 bytes)
-- Offset = target_address - (current_address + 2)
-- Error if offset out of range
+- Offset = target_address - (current_address + 3)
+- Error if offset out of range (offset must be -128 to +127)
 
 ---
 
@@ -632,14 +691,16 @@ Each instruction is encoded according to the CPU specification:
 **Format:**
 ```typescript
 [
-  { address: 0x8000, line: 5 },
-  { address: 0x8002, line: 6 },
-  { address: 0x8005, line: 8 },
+  { address: 0x8000, line: 5, file: "main.asm" },
+  { address: 0x8002, line: 6, file: "main.asm" },
+  { address: 0x8005, line: 3, file: "lib/utils.asm" },
   ...
 ]
 ```
 
-**Purpose:** Map memory addresses back to source line numbers (for debugging)
+**Purpose:** Map memory addresses back to source line numbers and files (for debugging)
+
+**Note:** The `file` property is included for multi-file assembly support.
 
 ### 9.4 Listing File (Optional)
 
@@ -681,6 +742,7 @@ Human-readable assembly listing with addresses and machine code.
 interface AssemblerError {
   line: number;           // Source line number (1-based)
   column?: number;        // Column number (1-based, optional)
+  file?: string;          // Source file path (for multi-file assembly)
   message: string;        // Human-readable error message
   severity: 'error' | 'warning';
   suggestion?: string;    // Optional fix suggestion
@@ -719,13 +781,13 @@ The assembler should:
 
 | Addressing Mode | Format | Example | Bytes |
 |----------------|--------|---------|-------|
-| Immediate | `#value` | `LD R0, #42` | 2 |
-| Register | `Rx` | `ADD R0, R1` | 1 |
-| Absolute | `[$addr]` | `LD R0, [$1234]` | 3 |
-| Zero Page | `[$zp]` | `LD R0, [$80]` | 2 |
-| ZP Indexed | `[$zp+Rx]` | `LD R0, [$80+R1]` | 2 |
-| Reg Pair | `[Rx:Ry]` | `LD R0, [R2:R3]` | 1 |
-| Relative | `label` | `BRZ loop` | 2 |
+| Immediate | `#value` | `LD R0, #42` | 3 |
+| Register | `Rx` | `ADD R0, R1` | 2 |
+| Absolute | `[$addr]` | `LD R0, [$1234]` | 4 |
+| Zero Page | `[$zp]` | `LD R0, [$80]` | 3 |
+| ZP Indexed | `[$zp+Rx]` | `LD R0, [$80+R1]` | 3 |
+| Reg Pair | `[Rx:Ry]` | `LD R0, [R2:R3]` | 2 |
+| Relative | `label` | `BRZ loop` | 3 |
 
 ---
 
@@ -820,6 +882,6 @@ NOP, LD, ST, MOV, ADD, SUB, AND, OR, XOR, SHL, SHR, CMP, JMP, BRZ, BRNZ, BRC, BR
 R0, R1, R2, R3, R4, R5, SP, PC
 
 **Directives:**
-.org, .byte, .db, .word, .dw, .string, .asciiz, .define, .equ, .res, .dsb, .align
+.org, .byte, .db, .word, .dw, .string, .asciiz, .define, .equ, .res, .dsb, .align, .include
 
 **Note:** Reserved words cannot be used as label names.

@@ -6,6 +6,7 @@ import { TilemapCanvas } from './TilemapCanvas';
 import { TilePicker } from './TilePicker';
 import { TilemapToolPalette, type TilemapTool } from './TilemapToolPalette';
 import { AttributeEditor } from './AttributeEditor';
+import { ResizeDropdown } from './ResizeDropdown';
 import { useDevkitStore, type SpritePaletteConfig, type TilemapEditorFileConfig } from '../../../stores/devkitStore';
 import { readBinaryFile } from '../../../services/fileSystemService';
 
@@ -49,6 +50,13 @@ export interface PastePreview {
   row: number;
   col: number;
   data: TileEntry[][];
+}
+
+// Undo state (includes dimensions for resize support)
+interface UndoState {
+  width: number;
+  height: number;
+  tiles: TileEntry[][];
 }
 
 interface TilemapEditorProps {
@@ -155,9 +163,9 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
   const [clipboard, setClipboard] = useState<TileClipboard | null>(null);
   const [pastePreview, setPastePreview] = useState<PastePreview | null>(null);
 
-  // Undo/redo state
-  const [undoStack, setUndoStack] = useState<TileEntry[][][]>([]);
-  const [redoStack, setRedoStack] = useState<TileEntry[][][]>([]);
+  // Undo/redo state (includes dimensions for resize support)
+  const [undoStack, setUndoStack] = useState<UndoState[]>([]);
+  const [redoStack, setRedoStack] = useState<UndoState[]>([]);
   const MAX_UNDO = 50;
 
   // Display options
@@ -391,41 +399,54 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
   // Push current state to undo stack
   const pushUndoState = useCallback(() => {
     const clonedTiles = tiles.map(row => row.map(tile => cloneTile(tile)));
+    const state: UndoState = { width, height, tiles: clonedTiles };
     setUndoStack(prev => {
-      const newStack = [...prev, clonedTiles];
+      const newStack = [...prev, state];
       if (newStack.length > MAX_UNDO) {
         return newStack.slice(1);
       }
       return newStack;
     });
     setRedoStack([]);
-  }, [tiles]);
+  }, [tiles, width, height]);
 
   // Undo
   const handleUndo = useCallback(() => {
     if (undoStack.length === 0) return;
 
     const previousState = undoStack[undoStack.length - 1];
-    const currentState = tiles.map(row => row.map(tile => cloneTile(tile)));
+    const currentState: UndoState = {
+      width,
+      height,
+      tiles: tiles.map(row => row.map(tile => cloneTile(tile))),
+    };
 
     setRedoStack(prev => [...prev, currentState]);
     setUndoStack(prev => prev.slice(0, -1));
-    setTiles(previousState);
+    setWidth(previousState.width);
+    setHeight(previousState.height);
+    setTiles(previousState.tiles);
     saveToStore();
-  }, [undoStack, tiles, saveToStore]);
+  }, [undoStack, tiles, width, height, saveToStore]);
 
   // Redo
   const handleRedo = useCallback(() => {
     if (redoStack.length === 0) return;
 
     const nextState = redoStack[redoStack.length - 1];
-    const currentState = tiles.map(row => row.map(tile => cloneTile(tile)));
+    const currentState: UndoState = {
+      width,
+      height,
+      tiles: tiles.map(row => row.map(tile => cloneTile(tile))),
+    };
 
     setUndoStack(prev => [...prev, currentState]);
     setRedoStack(prev => prev.slice(0, -1));
-    setTiles(nextState);
+    setWidth(nextState.width);
+    setHeight(nextState.height);
+    setTiles(nextState.tiles);
     saveToStore();
-  }, [redoStack, tiles, saveToStore]);
+  }, [redoStack, tiles, width, height, saveToStore]);
 
   // Handle single tile change
   const handleTileChange = useCallback((row: number, col: number, tileIndex: number) => {
@@ -470,6 +491,44 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
     pushUndoState();
     saveToStore();
   }, [pushUndoState, saveToStore]);
+
+  // Handle resize
+  const handleResize = useCallback((newWidth: number, newHeight: number) => {
+    // Push current state to undo stack before resizing
+    pushUndoState();
+
+    // Create new tiles array with new dimensions
+    const newTiles: TileEntry[][] = [];
+    for (let r = 0; r < newHeight; r++) {
+      const row: TileEntry[] = [];
+      for (let c = 0; c < newWidth; c++) {
+        // Copy existing tile if within old bounds, otherwise create empty
+        if (r < height && c < width && tiles[r] && tiles[r][c]) {
+          row.push(cloneTile(tiles[r][c]));
+        } else {
+          row.push(createEmptyTile());
+        }
+      }
+      newTiles.push(row);
+    }
+
+    // Update dimensions and tiles
+    setWidth(newWidth);
+    setHeight(newHeight);
+    setTiles(newTiles);
+
+    // Clear selection if it's now out of bounds
+    if (selection) {
+      const selMinRow = Math.min(selection.startRow, selection.endRow);
+      const selMinCol = Math.min(selection.startCol, selection.endCol);
+      if (selMinRow >= newHeight || selMinCol >= newWidth) {
+        setSelection(null);
+      }
+    }
+
+    // Save to store
+    saveToStore();
+  }, [pushUndoState, height, width, tiles, selection, saveToStore]);
 
   // Handle attribute changes for selected tiles
   const handleAttributeChange = useCallback((attr: keyof Omit<TileEntry, 'index'>, value: boolean | number) => {
@@ -778,11 +837,12 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
             </select>
           </div>
 
-          {/* Dimensions display */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-400">Size:</span>
-            <span className="text-xs text-zinc-200">{width} × {height}</span>
-          </div>
+          {/* Dimensions / Resize dropdown */}
+          <ResizeDropdown
+            currentWidth={width}
+            currentHeight={height}
+            onResize={handleResize}
+          />
 
           {/* Zoom */}
           <div className="flex items-center gap-2">

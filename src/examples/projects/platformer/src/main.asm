@@ -121,25 +121,42 @@
 ; Variables (in lower memory)
 ; =============================================================================
 
-.define PLAYER_X            $0B00   ; Player X position (screen coords, whole pixels)
-.define PLAYER_Y            $0B01   ; Player Y position (screen coords, whole pixels)
-.define MAP_WIDTH           $0B02   ; Tilemap width in tiles
-.define MAP_HEIGHT          $0B03   ; Tilemap height in tiles
-.define TEMP_X              $0B04   ; Temporary X for collision check
-.define TEMP_Y              $0B05   ; Temporary Y for collision check
+; Player world position (16-bit for maps larger than 256 pixels)
+.define PLAYER_X_LO         $0B00   ; Player X position low byte (world coords)
+.define PLAYER_X_HI         $0B01   ; Player X position high byte (world coords)
+.define PLAYER_Y            $0B02   ; Player Y position (world coords, 8-bit is enough for vertical)
+
+.define MAP_WIDTH           $0B03   ; Tilemap width in tiles
+.define MAP_HEIGHT          $0B04   ; Tilemap height in tiles
+.define TEMP_X_LO           $0B05   ; Temporary X low byte for collision check
+.define TEMP_X_HI           $0B06   ; Temporary X high byte for collision check
+.define TEMP_Y              $0B07   ; Temporary Y for collision check
 
 ; Velocity variables (signed, in 1/16 pixel units for sub-pixel precision)
 ; Positive vel_y = moving down, Negative vel_y = moving up
-.define VEL_X               $0B06   ; Horizontal velocity (signed)
-.define VEL_Y               $0B07   ; Vertical velocity (signed)
+.define VEL_X               $0B08   ; Horizontal velocity (signed)
+.define VEL_Y               $0B09   ; Vertical velocity (signed)
 
 ; Sub-pixel accumulators (fractional part of position)
-.define SUB_X               $0B08   ; X sub-pixel accumulator
-.define SUB_Y               $0B09   ; Y sub-pixel accumulator
+.define SUB_X               $0B0A   ; X sub-pixel accumulator
+.define SUB_Y               $0B0B   ; Y sub-pixel accumulator
 
 ; State flags
-.define ON_GROUND           $0B0A   ; 1 if player is standing on ground, 0 if airborne
-.define JUMP_HELD           $0B0B   ; Tracks if jump button was held (prevents re-jump)
+.define ON_GROUND           $0B0C   ; 1 if player is standing on ground, 0 if airborne
+.define JUMP_HELD           $0B0D   ; Tracks if jump button was held (prevents re-jump)
+
+; Camera/scroll position (16-bit)
+.define SCROLL_X_LO         $0B0E   ; Current scroll X low byte
+.define SCROLL_X_HI         $0B0F   ; Current scroll X high byte
+
+; Calculated values (set after reading tilemap header)
+.define MAP_PIXEL_WIDTH_LO  $0B71   ; Map width in pixels (low byte)
+.define MAP_PIXEL_WIDTH_HI  $0B72   ; Map width in pixels (high byte)
+.define MAX_SCROLL_X_LO     $0B73   ; Maximum scroll X (map_pixel_width - SCREEN_WIDTH) low
+.define MAX_SCROLL_X_HI     $0B74   ; Maximum scroll X high byte
+
+; Screen center constant for camera
+.define SCREEN_CENTER_X     120     ; (256 - 16) / 2 = 120 (center sprite on screen)
 
 ; Starfield variables
 .define STAR_X_RAM          $0B10   ; 96 bytes for star X positions ($0B10-$0B6F)
@@ -182,12 +199,18 @@ main:
     ; Read tilemap header to get dimensions
     CALL read_tilemap_header
 
+    ; Calculate map pixel width and max scroll
+    CALL calc_map_bounds
+
     ; Configure tilemap registers
     CALL setup_tilemap
 
     ; Initialize player position (start near top-left, will fall to ground)
+    ; World coordinates (16-bit X)
     LD R0, #32
-    ST R0, [PLAYER_X]
+    ST R0, [PLAYER_X_LO]
+    LD R0, #0
+    ST R0, [PLAYER_X_HI]
     LD R0, #16
     ST R0, [PLAYER_Y]
 
@@ -199,6 +222,10 @@ main:
     ST R0, [SUB_Y]
     ST R0, [ON_GROUND]
     ST R0, [JUMP_HELD]
+
+    ; Initialize scroll position
+    ST R0, [SCROLL_X_LO]
+    ST R0, [SCROLL_X_HI]
 
     ; Setup player sprite
     CALL setup_player_sprite
@@ -244,8 +271,8 @@ setup_player_sprite:
     LD R0, #1
     ST R0, [SPRITE_COUNT]
 
-    ; Set sprite 0 position
-    LD R0, [PLAYER_X]
+    ; Set sprite 0 position (initial screen position = world position since scroll is 0)
+    LD R0, [PLAYER_X_LO]
     ST R0, [SPRITE_0_X]
     LD R0, [PLAYER_Y]
     ST R0, [SPRITE_0_Y]
@@ -317,12 +344,14 @@ vblank_handler:
     CALL apply_vertical_velocity
 
     ; ===================
-    ; Update Sprite
+    ; Update Camera/Scroll
     ; ===================
-    LD R0, [PLAYER_X]
-    ST R0, [SPRITE_0_X]
-    LD R0, [PLAYER_Y]
-    ST R0, [SPRITE_0_Y]
+    CALL update_camera
+
+    ; ===================
+    ; Update Sprite Position (world pos - scroll = screen pos)
+    ; ===================
+    CALL update_sprite_screen_pos
 
     POP R5
     POP R4
@@ -736,8 +765,10 @@ apply_vertical_velocity:
 .check_ground_below:
     ; No vertical velocity - check if still on ground
     ; Try to move down 1 pixel to see if there's ground
-    LD R0, [PLAYER_X]
-    ST R0, [TEMP_X]
+    LD R0, [PLAYER_X_LO]
+    ST R0, [TEMP_X_LO]
+    LD R0, [PLAYER_X_HI]
+    ST R0, [TEMP_X_HI]
     LD R0, [PLAYER_Y]
     INC R0                    ; Check 1 pixel below
     ST R0, [TEMP_Y]
@@ -762,26 +793,54 @@ apply_vertical_velocity:
 ; -----------------------------------------------------------------------------
 ; Single Pixel Movement Functions (for physics)
 ; Return R0 = 1 if moved successfully, 0 if collision
+; Uses 16-bit X coordinates (PLAYER_X_LO/HI) for wide maps
 ; -----------------------------------------------------------------------------
 
 try_move_right_1px:
     PUSH R1
+    PUSH R2
 
-    LD R0, [PLAYER_X]
-    CMP R0, #240              ; Screen boundary (256 - 16)
-    BRC .right_1px_blocked    ; At edge
+    ; Check if at right edge of map (PLAYER_X + 16 >= MAP_PIXEL_WIDTH)
+    ; Load player X + 15 (rightmost pixel of sprite)
+    LD R0, [PLAYER_X_LO]
+    LD R1, [PLAYER_X_HI]
+    ; Add 16 for sprite width
+    ADD R0, #16
+    BRNC .right_no_carry_check
+    INC R1
+.right_no_carry_check:
+    ; Compare with map pixel width
+    LD R2, [MAP_PIXEL_WIDTH_HI]
+    CMP R1, R2
+    BRC .right_1px_blocked    ; High byte >= map width high, blocked
+    BRNZ .right_check_lo      ; High byte < map width high, check low
+    ; High bytes equal, check low bytes
+    LD R2, [MAP_PIXEL_WIDTH_LO]
+    CMP R0, R2
+    BRC .right_1px_blocked    ; Low byte >= map width low, blocked
+.right_check_lo:
 
+    ; Calculate new X position (PLAYER_X + 1)
+    LD R0, [PLAYER_X_LO]
+    LD R1, [PLAYER_X_HI]
     INC R0
-    ST R0, [TEMP_X]
-    LD R1, [PLAYER_Y]
-    ST R1, [TEMP_Y]
+    BRNZ .right_no_inc_hi
+    INC R1
+.right_no_inc_hi:
+    ST R0, [TEMP_X_LO]
+    ST R1, [TEMP_X_HI]
+    LD R0, [PLAYER_Y]
+    ST R0, [TEMP_Y]
+
     CALL check_collision
     CMP R0, #0
     BRNZ .right_1px_blocked
 
     ; Success - apply move
-    LD R0, [TEMP_X]
-    ST R0, [PLAYER_X]
+    LD R0, [TEMP_X_LO]
+    ST R0, [PLAYER_X_LO]
+    LD R0, [TEMP_X_HI]
+    ST R0, [PLAYER_X_HI]
     LD R0, #1
     JMP .right_1px_done
 
@@ -789,26 +848,44 @@ try_move_right_1px:
     LD R0, #0
 
 .right_1px_done:
+    POP R2
     POP R1
     RET
 
 try_move_left_1px:
     PUSH R1
 
-    LD R0, [PLAYER_X]
-    CMP R0, #1
-    BRNC .left_1px_blocked    ; At edge (R0 < 1)
+    ; Check if at left edge (PLAYER_X == 0)
+    LD R0, [PLAYER_X_LO]
+    LD R1, [PLAYER_X_HI]
+    CMP R1, #0
+    BRNZ .left_not_at_edge    ; High byte > 0, not at edge
+    CMP R0, #0
+    BRZ .left_1px_blocked     ; Both bytes 0, at edge
 
+.left_not_at_edge:
+    ; Calculate new X position (PLAYER_X - 1)
+    LD R0, [PLAYER_X_LO]
+    LD R1, [PLAYER_X_HI]
+    CMP R0, #0
+    BRNZ .left_no_borrow
+    DEC R1                    ; Borrow from high byte
+.left_no_borrow:
     DEC R0
-    ST R0, [TEMP_X]
-    LD R1, [PLAYER_Y]
-    ST R1, [TEMP_Y]
+    ST R0, [TEMP_X_LO]
+    ST R1, [TEMP_X_HI]
+    LD R0, [PLAYER_Y]
+    ST R0, [TEMP_Y]
+
     CALL check_collision
     CMP R0, #0
     BRNZ .left_1px_blocked
 
-    LD R0, [TEMP_X]
-    ST R0, [PLAYER_X]
+    ; Success - apply move
+    LD R0, [TEMP_X_LO]
+    ST R0, [PLAYER_X_LO]
+    LD R0, [TEMP_X_HI]
+    ST R0, [PLAYER_X_HI]
     LD R0, #1
     JMP .left_1px_done
 
@@ -822,14 +899,19 @@ try_move_left_1px:
 try_move_down_1px:
     PUSH R1
 
+    ; Check if at bottom edge (PLAYER_Y + 16 >= MAP_HEIGHT * 16)
+    ; For simplicity, use fixed screen height boundary
     LD R0, [PLAYER_Y]
-    CMP R0, #144              ; Screen boundary (160 - 16)
+    CMP R0, #144              ; 160 - 16 = 144
     BRC .down_1px_blocked     ; At edge
 
     INC R0
     ST R0, [TEMP_Y]
-    LD R1, [PLAYER_X]
-    ST R1, [TEMP_X]
+    LD R0, [PLAYER_X_LO]
+    ST R0, [TEMP_X_LO]
+    LD R0, [PLAYER_X_HI]
+    ST R0, [TEMP_X_HI]
+
     CALL check_collision
     CMP R0, #0
     BRNZ .down_1px_blocked
@@ -855,8 +937,11 @@ try_move_up_1px:
 
     DEC R0
     ST R0, [TEMP_Y]
-    LD R1, [PLAYER_X]
-    ST R1, [TEMP_X]
+    LD R0, [PLAYER_X_LO]
+    ST R0, [TEMP_X_LO]
+    LD R0, [PLAYER_X_HI]
+    ST R0, [TEMP_X_HI]
+
     CALL check_collision
     CMP R0, #0
     BRNZ .up_1px_blocked
@@ -875,10 +960,11 @@ try_move_up_1px:
 
 ; =============================================================================
 ; Check Collision
-; Checks if the sprite at (TEMP_X, TEMP_Y) collides with any solid tiles
+; Checks if the sprite at (TEMP_X_LO/HI, TEMP_Y) collides with any solid tiles
 ; Returns: R0 = 0 if no collision, non-zero if collision
 ;
 ; We check all 4 corners of the 16x16 sprite against the tilemap
+; Uses 16-bit X coordinates for wide maps
 ; =============================================================================
 
 check_collision:
@@ -887,33 +973,43 @@ check_collision:
     PUSH R3
 
     ; Check top-left corner
-    LD R0, [TEMP_X]
-    LD R1, [TEMP_Y]
+    LD R0, [TEMP_X_LO]
+    LD R1, [TEMP_X_HI]
+    LD R2, [TEMP_Y]
     CALL get_tile_at_pixel
     CMP R0, #0
     BRNZ .collision_found
 
     ; Check top-right corner (X + 15)
-    LD R0, [TEMP_X]
+    LD R0, [TEMP_X_LO]
+    LD R1, [TEMP_X_HI]
     ADD R0, #15
-    LD R1, [TEMP_Y]
+    BRNC .cc_tr_no_carry
+    INC R1
+.cc_tr_no_carry:
+    LD R2, [TEMP_Y]
     CALL get_tile_at_pixel
     CMP R0, #0
     BRNZ .collision_found
 
     ; Check bottom-left corner (Y + 15)
-    LD R0, [TEMP_X]
-    LD R1, [TEMP_Y]
-    ADD R1, #15
+    LD R0, [TEMP_X_LO]
+    LD R1, [TEMP_X_HI]
+    LD R2, [TEMP_Y]
+    ADD R2, #15
     CALL get_tile_at_pixel
     CMP R0, #0
     BRNZ .collision_found
 
     ; Check bottom-right corner (X + 15, Y + 15)
-    LD R0, [TEMP_X]
+    LD R0, [TEMP_X_LO]
+    LD R1, [TEMP_X_HI]
     ADD R0, #15
-    LD R1, [TEMP_Y]
-    ADD R1, #15
+    BRNC .cc_br_no_carry
+    INC R1
+.cc_br_no_carry:
+    LD R2, [TEMP_Y]
+    ADD R2, #15
     CALL get_tile_at_pixel
     CMP R0, #0
     BRNZ .collision_found
@@ -933,10 +1029,11 @@ check_collision:
 
 ; =============================================================================
 ; Get Tile At Pixel
-; Input: R0 = pixel X, R1 = pixel Y
+; Input: R0:R1 = pixel X (R0=low, R1=high), R2 = pixel Y
 ; Output: R0 = tile index (0 = empty/no collision)
 ;
 ; Converts pixel coordinates to tile coordinates and reads tile from tilemap
+; Uses 16-bit arithmetic for tile offset to support larger maps
 ; =============================================================================
 
 get_tile_at_pixel:
@@ -946,65 +1043,79 @@ get_tile_at_pixel:
     PUSH R4
     PUSH R5
 
-    ; Convert pixel coords to tile coords by dividing by 16 (shift right 4)
-    ; tile_x = pixel_x >> 4
-    ; tile_y = pixel_y >> 4
-    SHR R0
-    SHR R0
-    SHR R0
-    SHR R0              ; R0 = tile_x
-
+    ; Convert 16-bit pixel X to tile X by dividing by 16 (shift right 4)
+    ; We need to handle 16-bit shift: R0:R1 >> 4
+    ; Result fits in 8 bits for reasonable map sizes (up to 4096 pixels = 256 tiles)
+    ; Shift high nibble of R0 comes from low nibble of R1
     SHR R1
+    ROR R0
     SHR R1
+    ROR R0
     SHR R1
-    SHR R1              ; R1 = tile_y
+    ROR R0
+    SHR R1
+    ROR R0              ; R0 = tile_x (8-bit result)
 
-    ; Check bounds - branch if out of bounds (R0 >= MAP_WIDTH or R1 >= MAP_HEIGHT)
-    LD R2, [MAP_WIDTH]
-    CMP R0, R2
-    BRC .tile_out_of_bounds     ; Branch if R0 >= R2 (carry set)
+    ; Convert pixel Y to tile Y (8-bit)
+    SHR R2
+    SHR R2
+    SHR R2
+    SHR R2              ; R2 = tile_y
 
-    LD R2, [MAP_HEIGHT]
-    CMP R1, R2
-    BRC .tile_out_of_bounds     ; Branch if R1 >= R2 (carry set)
+    ; Check bounds - branch if out of bounds (tile_x >= MAP_WIDTH or tile_y >= MAP_HEIGHT)
+    LD R3, [MAP_WIDTH]
+    CMP R0, R3
+    BRC .tile_out_of_bounds     ; Branch if tile_x >= MAP_WIDTH (carry set)
+
+    LD R3, [MAP_HEIGHT]
+    CMP R2, R3
+    BRC .tile_out_of_bounds     ; Branch if tile_y >= MAP_HEIGHT (carry set)
 
     ; Calculate tile offset: (tile_y * map_width + tile_x) * 2 + header
     ; Use R4:R5 as 16-bit accumulator (R4=high, R5=low)
-    ; First: tile_y * map_width (8-bit result is fine for small maps)
-    LD R2, [MAP_WIDTH]
-    LD R3, #0           ; Result accumulator
+    ; Result = tile_y * map_width + tile_x
+    ; Then multiply by 2 and add to base address $8008
 
-    ; Multiply R1 (tile_y) by R2 (map_width)
-    ; Simple loop multiplication
-    CMP R1, #0
+    ; Save tile_x in R1 (we'll need it after multiplication)
+    MOV R1, R0          ; R1 = tile_x
+
+    ; Initialize 16-bit accumulator to 0
+    LD R4, #0           ; High byte
+    LD R5, #0           ; Low byte
+
+    ; Multiply tile_y (R2) by map_width using 16-bit addition
+    LD R3, [MAP_WIDTH]
+    CMP R2, #0
     BRZ .mult_done
 
 .mult_loop:
-    ADD R3, R2
-    DEC R1
+    ; Add map_width to R4:R5 (16-bit add)
+    ADD R5, R3
+    BRNC .no_carry_mult
+    INC R4
+.no_carry_mult:
+    DEC R2
     BRNZ .mult_loop
 
 .mult_done:
-    ; R3 = tile_y * map_width
-    ; Add tile_x
-    ADD R3, R0          ; R3 = tile_y * map_width + tile_x
-
-    ; Now build 16-bit address in R4:R5
-    ; Start with base address $8000 + TILEMAP_DATA_OFFSET = $8008
-    LD R4, #$80
-    LD R5, #TILEMAP_DATA_OFFSET
-
-    ; Add (tile_index * 2) to R5, with carry to R4
-    ; First add R3 (this is tile_index)
-    ADD R5, R3
-    BRNC .no_carry1
+    ; R4:R5 = tile_y * map_width (16-bit)
+    ; Add tile_x (R1) to low byte
+    ADD R5, R1
+    BRNC .no_carry_add_x
     INC R4
-.no_carry1:
-    ; Add R3 again (multiply by 2)
-    ADD R5, R3
-    BRNC .no_carry2
+.no_carry_add_x:
+
+    ; R4:R5 = tile_y * map_width + tile_x (tile index)
+    ; Now multiply by 2 (shift left) for 2 bytes per tile entry
+    SHL R5
+    ROL R4
+
+    ; Add base address $8000 + TILEMAP_DATA_OFFSET (8) = $8008
+    ADD R5, #TILEMAP_DATA_OFFSET
+    BRNC .no_carry_base
     INC R4
-.no_carry2:
+.no_carry_base:
+    ADD R4, #$80        ; Add high byte of base address
 
     ; Switch to tilemap data bank
     LD R0, #TILEMAP_BANK
@@ -1029,18 +1140,201 @@ get_tile_at_pixel:
 
 ; =============================================================================
 ; Read Tilemap Header
-; Reads width and height from .tbin header
+; Reads width and height from .tbin header in cartridge bank
+; .tbin format:
+;   Bytes 0-1: Width in tiles (little-endian uint16)
+;   Bytes 2-3: Height in tiles (little-endian uint16)
+;   Bytes 4-7: Reserved
+;   Bytes 8+:  Tile data
 ; =============================================================================
 
 read_tilemap_header:
     PUSH R0
 
-    ; Hardcoded for now - matches actual tilemap
-    LD R0, #16
+    ; Switch to tilemap data bank to read header
+    LD R0, #TILEMAP_BANK
+    ST R0, [BANK_REG]
+
+    ; Read width (low byte only, assumes width < 256)
+    LD R0, [$8000]
     ST R0, [MAP_WIDTH]
-    LD R0, #10
+
+    ; Read height (low byte only, assumes height < 256)
+    LD R0, [$8002]
     ST R0, [MAP_HEIGHT]
 
+    POP R0
+    RET
+
+; =============================================================================
+; Calculate Map Bounds
+; Calculates MAP_PIXEL_WIDTH and MAX_SCROLL_X from MAP_WIDTH
+; MAP_PIXEL_WIDTH = MAP_WIDTH * 16
+; MAX_SCROLL_X = MAP_PIXEL_WIDTH - SCREEN_WIDTH (clamped to 0 if map smaller than screen)
+; =============================================================================
+
+calc_map_bounds:
+    PUSH R0
+    PUSH R1
+    PUSH R2
+
+    ; Calculate MAP_PIXEL_WIDTH = MAP_WIDTH * 16
+    ; Multiply by 16 = shift left 4 times
+    ; Start with 16-bit value: high=0, low=MAP_WIDTH
+    LD R0, [MAP_WIDTH]      ; Low byte
+    LD R1, #0               ; High byte
+
+    ; Shift left 4 times (multiply by 16)
+    SHL R0
+    ROL R1
+    SHL R0
+    ROL R1
+    SHL R0
+    ROL R1
+    SHL R0
+    ROL R1
+
+    ; Store MAP_PIXEL_WIDTH
+    ST R0, [MAP_PIXEL_WIDTH_LO]
+    ST R1, [MAP_PIXEL_WIDTH_HI]
+
+    ; Calculate MAX_SCROLL_X = MAP_PIXEL_WIDTH - SCREEN_WIDTH
+    ; SCREEN_WIDTH = 256 = $0100
+    ; Subtract 256 from R1:R0 (subtract 1 from high byte, or subtract 0 from low and borrow)
+    ; If MAP_PIXEL_WIDTH <= 256, max scroll is 0
+
+    ; Check if map width <= screen width
+    CMP R1, #1              ; If high byte < 1, map is <= 255 pixels
+    BRNC .map_too_small     ; Branch if high < 1
+    BRZ .check_exact        ; If high == 1, check if exactly 256
+    JMP .calc_max_scroll    ; high > 1, proceed with subtraction
+
+.check_exact:
+    CMP R0, #0              ; If high=1 and low=0, exactly 256 pixels
+    BRZ .map_too_small      ; No scrolling needed
+    JMP .calc_max_scroll
+
+.map_too_small:
+    ; Map is same size or smaller than screen - no scrolling
+    LD R0, #0
+    ST R0, [MAX_SCROLL_X_LO]
+    ST R0, [MAX_SCROLL_X_HI]
+    JMP .calc_bounds_done
+
+.calc_max_scroll:
+    ; MAX_SCROLL_X = MAP_PIXEL_WIDTH - 256
+    ; Subtracting 256 = subtracting $0100 = subtract 1 from high byte
+    LD R0, [MAP_PIXEL_WIDTH_LO]
+    LD R1, [MAP_PIXEL_WIDTH_HI]
+    DEC R1                  ; Subtract 256 (high byte - 1)
+    ST R0, [MAX_SCROLL_X_LO]
+    ST R1, [MAX_SCROLL_X_HI]
+
+.calc_bounds_done:
+    POP R2
+    POP R1
+    POP R0
+    RET
+
+; =============================================================================
+; Update Camera
+; Centers camera on player horizontally, with clamping at map boundaries
+; Target scroll = PLAYER_X - SCREEN_CENTER_X, clamped to [0, MAX_SCROLL_X]
+; =============================================================================
+
+update_camera:
+    PUSH R0
+    PUSH R1
+    PUSH R2
+    PUSH R3
+
+    ; Calculate target scroll: PLAYER_X - SCREEN_CENTER_X
+    ; SCREEN_CENTER_X = 120 (centers a 16px sprite on 256px screen)
+    LD R0, [PLAYER_X_LO]
+    LD R1, [PLAYER_X_HI]
+
+    ; Subtract SCREEN_CENTER_X (120 = $78)
+    ; 16-bit subtraction: R1:R0 - $0078
+    SUB R0, #SCREEN_CENTER_X
+    BRC .no_borrow          ; Carry set = no borrow needed
+    DEC R1                  ; Borrow from high byte
+
+.no_borrow:
+    ; Check if result went negative (player near left edge)
+    ; If high byte has bit 7 set (or became $FF from borrow), clamp to 0
+    MOV R2, R1
+    AND R2, #$80
+    BRNZ .clamp_to_zero     ; Negative, clamp to 0
+
+    ; Check if scroll > MAX_SCROLL_X (player near right edge)
+    ; Compare R1:R0 with MAX_SCROLL_X_HI:LO
+    LD R2, [MAX_SCROLL_X_HI]
+    CMP R1, R2
+    BRC .clamp_to_max       ; High byte > max high, clamp to max
+    BRNZ .scroll_ok         ; High byte < max high, use calculated value
+    ; High bytes equal, check low bytes
+    LD R2, [MAX_SCROLL_X_LO]
+    CMP R0, R2
+    BRC .clamp_to_max       ; Low byte > max low, clamp to max
+    JMP .scroll_ok
+
+.clamp_to_zero:
+    LD R0, #0
+    LD R1, #0
+    JMP .scroll_ok
+
+.clamp_to_max:
+    LD R0, [MAX_SCROLL_X_LO]
+    LD R1, [MAX_SCROLL_X_HI]
+
+.scroll_ok:
+    ; Store scroll position
+    ST R0, [SCROLL_X_LO]
+    ST R1, [SCROLL_X_HI]
+
+    ; Update hardware scroll registers
+    ST R0, [TILEMAP_X_SCROLL_LO]
+    ST R1, [TILEMAP_X_SCROLL_HI]
+
+    POP R3
+    POP R2
+    POP R1
+    POP R0
+    RET
+
+; =============================================================================
+; Update Sprite Screen Position
+; Converts world position to screen position: screen_x = world_x - scroll_x
+; =============================================================================
+
+update_sprite_screen_pos:
+    PUSH R0
+    PUSH R1
+    PUSH R2
+
+    ; Calculate screen X = PLAYER_X - SCROLL_X
+    LD R0, [PLAYER_X_LO]
+    LD R1, [PLAYER_X_HI]
+    LD R2, [SCROLL_X_LO]
+
+    ; Subtract scroll from player position
+    SUB R0, R2
+    BRC .sprite_no_borrow
+    DEC R1
+.sprite_no_borrow:
+    LD R2, [SCROLL_X_HI]
+    SUB R1, R2
+
+    ; R0 now contains the screen X position (should fit in 8 bits)
+    ; If the math is correct, R1 should be 0 (screen X is 0-255)
+    ST R0, [SPRITE_0_X]
+
+    ; Y position doesn't scroll (for this implementation)
+    LD R0, [PLAYER_Y]
+    ST R0, [SPRITE_0_Y]
+
+    POP R2
+    POP R1
     POP R0
     RET
 
