@@ -6,8 +6,14 @@ import { TilemapCanvas } from './TilemapCanvas';
 import { TilePicker } from './TilePicker';
 import { TilemapToolPalette, type TilemapTool } from './TilemapToolPalette';
 import { AttributeEditor } from './AttributeEditor';
-import { useDevkitStore, type SpritePaletteConfig } from '../../../stores/devkitStore';
+import { useDevkitStore, type SpritePaletteConfig, type TilemapEditorFileConfig } from '../../../stores/devkitStore';
 import { readBinaryFile } from '../../../services/fileSystemService';
+
+// Extract tbin name from path (e.g., "tilemaps/level1.tbin" -> "level1")
+function getTbinName(filePath: string): string {
+  const fileName = filePath.split('/').pop() || filePath;
+  return fileName.replace('.tbin', '');
+}
 
 // Constants
 const HEADER_SIZE = 8;
@@ -124,6 +130,11 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
   const [availableGbins, setAvailableGbins] = useState<string[]>([]);
   const [availablePbins, setAvailablePbins] = useState<string[]>([]);
 
+  // Track file config (gbin/pbin selections that will be saved to config.json)
+  const [fileConfig, setFileConfig] = useState<TilemapEditorFileConfig | null>(null);
+  const [configLoaded, setConfigLoaded] = useState(false);
+  const tbinName = getTbinName(filePath);
+
   // Tool state
   const [selectedTool, setSelectedToolInternal] = useState<TilemapTool>('pen');
   const [selectedTileIndex, setSelectedTileIndex] = useState(1); // Start at 1 (0 is empty)
@@ -176,6 +187,20 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
     return 0;
   }, [spritePaletteConfigs]);
 
+  // Load file config from project config on mount
+  useEffect(() => {
+    if (configLoaded) return;
+
+    const tilemapEditorConfig = projectConfig?.['tilemap-editor'];
+    if (tilemapEditorConfig && tilemapEditorConfig[tbinName]) {
+      const config = tilemapEditorConfig[tbinName];
+      setFileConfig(config);
+      setSelectedGbin(config.gbin || null);
+      setSelectedPbin(config.pbin || null);
+    }
+    setConfigLoaded(true);
+  }, [projectConfig, tbinName, configLoaded]);
+
   // Load available gbin and pbin files
   useEffect(() => {
     async function loadAvailableFiles() {
@@ -217,17 +242,17 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
       setAvailableGbins(gbins.sort());
       setAvailablePbins(pbins.sort());
 
-      // Set defaults if available
-      if (gbins.length > 0 && !selectedGbin) {
+      // Set defaults if available (only if no config was loaded)
+      if (gbins.length > 0 && !selectedGbin && configLoaded) {
         setSelectedGbin(gbins[0]);
       }
-      if (pbins.length > 0 && !selectedPbin) {
+      if (pbins.length > 0 && !selectedPbin && configLoaded) {
         setSelectedPbin(pbins[0]);
       }
     }
 
     loadAvailableFiles();
-  }, [currentProjectHandle, selectedGbin, selectedPbin]);
+  }, [currentProjectHandle, selectedGbin, selectedPbin, configLoaded]);
 
   // Load gbin data when selection changes
   useEffect(() => {
@@ -641,6 +666,36 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
     return { flipH, flipV, priority, palette, bankOffset };
   }, [selection, tiles]);
 
+  // Handle gbin selection change - update config and mark dirty
+  const handleGbinChange = useCallback((gbin: string | null) => {
+    setSelectedGbin(gbin);
+    setFileConfig(prev => ({
+      gbin: gbin || '',
+      pbin: prev?.pbin || selectedPbin || '',
+    }));
+    markFileDirty(filePath, true);
+  }, [selectedPbin, filePath, markFileDirty]);
+
+  // Handle pbin selection change - update config and mark dirty
+  const handlePbinChange = useCallback((pbin: string | null) => {
+    setSelectedPbin(pbin);
+    setFileConfig(prev => ({
+      gbin: prev?.gbin || selectedGbin || '',
+      pbin: pbin || '',
+    }));
+    markFileDirty(filePath, true);
+  }, [selectedGbin, filePath, markFileDirty]);
+
+  // Expose the file config for saving (will be used by EditorContainer)
+  // Store it on the window object so EditorContainer can access it
+  useEffect(() => {
+    (window as unknown as Record<string, unknown>)[`__tilemapFileConfig_${tbinName}`] = fileConfig;
+
+    return () => {
+      delete (window as unknown as Record<string, unknown>)[`__tilemapFileConfig_${tbinName}`];
+    };
+  }, [fileConfig, tbinName]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -684,7 +739,7 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
             <label className="text-xs text-zinc-400">Graphics:</label>
             <select
               value={selectedGbin || ''}
-              onChange={(e) => setSelectedGbin(e.target.value || null)}
+              onChange={(e) => handleGbinChange(e.target.value || null)}
               className="dk-input text-xs py-1 px-2 min-w-32"
             >
               <option value="">Select gbin...</option>
@@ -699,7 +754,7 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
             <label className="text-xs text-zinc-400">Palette:</label>
             <select
               value={selectedPbin || ''}
-              onChange={(e) => setSelectedPbin(e.target.value || null)}
+              onChange={(e) => handlePbinChange(e.target.value || null)}
               className="dk-input text-xs py-1 px-2 min-w-32"
             >
               <option value="">Select pbin...</option>

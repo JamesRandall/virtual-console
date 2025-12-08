@@ -33,9 +33,19 @@ export interface SpriteEditorConfig {
   [gbinName: string]: SpritePaletteConfig[];  // Array indexed by sprite index
 }
 
+export interface TilemapEditorFileConfig {
+  gbin: string;  // Path to gbin file (e.g., "tiles/background.gbin")
+  pbin: string;  // Path to pbin file (e.g., "palettes/default.pbin")
+}
+
+export interface TilemapEditorConfig {
+  [tbinName: string]: TilemapEditorFileConfig;  // Keyed by tbin filename (without extension)
+}
+
 export interface ProjectConfig {
   mode: number; // 0-3 for video modes
   'sprite-editor'?: SpriteEditorConfig;
+  'tilemap-editor'?: TilemapEditorConfig;
 }
 
 interface DevkitState {

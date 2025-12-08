@@ -29,5 +29,11 @@
         "block": 1
       }
     ]
+  },
+  "tilemap-editor": {
+    "level01": {
+      "gbin": "sprites/sprites.gbin",
+      "pbin": "palettes/default.pbin"
+    }
   }
 }

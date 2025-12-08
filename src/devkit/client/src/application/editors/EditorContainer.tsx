@@ -1,6 +1,6 @@
 import {useState, useCallback} from "react";
 
-import {useDevkitStore, type SpritePaletteConfig, type ProjectConfig} from "../../stores/devkitStore.ts";
+import {useDevkitStore, type SpritePaletteConfig, type TilemapEditorFileConfig, type ProjectConfig} from "../../stores/devkitStore.ts";
 import "./EditorContainer.css";
 
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
@@ -18,6 +18,12 @@ import {TilemapEditor} from "./tilemapEditor/TilemapEditor.tsx";
 function getGbinName(filePath: string): string {
     const fileName = filePath.split('/').pop() || filePath;
     return fileName.replace('.gbin', '');
+}
+
+// Extract tbin name from path (e.g., "tilemaps/level1.tbin" -> "level1")
+function getTbinName(filePath: string): string {
+    const fileName = filePath.split('/').pop() || filePath;
+    return fileName.replace('.tbin', '');
 }
 
 export function EditorContainer() {
@@ -102,6 +108,37 @@ export function EditorContainer() {
                         }
                     }
                 }
+
+                // For tbin files, also save file config (gbin/pbin selections) to config.json
+                if (isTbinFile) {
+                    const tbinName = getTbinName(activeFilePath);
+                    const fileConfig = (window as unknown as Record<string, TilemapEditorFileConfig | null>)[`__tilemapFileConfig_${tbinName}`];
+
+                    if (fileConfig && (fileConfig.gbin || fileConfig.pbin)) {
+                        try {
+                            // Read current config.json (it may have been modified by other editors)
+                            const configContent = await readFile(currentProjectHandle, 'config.json');
+                            const config: ProjectConfig = JSON.parse(configContent);
+
+                            // Initialize tilemap-editor section if it doesn't exist
+                            if (!config['tilemap-editor']) {
+                                config['tilemap-editor'] = {};
+                            }
+
+                            // Update only this tbin's file config
+                            config['tilemap-editor'][tbinName] = fileConfig;
+
+                            // Write back to config.json
+                            await writeFile(currentProjectHandle, 'config.json', JSON.stringify(config, null, 2));
+
+                            // Update the Zustand store so reopening the editor uses the new config
+                            setProjectConfig(config);
+                        } catch (error) {
+                            console.error('Error saving tilemap file config:', error);
+                            // Don't fail the save if config update fails
+                        }
+                    }
+                }
             } else {
                 await writeFile(currentProjectHandle, activeFilePath, activeFile.content);
             }
@@ -112,7 +149,7 @@ export function EditorContainer() {
         } finally {
             setIsSaving(false);
         }
-    }, [activeFile, currentProjectHandle, activeFilePath, isBinaryFile, isGbinFile, markFileDirty, setProjectConfig]);
+    }, [activeFile, currentProjectHandle, activeFilePath, isBinaryFile, isGbinFile, isTbinFile, markFileDirty, setProjectConfig]);
 
     const handleContentChange = useCallback((content: string) => {
         if (!activeFilePath) {
