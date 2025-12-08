@@ -145,6 +145,14 @@
 .define ON_GROUND           $0B0C   ; 1 if player is standing on ground, 0 if airborne
 .define JUMP_HELD           $0B0D   ; Tracks if jump button was held (prevents re-jump)
 
+; Animation variables
+.define PLAYER_FACING       $0B75   ; 0 = facing right, 1 = facing left
+.define PLAYER_ANIM_TIMER   $0B76   ; Animation frame timer (counts down)
+.define PLAYER_ANIM_FRAME   $0B77   ; Current animation frame (0 or 1)
+
+; Animation constants
+.define ANIM_SPEED          8       ; Frames between animation changes
+
 ; Camera/scroll position (16-bit)
 .define SCROLL_X_LO         $0B0E   ; Current scroll X low byte
 .define SCROLL_X_HI         $0B0F   ; Current scroll X high byte
@@ -169,11 +177,11 @@
 .define SPEED_MED           2       ; Medium gray stars
 .define SPEED_SLOW          1       ; Dark gray stars (slowest)
 
-; Star colors (palette indices in palette block 1)
-.define STAR_COLOR_BLACK    0
-.define STAR_COLOR_WHITE    1
-.define STAR_COLOR_MED      2
-.define STAR_COLOR_DARK     3
+; Star colors (palette indices)
+.define STAR_COLOR_BLACK    0       ; For erasing stars
+.define STAR_COLOR_CLOSE    14      ; Closest/fastest stars (brightest)
+.define STAR_COLOR_MED      13      ; Medium distance stars
+.define STAR_COLOR_FAR      12      ; Furthest/slowest stars (dimmest)
 
 ; =============================================================================
 ; Entry Point
@@ -223,7 +231,14 @@ main:
     ST R0, [ON_GROUND]
     ST R0, [JUMP_HELD]
 
+    ; Initialize animation state (facing right, at rest)
+    ST R0, [PLAYER_FACING]
+    ST R0, [PLAYER_ANIM_FRAME]
+    LD R0, #ANIM_SPEED
+    ST R0, [PLAYER_ANIM_TIMER]
+
     ; Initialize scroll position
+    LD R0, #0
     ST R0, [SCROLL_X_LO]
     ST R0, [SCROLL_X_HI]
 
@@ -231,7 +246,6 @@ main:
     CALL setup_player_sprite
 
     ; Initialize starfield
-    CALL setup_star_palette
     CALL init_star_positions
 
     ; Clear any pending interrupt flags
@@ -277,8 +291,8 @@ setup_player_sprite:
     LD R0, [PLAYER_Y]
     ST R0, [SPRITE_0_Y]
 
-    ; Set sprite index (0)
-    LD R0, #1
+    ; Set sprite index (2 = rest facing right)
+    LD R0, #2
     ST R0, [SPRITE_0_IDX]
 
     ; Set sprite flags (no flip, front priority, palette 0)
@@ -353,6 +367,11 @@ vblank_handler:
     ; ===================
     CALL update_sprite_screen_pos
 
+    ; ===================
+    ; Update Player Animation
+    ; ===================
+    CALL update_player_animation
+
     POP R5
     POP R4
     POP R3
@@ -400,6 +419,9 @@ handle_horizontal_input:
 
 .store_vel_x_left:
     ST R0, [VEL_X]
+    ; Set facing left
+    LD R0, #1
+    ST R0, [PLAYER_FACING]
     JMP .horiz_done
 
 .check_right_input:
@@ -423,6 +445,9 @@ handle_horizontal_input:
 
 .store_vel_x_right:
     ST R0, [VEL_X]
+    ; Set facing right
+    LD R0, #0
+    ST R0, [PLAYER_FACING]
     JMP .horiz_done
 
 .apply_friction:
@@ -1339,6 +1364,90 @@ update_sprite_screen_pos:
     RET
 
 ; =============================================================================
+; Update Player Animation
+; Animates player sprite based on movement and facing direction
+; Moving right: animate sprites 1 and 2, rest = sprite 2
+; Moving left: animate sprites 3 and 4, rest = sprite 4
+; =============================================================================
+
+update_player_animation:
+    PUSH R0
+    PUSH R1
+
+    ; Check if player is moving (VEL_X != 0)
+    LD R0, [VEL_X]
+    CMP R0, #0
+    BRZ .player_at_rest
+
+    ; Player is moving - animate
+    ; Decrement animation timer
+    LD R0, [PLAYER_ANIM_TIMER]
+    DEC R0
+    BRNZ .timer_not_zero
+
+    ; Timer hit zero - toggle animation frame and reset timer
+    LD R0, #ANIM_SPEED
+    ST R0, [PLAYER_ANIM_TIMER]
+
+    ; Toggle animation frame (0 -> 1, 1 -> 0)
+    LD R0, [PLAYER_ANIM_FRAME]
+    XOR R0, #1
+    ST R0, [PLAYER_ANIM_FRAME]
+    JMP .set_sprite_index
+
+.timer_not_zero:
+    ST R0, [PLAYER_ANIM_TIMER]
+
+.set_sprite_index:
+    ; Determine sprite index based on facing and animation frame
+    ; Facing right: frame 0 = sprite 1, frame 1 = sprite 2
+    ; Facing left: frame 0 = sprite 3, frame 1 = sprite 4
+    LD R0, [PLAYER_FACING]
+    CMP R0, #0
+    BRNZ .facing_left_anim
+
+    ; Facing right - sprites 1-2
+    LD R0, [PLAYER_ANIM_FRAME]
+    INC R0                    ; frame 0 -> sprite 1, frame 1 -> sprite 2
+    JMP .store_sprite_index
+
+.facing_left_anim:
+    ; Facing left - sprites 3-4
+    LD R0, [PLAYER_ANIM_FRAME]
+    ADD R0, #3                ; frame 0 -> sprite 3, frame 1 -> sprite 4
+    JMP .store_sprite_index
+
+.player_at_rest:
+    ; Player at rest - show rest sprite
+    ; Reset animation to frame 0 for next movement
+    LD R0, #0
+    ST R0, [PLAYER_ANIM_FRAME]
+    LD R0, #ANIM_SPEED
+    ST R0, [PLAYER_ANIM_TIMER]
+
+    ; Determine rest sprite based on facing
+    ; Facing right: sprite 2
+    ; Facing left: sprite 4
+    LD R0, [PLAYER_FACING]
+    CMP R0, #0
+    BRNZ .rest_facing_left
+
+    ; Rest facing right - sprite 2
+    LD R0, #2
+    JMP .store_sprite_index
+
+.rest_facing_left:
+    ; Rest facing left - sprite 4
+    LD R0, #4
+
+.store_sprite_index:
+    ST R0, [SPRITE_0_IDX]
+
+    POP R1
+    POP R0
+    RET
+
+; =============================================================================
 ; Setup Tilemap Registers
 ; =============================================================================
 
@@ -1455,32 +1564,6 @@ clear_screen:
 ; =============================================================================
 ; Starfield Routines
 ; =============================================================================
-
-; -----------------------------------------------------------------------------
-; Setup star palette colors in palette block 1
-; -----------------------------------------------------------------------------
-setup_star_palette:
-    PUSH R0
-
-    ; Palette block 1 starts at PALETTE_RAM + 16
-    ; Color 0: Black (transparent) - use system palette index for black
-    LD R0, #253             ; Black in system palette
-    ST R0, [PALETTE_RAM + 16]
-
-    ; Color 1: White (brightest stars)
-    LD R0, #255             ; White in system palette
-    ST R0, [PALETTE_RAM + 17]
-
-    ; Color 2: Medium Gray
-    LD R0, #225             ; Medium gray in system palette
-    ST R0, [PALETTE_RAM + 18]
-
-    ; Color 3: Dark Gray (dimmest stars)
-    LD R0, #229             ; Dark gray in system palette
-    ST R0, [PALETTE_RAM + 19]
-
-    POP R0
-    RET
 
 ; -----------------------------------------------------------------------------
 ; Initialize star positions by copying from ROM to RAM
@@ -1601,19 +1684,22 @@ update_starfield:
 
 .skip_update:
     ; --- Draw all stars in color ---
+    ; Layer 0: Closest/fastest stars (brightest - color 14)
     LD R0, #0
     LD R1, #STARS_PER_LAYER
-    LD R2, #STAR_COLOR_WHITE
+    LD R2, #STAR_COLOR_CLOSE
     CALL draw_stars
 
+    ; Layer 1: Medium distance stars (color 13)
     LD R0, #32
     LD R1, #STARS_PER_LAYER
     LD R2, #STAR_COLOR_MED
     CALL draw_stars
 
+    ; Layer 2: Furthest/slowest stars (dimmest - color 12)
     LD R0, #64
     LD R1, #STARS_PER_LAYER
-    LD R2, #STAR_COLOR_DARK
+    LD R2, #STAR_COLOR_FAR
     CALL draw_stars
 
     POP R5
