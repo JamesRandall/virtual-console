@@ -41,12 +41,20 @@
 .define SM_SPRITE_SIZE          16
 
 .define SM_SAT_BASE             $0700
-.define SM_SAT_ENTRY_SIZE       5
+.define SM_SAT_ENTRY_SIZE       6       ; 6 bytes per SAT entry (9-bit coordinates)
 .define SM_SPRITE_ENABLE        $0104
 .define SM_SPRITE_COUNT         $0105
 .define SM_BANK_REG             $0100
 
-; World sprite entry field offsets
+; SAT entry field offsets (hardware format)
+.define SAT_X_LO                0       ; X position low byte
+.define SAT_Y_LO                1       ; Y position low byte
+.define SAT_SPRITE_IDX          2       ; Sprite graphics index
+.define SAT_FLAGS               3       ; Attribute flags
+.define SAT_BANK                4       ; Graphics bank
+.define SAT_XY_HI               5       ; High bits: bit 0 = X bit 8, bit 1 = Y bit 8
+
+; World sprite entry field offsets (game format - 16-bit coordinates)
 .define WSP_X_LO                0
 .define WSP_X_HI                1
 .define WSP_Y_LO                2
@@ -363,67 +371,121 @@ render_world_sprites:
     LD R2, [R0:R1]
     ST R2, [SM_TEMP_3]
 
-    ; Calculate screen X = world_x - scroll_x
-    LD R0, [SM_TEMP_0]
-    LD R1, [SM_SCROLL_X_LO]
-    SUB R0, R1
-    ST R0, [SM_TEMP_0]
+    ; Calculate screen X = world_x - scroll_x (16-bit subtraction)
+    ; Use simple approach: subtract low bytes, check carry for borrow
+    ; SM_TEMP_0 = world_x_lo, SM_TEMP_1 = world_x_hi (already loaded)
+
+    ; Low byte subtraction
+    LD R0, [SM_TEMP_0]          ; world_x low
+    LD R1, [SM_SCROLL_X_LO]     ; scroll_x low
+    SUB R0, R1                  ; R0 = world_lo - scroll_lo
+    ST R0, [SM_TEMP_0]          ; store screen_x low
+
+    ; Check if borrow needed: carry is SET if result >= 0, CLEAR if < 0
+    ; After SUB, if carry is CLEAR, we need to borrow from high byte
+    LD R0, [SM_TEMP_1]          ; world_x high
+    LD R1, [SM_SCROLL_X_HI]     ; scroll_x high
+    SUB R0, R1                  ; R0 = world_hi - scroll_hi
+    ; If original low subtraction had borrow, we need to decrement
+    ; But SUB doesn't chain carry! So we need different approach.
+
+    ; Save high result temporarily
+    ST R0, [SM_TEMP_1]          ; store (world_hi - scroll_hi)
+
+    ; Now check if we need borrow: compare world_lo with scroll_lo
+    LD R0, [SM_TEMP_0]          ; reload screen_x_lo (result of world_lo - scroll_lo)
+    ; If world_lo < scroll_lo, there was a borrow
+    ; We can tell by re-adding scroll_lo to result and seeing if it equals world_lo
+    ; Actually simpler: just compare the original values
+    ; world_lo is at sprite entry, scroll_lo is at SM_SCROLL_X_LO
+    ; But we already stored world_lo in SM_TEMP_0 before modifying it... wait, no we didn't
+
+    ; Re-read from sprite entry to get original world_x_lo
+    LD R0, [SM_SRC_HI]
+    LD R1, [SM_SRC_LO]
+    LD R2, [R0:R1]              ; R2 = original world_x_lo
+    LD R0, [SM_SCROLL_X_LO]     ; R0 = scroll_x_lo
+    CMP R2, R0                  ; world_lo - scroll_lo
+    BRC .rws_x_no_borrow        ; if carry set (world_lo >= scroll_lo), no borrow needed
+
+    ; Borrow needed: decrement high byte
     LD R0, [SM_TEMP_1]
-    LD R1, [SM_SCROLL_X_HI]
-    SUB R0, R1
+    DEC R0
     ST R0, [SM_TEMP_1]
 
-    ; Check X bounds - high byte must be 0 or 0xFF
+.rws_x_no_borrow:
+    ; Check X bounds - sprite visible if screen_x in range -16 to (SCREEN_WIDTH-1)
+    ; With 9-bit coordinates in SAT, we can use full range
+    ; High byte 0x00 = positive (0-255)
+    ; High byte 0xFF = negative (-256 to -1)
+    ; For visibility: -16 <= screen_x < SCREEN_WIDTH (256)
     LD R0, [SM_TEMP_1]
     CMP R0, #0
-    BRZ .rws_x_ok
+    BRZ .rws_x_ok               ; High=0: screen X is 0-255, always visible
     CMP R0, #$FF
-    BRZ .rws_x_neg
-    JMP .rws_next
-.rws_x_neg:
-    ; Negative, check >= -16 (0xF0-0xFF)
+    BRNZ .rws_x_skip            ; High not 0 or FF: way off screen (> 255 or < -256)
+    ; High byte is 0xFF (negative) - check if partially visible (-16 to -1)
     LD R0, [SM_TEMP_0]
-    CMP R0, #$F0
-    BRC .rws_x_ok
+    CMP R0, #$F0                ; screen_x >= -16 (0xF0 in low byte with 0xFF high)?
+    BRC .rws_x_ok               ; Low >= 0xF0 means -16 to -1, partially visible on left
+.rws_x_skip:
     JMP .rws_next
 .rws_x_ok:
 
-    ; Calculate screen Y = world_y - scroll_y
-    LD R0, [SM_TEMP_2]
-    LD R1, [SM_SCROLL_Y_LO]
-    SUB R0, R1
-    ST R0, [SM_TEMP_2]
-    LD R0, [SM_TEMP_3]
-    LD R1, [SM_SCROLL_Y_HI]
-    SUB R0, R1
-    ST R0, [SM_TEMP_3]
+    ; Calculate screen Y = world_y - scroll_y (16-bit subtraction with borrow)
+    ; Compare low bytes to determine if borrow is needed
+    LD R0, [SM_TEMP_2]          ; world_y low
+    LD R1, [SM_SCROLL_Y_LO]     ; scroll_y low
+    CMP R0, R1                  ; world_y_lo - scroll_y_lo (sets carry if world >= scroll)
+    BRC .rws_y_no_borrow_needed ; If carry SET, world_lo >= scroll_lo, no borrow
 
-    ; Check Y bounds
+    ; Borrow needed: world_y_lo < scroll_y_lo
+    SUB R0, R1                  ; R0 = world_y_lo - scroll_y_lo (wraps)
+    ST R0, [SM_TEMP_2]          ; screen_y low
+    LD R0, [SM_TEMP_3]          ; world_y high
+    LD R1, [SM_SCROLL_Y_HI]     ; scroll_y high
+    SUB R0, R1                  ; high - high
+    DEC R0                      ; subtract the borrow
+    ST R0, [SM_TEMP_3]          ; screen_y high
+    JMP .rws_y_calc_done
+
+.rws_y_no_borrow_needed:
+    ; No borrow: world_y_lo >= scroll_y_lo
+    SUB R0, R1                  ; R0 = world_y_lo - scroll_y_lo
+    ST R0, [SM_TEMP_2]          ; screen_y low
+    LD R0, [SM_TEMP_3]          ; world_y high
+    LD R1, [SM_SCROLL_Y_HI]     ; scroll_y high
+    SUB R0, R1                  ; high - high (no borrow)
+    ST R0, [SM_TEMP_3]          ; screen_y high
+.rws_y_calc_done:
+
+    ; Check Y bounds - sprite visible if screen_y in range -16 to 159
     LD R0, [SM_TEMP_3]
     CMP R0, #0
-    BRZ .rws_y_zero
+    BRZ .rws_y_check_low        ; High=0: check if low byte < 160
     CMP R0, #$FF
-    BRZ .rws_y_neg
-    JMP .rws_next
-.rws_y_neg:
+    BRNZ .rws_skip_y            ; High not 0 or FF: way off screen
+    ; High byte is 0xFF (negative)
     LD R0, [SM_TEMP_2]
     CMP R0, #$F0
-    BRC .rws_y_ok
+    BRC .rws_y_ok               ; Low >= 0xF0 means -16 to -1, partially visible
     JMP .rws_next
-.rws_y_zero:
+.rws_y_check_low:
     LD R0, [SM_TEMP_2]
     CMP R0, #SM_SCREEN_HEIGHT
-    BRNC .rws_y_ok
+    BRNC .rws_y_ok              ; Low < 160, on screen
+.rws_skip_y:
     JMP .rws_next
 .rws_y_ok:
 
     ; Sprite is visible - write to SAT
-    ; Calculate SAT address: SM_SAT_BASE + (R5 * 5)
+    ; Calculate SAT address: SM_SAT_BASE + (R5 * 6)
+    ; R5 * 6 = R5 * 4 + R5 * 2 = (R5 << 2) + (R5 << 1)
     MOV R0, R5
-    MOV R1, R0
-    SHL R0
-    SHL R0
-    ADD R0, R1                  ; R0 = R5 * 5
+    SHL R0                      ; R0 = R5 * 2
+    MOV R1, R0                  ; R1 = R5 * 2
+    SHL R0                      ; R0 = R5 * 4
+    ADD R0, R1                  ; R0 = R5 * 6
     LD R1, #(SM_SAT_BASE & $FF)
     ADD R1, R0
     LD R0, #(SM_SAT_BASE >> 8)
@@ -434,18 +496,18 @@ render_world_sprites:
     ST R0, [SM_DST_HI]
     ST R1, [SM_DST_LO]
 
-    ; Write X
+    ; Write X_LO (SAT offset 0)
     LD R2, [SM_DST_HI]
     LD R3, [SM_DST_LO]
-    LD R0, [SM_TEMP_0]
+    LD R0, [SM_TEMP_0]          ; screen_x low byte
     ST R0, [R2:R3]
 
-    ; Write Y
+    ; Write Y_LO (SAT offset 1)
     INC R3
-    LD R0, [SM_TEMP_2]
+    LD R0, [SM_TEMP_2]          ; screen_y low byte
     ST R0, [R2:R3]
 
-    ; Read sprite_idx, flags, bank from world sprite
+    ; Read sprite_idx from world sprite
     LD R0, [SM_SRC_HI]
     LD R1, [SM_SRC_LO]
     ADD R1, #WSP_SPRITE_IDX
@@ -453,17 +515,17 @@ render_world_sprites:
     INC R0
 .rws_idx_ok:
 
-    ; Write sprite_idx
+    ; Write sprite_idx (SAT offset 2)
     LD R2, [R0:R1]              ; R2 = sprite_idx
     LD R0, [SM_DST_HI]
     LD R1, [SM_DST_LO]
-    ADD R1, #2
+    ADD R1, #SAT_SPRITE_IDX
     BRNC .rws_idx_dst_ok
     INC R0
 .rws_idx_dst_ok:
     ST R2, [R0:R1]
 
-    ; Write flags
+    ; Write flags (SAT offset 3)
     LD R0, [SM_SRC_HI]
     LD R1, [SM_SRC_LO]
     ADD R1, #WSP_FLAGS
@@ -473,13 +535,13 @@ render_world_sprites:
     LD R2, [R0:R1]              ; R2 = flags
     LD R0, [SM_DST_HI]
     LD R1, [SM_DST_LO]
-    ADD R1, #3
+    ADD R1, #SAT_FLAGS
     BRNC .rws_flags_dst_ok
     INC R0
 .rws_flags_dst_ok:
     ST R2, [R0:R1]
 
-    ; Write bank
+    ; Write bank (SAT offset 4)
     LD R0, [SM_SRC_HI]
     LD R1, [SM_SRC_LO]
     ADD R1, #WSP_BANK
@@ -489,10 +551,33 @@ render_world_sprites:
     LD R2, [R0:R1]              ; R2 = bank
     LD R0, [SM_DST_HI]
     LD R1, [SM_DST_LO]
-    ADD R1, #4
+    ADD R1, #SAT_BANK
     BRNC .rws_bank_dst_ok
     INC R0
 .rws_bank_dst_ok:
+    ST R2, [R0:R1]
+
+    ; Write XY_HI byte (SAT offset 5)
+    ; Build XY_HI: bit 0 = X high bit (from SM_TEMP_1), bit 1 = Y high bit (from SM_TEMP_3)
+    ; If screen coordinate high byte is 0xFF, the coordinate is negative, so set the high bit
+    LD R2, #0                   ; Start with XY_HI = 0
+    LD R0, [SM_TEMP_1]          ; screen_x high byte
+    CMP R0, #$FF
+    BRNZ .rws_x_hi_done
+    OR R2, #$01                 ; Set bit 0 (X high bit)
+.rws_x_hi_done:
+    LD R0, [SM_TEMP_3]          ; screen_y high byte
+    CMP R0, #$FF
+    BRNZ .rws_y_hi_done
+    OR R2, #$02                 ; Set bit 1 (Y high bit)
+.rws_y_hi_done:
+    ; Write XY_HI to SAT
+    LD R0, [SM_DST_HI]
+    LD R1, [SM_DST_LO]
+    ADD R1, #SAT_XY_HI
+    BRNC .rws_xyhi_dst_ok
+    INC R0
+.rws_xyhi_dst_ok:
     ST R2, [R0:R1]
 
     ; Next SAT slot

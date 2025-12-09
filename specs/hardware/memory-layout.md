@@ -13,8 +13,8 @@
 | 0x0100-0x01FF | 256 B  | Hardware Registers |
 | 0x0200-0x05FF | 1 KB   | Palette RAM |
 | 0x0600-0x06FF | 256 B  | Scanline Palette Map |
-| 0x0700-0x097F | 640 B  | Sprite Attribute Table |
-| 0x0980-0x0A7F | 256 B  | Collision Buffer |
+| 0x0700-0x09FF | 768 B  | Sprite Attribute Table |
+| 0x0A00-0x0A7F | 128 B  | Collision Buffer |
 | 0x0A80-0x0AFF | 128 B  | Tile Type Properties |
 | 0x0B00-0x7FFF | ~29 KB | General RAM |
 | 0x8000-0xFFFF | 32 KB  | Bankable Memory (256 banks) |
@@ -507,29 +507,36 @@ This separation enables powerful effects:
 
 ---
 
-### Sprite Attribute Table (0x0700-0x097F)
+### Sprite Attribute Table (0x0700-0x09FF)
 
-Each sprite entry is 5 bytes:
+Each sprite entry is 6 bytes:
 
 ```
 struct Sprite {
-    u8 x;           // X position (0-255)
-    u8 y;           // Y position (0-255)
+    u8 x_lo;        // X position low byte (bits 0-7)
+    u8 y_lo;        // Y position low byte (bits 0-7)
     u8 sprite_idx;  // Sprite graphics index
     u8 flags;       // Bits: [flip_h|flip_v|priority|palette_offset|reserved]
     u8 bank;        // Bank containing sprite graphics data
+    u8 xy_hi;       // High bits: bit 0 = X bit 8, bit 1 = Y bit 8
 }
 ```
 
-**128 sprites × 5 bytes = 640 bytes (0x280)**
+**9-bit coordinate support:**
+- X and Y are signed 9-bit values (range: -256 to +255)
+- Enables smooth edge clipping on all screen boundaries
+- xy_hi bit 0 = X position bit 8 (sign/high bit)
+- xy_hi bit 1 = Y position bit 8 (sign/high bit)
 
-- **0x0700-0x097F:** Sprite attributes (128 sprites)
+**128 sprites × 6 bytes = 768 bytes (0x300)**
 
-**640 bytes (0x280)**
+- **0x0700-0x09FF:** Sprite attributes (128 sprites)
+
+**768 bytes (0x300)**
 
 ---
 
-### Collision Buffer (0x0980-0x0A7F)
+### Collision Buffer (0x0A00-0x0A7F)
 
 Collision detection results written by hardware each frame.
 
@@ -552,9 +559,9 @@ struct CollisionEntry {
 
 Multiple bits can be set for corner collisions.
 
-**Buffer capacity:** 256 bytes / 3 = 85 collision entries maximum
+**Buffer capacity:** 128 bytes / 3 = 42 collision entries maximum
 
-**0x0980-0x0A7F:** Collision buffer (256 bytes)
+**0x0A00-0x0A7F:** Collision buffer (128 bytes)
 
 **Usage pattern:**
 ```assembly
@@ -569,16 +576,16 @@ CMP R1, #0
 BRZ no_collisions
 
 ; Process first collision
-LD R2, [$0980]      ; sprite_id
-LD R3, [$0981]      ; tile_type
-LD R4, [$0982]      ; type_flags
+LD R2, [$0A00]      ; sprite_id
+LD R3, [$0A01]      ; tile_type
+LD R4, [$0A02]      ; type_flags
 
 ; Check if tile type is spike (example)
 CMP R3, #42
 BRZ hit_spike
 ```
 
-**256 bytes**
+**128 bytes**
 
 ---
 

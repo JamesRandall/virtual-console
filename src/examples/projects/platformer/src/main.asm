@@ -1602,4 +1602,4 @@ star_y_coords:
 ; Include Runtime Libraries
 ; =============================================================================
 
-.include "sprite_manager.asm"
+.include "sprite-manager.asm"

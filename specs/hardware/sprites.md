@@ -30,29 +30,80 @@ The Virtual Console Video Chip is a custom graphics processor providing hardware
 
 ### Sprite Attribute Table
 
-**Location:** `0x0700-0x097F` (640 bytes)
+**Location:** `0x0700-0x09FF` (768 bytes)
 
-Each sprite is defined by 5 bytes:
+Each sprite is defined by 6 bytes:
 
 ```
 Offset  Name          Description
 ------  ------------  --------------------------------------------------
-+0      X             X position (0-255)
-+1      Y             Y position (0-255)
++0      X_LO          X position low byte (bits 0-7)
++1      Y_LO          Y position low byte (bits 0-7)
 +2      SPRITE_IDX    Sprite graphics index (0-255)
 +3      FLAGS         Attribute flags (see below)
 +4      BANK          Bank containing sprite graphics (0-255)
++5      XY_HI         High bits for X and Y positions (see below)
 ```
 
-**Total capacity:** 128 sprites × 5 bytes = **640 bytes**
+**Total capacity:** 128 sprites × 6 bytes = **768 bytes**
 
 **Sprite address calculation:**
 ```
-sprite_address = 0x0700 + (sprite_id × 5)
+sprite_address = 0x0700 + (sprite_id × 6)
 
-Example: Sprite 0 = 0x0700-0x0704
-         Sprite 1 = 0x0705-0x0709
-         Sprite 10 = 0x0732-0x0736
+Example: Sprite 0 = 0x0700-0x0705
+         Sprite 1 = 0x0706-0x070B
+         Sprite 10 = 0x073C-0x0741
+```
+
+### XY_HI Byte Layout (Offset +5)
+
+The XY_HI byte contains the 9th bit (sign/high bit) for both X and Y coordinates, enabling signed 9-bit positions:
+
+```
+Bit 7: Reserved (must be 0)
+Bit 6: Reserved (must be 0)
+Bit 5: Reserved (must be 0)
+Bit 4: Reserved (must be 0)
+Bit 3: Reserved (must be 0)
+Bit 2: Reserved (must be 0)
+Bit 1: Y high bit (bit 8 of Y position)
+Bit 0: X high bit (bit 8 of X position)
+```
+
+**9-bit coordinate interpretation:**
+
+The X and Y coordinates are interpreted as signed 9-bit values:
+- Range: -256 to +255
+- Bit 8 (from XY_HI) acts as the sign extension bit
+- When bit 8 = 0: position is 0 to 255 (positive)
+- When bit 8 = 1: position is -256 to -1 (negative, two's complement)
+
+**Example positions:**
+```
+X_LO=0x00, XY_HI bit 0=0  →  X = 0
+X_LO=0x80, XY_HI bit 0=0  →  X = 128
+X_LO=0xFF, XY_HI bit 0=0  →  X = 255
+X_LO=0xFF, XY_HI bit 0=1  →  X = -1   (0x1FF = -1 in 9-bit signed)
+X_LO=0xF0, XY_HI bit 0=1  →  X = -16  (0x1F0 = -16 in 9-bit signed)
+X_LO=0x00, XY_HI bit 0=1  →  X = -256 (0x100 = -256 in 9-bit signed)
+```
+
+**Edge clipping:**
+
+This enables smooth sprite clipping on all screen edges:
+- **Left edge:** Sprites at X = -15 to -1 are partially visible (1-15 pixels showing)
+- **Right edge:** Sprites at X = 241 to 255 are partially visible (240 to 254 visible columns)
+- **Top edge:** Sprites at Y = -15 to -1 are partially visible
+- **Bottom edge:** Sprites beyond screen height clip naturally
+
+**Assembly example - positioning sprite partially off left edge:**
+```assembly
+; Position sprite 0 at X = -8 (8 pixels off left edge, 8 pixels visible)
+LD R0, #$F8            ; X_LO = 0xF8 (-8 in low byte)
+ST R0, [$0700]
+LD R0, #$01            ; XY_HI bit 0 = 1 (X high bit set for negative)
+ST R0, [$0705]
 ```
 
 ### Sprite Flags Byte
@@ -438,7 +489,7 @@ The video chip provides **hardware collision detection** during rendering.
 
 **Sprite-Sprite Collision:**
 - Detected when two sprites have overlapping non-transparent pixels
-- Written to collision buffer at 0x0A00+
+- Written to collision buffer at 0x0A00-0x0A7F
 
 **Sprite-Tile Collision:**
 - Detected when sprite overlaps a solid tile (bit 7 set in tile properties)
@@ -477,7 +528,7 @@ Bits 7-3: Reserved
 
 ### Collision Buffer
 
-**Location:** 0x0980-0x0A7F (256 bytes)
+**Location:** 0x0A00-0x0A7F (128 bytes)
 
 Each collision entry is 3 bytes:
 
@@ -504,7 +555,7 @@ Examples:
 0b1001 = Top + right (corner collision)
 ```
 
-**Buffer capacity:** 256 bytes ÷ 3 bytes = **85 collision entries** per frame
+**Buffer capacity:** 128 bytes ÷ 3 bytes = **42 collision entries** per frame
 
 ### Collision Detection Timing
 
@@ -704,10 +755,10 @@ main:
   ST R0, [$0105]         ; SPRITE_COUNT = 1
 
   ; Setup sprite 0 (player)
-  ; Position
-  LD R0, #120            ; X = 120
+  ; Position (X = 120, Y = 72)
+  LD R0, #120            ; X low byte = 120
   ST R0, [$0700]
-  LD R0, #72             ; Y = 72
+  LD R0, #72             ; Y low byte = 72
   ST R0, [$0701]
 
   ; Graphics
@@ -722,6 +773,10 @@ main:
   LD R0, #18             ; Bank 18 (cartridge bank 2)
   ST R0, [$0704]
 
+  ; XY high bits (both 0 for positive coordinates)
+  LD R0, #$00
+  ST R0, [$0705]
+
 done:
   JMP done
 ```
@@ -729,10 +784,11 @@ done:
 ### Example 2: Moving Sprite with Controller
 
 ```assembly
-; Move sprite 0 with D-pad
+; Move sprite 0 with D-pad (simple 8-bit movement, no edge clipping)
 
-.define SPRITE_0_X $0700
-.define SPRITE_0_Y $0701
+.define SPRITE_0_X_LO $0700
+.define SPRITE_0_Y_LO $0701
+.define SPRITE_0_XY_HI $0705
 .define CONTROLLER_1 $0136
 
 game_loop:
@@ -742,44 +798,46 @@ game_loop:
   ; Check UP
   AND R0, #$80           ; Bit 7
   BRZ .check_down
-  LD R1, [SPRITE_0_Y]
+  LD R1, [SPRITE_0_Y_LO]
   DEC R1
-  ST R1, [SPRITE_0_Y]
+  ST R1, [SPRITE_0_Y_LO]
 
 .check_down:
   LD R0, [CONTROLLER_1]
   AND R0, #$40           ; Bit 6
   BRZ .check_left
-  LD R1, [SPRITE_0_Y]
+  LD R1, [SPRITE_0_Y_LO]
   INC R1
-  ST R1, [SPRITE_0_Y]
+  ST R1, [SPRITE_0_Y_LO]
 
 .check_left:
   LD R0, [CONTROLLER_1]
   AND R0, #$20           ; Bit 5
   BRZ .check_right
-  LD R1, [SPRITE_0_X]
+  LD R1, [SPRITE_0_X_LO]
   DEC R1
-  ST R1, [SPRITE_0_X]
+  ST R1, [SPRITE_0_X_LO]
 
 .check_right:
   LD R0, [CONTROLLER_1]
   AND R0, #$10           ; Bit 4
   BRZ .done
-  LD R1, [SPRITE_0_X]
+  LD R1, [SPRITE_0_X_LO]
   INC R1
-  ST R1, [SPRITE_0_X]
+  ST R1, [SPRITE_0_X_LO]
 
 .done:
   JMP game_loop
 ```
+
+**Note:** For full 9-bit coordinate support with edge clipping, you would also need to update SPRITE_0_XY_HI when coordinates cross the 0/255 boundary. See the sprite_manager runtime library for a complete implementation.
 
 ### Example 3: Sprite Animation
 
 ```assembly
 ; Animate sprite by cycling through 4 frames
 
-.define SPRITE_0_IDX $0702
+.define SPRITE_0_IDX $0702    ; Sprite 0 graphics index (6-byte entries)
 .define ANIM_FRAME $0B00
 .define ANIM_COUNTER $0B01
 
@@ -817,7 +875,7 @@ vblank_handler:
 .define PLAYER_SPRITE 0
 .define COLLISION_FLAGS $0108
 .define COLLISION_COUNT $0109
-.define COLLISION_BUFFER $0980
+.define COLLISION_BUFFER $0A00    ; Updated for 6-byte SAT entries
 
 check_collisions:
   ; Check if any collisions occurred
@@ -878,7 +936,7 @@ check_collisions:
 ```assembly
 ; Flip player sprite based on movement direction
 
-.define SPRITE_0_FLAGS $0703
+.define SPRITE_0_FLAGS $0703   ; Sprite 0 flags (6-byte entries)
 .define PLAYER_FACING $0B02    ; 0=right, 1=left
 
 move_player_left:
@@ -929,8 +987,8 @@ move_player_right:
 
 | Address Range | Size | Description |
 |---------------|------|-------------|
-| 0x0700-0x097F | 640 B | Sprite Attribute Table (128 sprites × 5 bytes) |
-| 0x0980-0x0A7F | 256 B | Collision Buffer (85 entries × 3 bytes) |
+| 0x0700-0x09FF | 768 B | Sprite Attribute Table (128 sprites × 6 bytes) |
+| 0x0A00-0x0A7F | 128 B | Collision Buffer (42 entries × 3 bytes) |
 | Banks 0-255 | 8 MB | Sprite graphics (any bank: RAM or ROM) |
 
 ---

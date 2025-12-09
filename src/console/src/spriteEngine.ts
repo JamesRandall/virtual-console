@@ -23,8 +23,8 @@ export const SPRITE_SCANLINE_LIMIT = 0x010b;
 
 // Memory layout
 export const SPRITE_TABLE_START = 0x0700;
-export const SPRITE_TABLE_END = 0x097f;
-export const COLLISION_BUFFER_START = 0x0980;
+export const SPRITE_TABLE_END = 0x09ff;
+export const COLLISION_BUFFER_START = 0x0a00;
 export const COLLISION_BUFFER_END = 0x0a7f;
 
 // Sprite constants
@@ -34,15 +34,20 @@ export const SPRITE_BYTES_4BPP = 128; // 16x16 / 2
 export const SPRITE_BYTES_8BPP = 256; // 16x16 x 1
 export const DEFAULT_SCANLINE_LIMIT = 8;
 export const MAX_SCANLINE_LIMIT = 16;
-export const MAX_COLLISIONS = 85;
+export const MAX_COLLISIONS = 42; // 128 bytes / 3 bytes per entry
 
-// Sprite attribute offsets
-export const SPRITE_ATTR_X = 0;
-export const SPRITE_ATTR_Y = 1;
+// Sprite attribute offsets (6 bytes per sprite)
+export const SPRITE_ATTR_X_LO = 0;
+export const SPRITE_ATTR_Y_LO = 1;
 export const SPRITE_ATTR_IDX = 2;
 export const SPRITE_ATTR_FLAGS = 3;
 export const SPRITE_ATTR_BANK = 4;
-export const SPRITE_ATTR_SIZE = 5;
+export const SPRITE_ATTR_XY_HI = 5;
+export const SPRITE_ATTR_SIZE = 6;
+
+// Backwards compatibility aliases
+export const SPRITE_ATTR_X = SPRITE_ATTR_X_LO;
+export const SPRITE_ATTR_Y = SPRITE_ATTR_Y_LO;
 
 // Sprite flags bit masks
 export const FLAG_FLIP_H = 0x80;
@@ -157,11 +162,23 @@ export class SpriteEngine {
   readSpriteAttribute(spriteId: number): SpriteAttribute {
     const baseAddr = SPRITE_TABLE_START + spriteId * SPRITE_ATTR_SIZE;
 
-    const x = this.lowerMemory[baseAddr + SPRITE_ATTR_X];
-    const y = this.lowerMemory[baseAddr + SPRITE_ATTR_Y];
+    const xLo = this.lowerMemory[baseAddr + SPRITE_ATTR_X_LO];
+    const yLo = this.lowerMemory[baseAddr + SPRITE_ATTR_Y_LO];
     const spriteIndex = this.lowerMemory[baseAddr + SPRITE_ATTR_IDX];
     const flags = this.lowerMemory[baseAddr + SPRITE_ATTR_FLAGS];
     const bank = this.lowerMemory[baseAddr + SPRITE_ATTR_BANK];
+    const xyHi = this.lowerMemory[baseAddr + SPRITE_ATTR_XY_HI];
+
+    // Build 9-bit signed coordinates from low byte and high bit
+    // Bit 0 of xyHi = X high bit (bit 8)
+    // Bit 1 of xyHi = Y high bit (bit 8)
+    const xHiBit = (xyHi & 0x01) !== 0;
+    const yHiBit = (xyHi & 0x02) !== 0;
+
+    // Combine into 9-bit value, then sign-extend to full integer
+    // If high bit is set, the value is negative (two's complement)
+    const x = xHiBit ? (xLo | 0x100) - 0x200 : xLo;
+    const y = yHiBit ? (yLo | 0x100) - 0x200 : yLo;
 
     return {
       x,

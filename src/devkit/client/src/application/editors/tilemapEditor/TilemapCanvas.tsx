@@ -641,7 +641,7 @@ export function TilemapCanvas({
       const destY = previewSprite.y * zoom - scrollTop;
       drawSpriteFromAtlas(ctx, previewSprite, destX, destY, spriteSize, 0.6, false);
     }
-  }, [width, height, tilePixelSize, hoverPos, isDrawing, selectedTool, selectedTileIndex, previewTiles, pastePreview, selection, spritePaletteConfigs, drawTileFromAtlas, scrollLeft, scrollTop, canvasWidth, canvasHeight, editorMode, sprites, selectedSpriteIds, spriteTool, spriteToPlace, hoverPixelPos, drawSpriteFromAtlas, zoom]);
+  }, [width, height, tilePixelSize, hoverPos, isDrawing, selectedTool, selectedTileIndex, previewTiles, pastePreview, selection, spritePaletteConfigs, drawTileFromAtlas, scrollLeft, scrollTop, canvasWidth, canvasHeight, editorMode, sprites, selectedSpriteIds, spriteTool, spriteToPlace, hoverPixelPos, drawSpriteFromAtlas, zoom, spriteAtlas]);
 
   // Get tile position from mouse event (accounting for scroll)
   const getTilePos = useCallback((e: React.MouseEvent<HTMLCanvasElement>): { row: number; col: number } => {
