@@ -324,9 +324,10 @@ export function canDeleteFile(path: string): boolean {
 }
 
 /**
- * Create a new .tbin tilemap file with header and empty tile data
+ * Create a new .tbin tilemap file with header and empty tile data,
+ * along with a paired .sbin sprite placement file.
  *
- * File format:
+ * TBIN File format:
  * - Header (8 bytes):
  *   - Bytes 0-1: Width in tiles (little-endian uint16)
  *   - Bytes 2-3: Height in tiles (little-endian uint16)
@@ -334,6 +335,12 @@ export function canDeleteFile(path: string): boolean {
  * - Tile data (width * height * 2 bytes):
  *   - Each tile is 2 bytes: [tileIndex, attributes]
  *   - All tiles initialized to 0 (empty)
+ *
+ * SBIN File format (paired sprite placement file):
+ * - Header (8 bytes):
+ *   - Bytes 0-1: Sprite count (little-endian uint16, initially 0)
+ *   - Bytes 2-3: Version (little-endian uint16, currently 1)
+ *   - Bytes 4-7: Reserved (set to 0)
  */
 export async function createTbinFile(
   directoryHandle: FileSystemDirectoryHandle,
@@ -360,23 +367,39 @@ export async function createTbinFile(
     throw new Error(`Tilemap too large: ${width}x${height} = ${width * height} tiles exceeds maximum`);
   }
 
-  // Create the file data
-  const data = new Uint8Array(totalSize);
+  // Create the tbin file data
+  const tbinData = new Uint8Array(totalSize);
 
   // Write header (little-endian)
-  data[0] = width & 0xFF;
-  data[1] = (width >> 8) & 0xFF;
-  data[2] = height & 0xFF;
-  data[3] = (height >> 8) & 0xFF;
+  tbinData[0] = width & 0xFF;
+  tbinData[1] = (width >> 8) & 0xFF;
+  tbinData[2] = height & 0xFF;
+  tbinData[3] = (height >> 8) & 0xFF;
   // Bytes 4-7 are reserved (already 0)
 
   // Tile data is already initialized to 0 (empty tiles)
 
-  // Create the file
-  const fileHandle = await currentHandle.getFileHandle(fileName, { create: true });
-  const writable = await fileHandle.createWritable();
-  await writable.write(data.buffer as ArrayBuffer);
-  await writable.close();
+  // Create the tbin file
+  const tbinFileHandle = await currentHandle.getFileHandle(fileName, { create: true });
+  const tbinWritable = await tbinFileHandle.createWritable();
+  await tbinWritable.write(tbinData.buffer as ArrayBuffer);
+  await tbinWritable.close();
+
+  // Create the paired .sbin file
+  const sbinFileName = fileName.replace(/\.tbin$/, '.sbin');
+  const sbinData = new Uint8Array(8); // Empty header only
+
+  // Write sbin header (little-endian)
+  sbinData[0] = 0; // sprite count low byte
+  sbinData[1] = 0; // sprite count high byte
+  sbinData[2] = 1; // version low byte (version 1)
+  sbinData[3] = 0; // version high byte
+  // Bytes 4-7 are reserved (already 0)
+
+  const sbinFileHandle = await currentHandle.getFileHandle(sbinFileName, { create: true });
+  const sbinWritable = await sbinFileHandle.createWritable();
+  await sbinWritable.write(sbinData.buffer as ArrayBuffer);
+  await sbinWritable.close();
 }
 
 /**

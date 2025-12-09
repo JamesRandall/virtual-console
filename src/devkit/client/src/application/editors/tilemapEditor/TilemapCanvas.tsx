@@ -3,6 +3,8 @@ import { SYSTEM_PALETTE, rgbToString } from '../../../../../../console/src/syste
 import type { TileEntry, TileSelection, PastePreview } from './TilemapEditor';
 import type { TilemapTool } from './TilemapToolPalette';
 import type { SpritePaletteConfig } from '../../../stores/devkitStore';
+import type { LevelSprite, EditorMode, SpriteTool } from './spriteUtils';
+import { findSpriteAt } from './spriteUtils';
 
 interface TilemapCanvasProps {
   tiles: TileEntry[][];
@@ -25,6 +27,24 @@ interface TilemapCanvasProps {
   onOperationEnd: () => void;
   onStartMove: () => void;
   onCursorChange: (pos: { row: number; col: number } | null) => void;
+  // Sprite-related props
+  editorMode?: EditorMode;
+  sprites?: LevelSprite[];
+  selectedSpriteIds?: Set<number>;
+  spriteTool?: SpriteTool;
+  spriteToPlace?: number;
+  // Sprite graphics (separate from tile graphics)
+  spriteGbinData?: Uint8Array | null;
+  spritePbinData?: Uint8Array | null;
+  selectedSpritePaletteBlock?: number;
+  spriteGbinPaletteConfigs?: SpritePaletteConfig[];
+  snapToGrid?: boolean;
+  onPlaceSprite?: (x: number, y: number) => void;
+  onSelectSprite?: (spriteId: number, addToSelection: boolean) => void;
+  onClearSpriteSelection?: () => void;
+  onMoveSprites?: (dx: number, dy: number) => void;
+  onCommitSpriteMove?: () => void;
+  onDeleteSpriteAt?: (x: number, y: number) => void;
 }
 
 const TILE_SIZE = 16; // 16x16 pixels per tile
@@ -58,17 +78,40 @@ export function TilemapCanvas({
   onOperationEnd,
   onStartMove,
   onCursorChange,
+  // Sprite props
+  editorMode = 'tile',
+  sprites = [],
+  selectedSpriteIds = new Set(),
+  spriteTool = 'select',
+  spriteToPlace = 0,
+  spriteGbinData,
+  spritePbinData,
+  selectedSpritePaletteBlock = 0,
+  spriteGbinPaletteConfigs,
+  snapToGrid = true,
+  onPlaceSprite,
+  onSelectSprite,
+  onClearSpriteSelection,
+  onMoveSprites,
+  onCommitSpriteMove,
+  onDeleteSpriteAt,
 }: TilemapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const tileAtlasRef = useRef<HTMLCanvasElement | null>(null);
+  const spriteAtlasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState<{ row: number; col: number } | null>(null);
   const [hoverPos, setHoverPos] = useState<{ row: number; col: number } | null>(null);
   const [previewTiles, setPreviewTiles] = useState<Array<{ row: number; col: number }>>([]);
   const [isDraggingPaste, setIsDraggingPaste] = useState(false);
   const [pasteDragOffset, setPasteDragOffset] = useState<{ row: number; col: number } | null>(null);
+
+  // Sprite dragging state
+  const [isDraggingSprite, setIsDraggingSprite] = useState(false);
+  const [spriteDragStart, setSpriteDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [hoverPixelPos, setHoverPixelPos] = useState<{ x: number; y: number } | null>(null);
 
   // Scroll state for virtualization
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -199,6 +242,79 @@ export function TilemapCanvas({
     tileAtlasRef.current = tileAtlas;
   }, [tileAtlas]);
 
+  // Build a sprite atlas - separate from tile atlas, uses sprite gbin/pbin
+  const spriteAtlas = useMemo(() => {
+    if (!spriteGbinData) return null;
+
+    // Same structure as tile atlas
+    const atlasCanvas = document.createElement('canvas');
+    const atlasWidth = 16 * TILE_SIZE;
+    const atlasHeight = 64 * TILE_SIZE;
+    atlasCanvas.width = atlasWidth;
+    atlasCanvas.height = atlasHeight;
+
+    const ctx = atlasCanvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.imageSmoothingEnabled = false;
+
+    // Pre-render each sprite for each palette offset (0-3)
+    for (let paletteOffset = 0; paletteOffset < 4; paletteOffset++) {
+      for (let spriteIndex = 0; spriteIndex < 256; spriteIndex++) {
+        const atlasRow = paletteOffset * 16 + Math.floor(spriteIndex / 16);
+        const atlasCol = spriteIndex % 16;
+        const x = atlasCol * TILE_SIZE;
+        const y = atlasRow * TILE_SIZE;
+
+        // Fill background with transparency pattern
+        const checkerSize = 4;
+        for (let cy = 0; cy < TILE_SIZE; cy += checkerSize) {
+          for (let cx = 0; cx < TILE_SIZE; cx += checkerSize) {
+            const isLight = ((cx / checkerSize) + (cy / checkerSize)) % 2 === 0;
+            ctx.fillStyle = isLight ? CHECKER_LIGHT : CHECKER_DARK;
+            ctx.fillRect(x + cx, y + cy, checkerSize, checkerSize);
+          }
+        }
+
+        // Draw sprite pixels
+        const spriteOffset = spriteIndex * BYTES_PER_TILE_4BPP;
+
+        // Use per-sprite palette config if available, otherwise fall back to selected block
+        const basePaletteBlock = spriteGbinPaletteConfigs?.[spriteIndex]?.block ?? selectedSpritePaletteBlock;
+        const paletteBlock = basePaletteBlock + paletteOffset;
+
+        for (let row = 0; row < TILE_SIZE; row++) {
+          for (let col = 0; col < TILE_SIZE; col++) {
+            const byteOffset = spriteOffset + row * 8 + Math.floor(col / 2);
+            const byteValue = spriteGbinData[byteOffset] || 0;
+            const colorIndex = col % 2 === 0 ? (byteValue >> 4) & 0x0F : byteValue & 0x0F;
+
+            if (colorIndex === 0) continue; // Skip transparent
+
+            let color: string;
+            if (spritePbinData) {
+              const blockOffset = paletteBlock * 16;
+              const systemPaletteIndex = spritePbinData[blockOffset + colorIndex] || 0;
+              color = rgbToString(SYSTEM_PALETTE[systemPaletteIndex] || SYSTEM_PALETTE[0]);
+            } else {
+              color = rgbToString(SYSTEM_PALETTE[colorIndex] || SYSTEM_PALETTE[0]);
+            }
+
+            ctx.fillStyle = color;
+            ctx.fillRect(x + col, y + row, 1, 1);
+          }
+        }
+      }
+    }
+
+    return atlasCanvas;
+  }, [spriteGbinData, spritePbinData, selectedSpritePaletteBlock, spriteGbinPaletteConfigs]);
+
+  // Store sprite atlas ref for use in callbacks
+  useEffect(() => {
+    spriteAtlasRef.current = spriteAtlas;
+  }, [spriteAtlas]);
+
   // Draw a tile from the atlas to the destination canvas
   const drawTileFromAtlas = useCallback((
     ctx: CanvasRenderingContext2D,
@@ -241,6 +357,55 @@ export function TilemapCanvas({
     }
 
     ctx.globalAlpha = 1.0;
+  }, []);
+
+  // Draw a sprite from the sprite atlas (uses separate sprite gbin/pbin)
+  const drawSpriteFromAtlas = useCallback((
+    ctx: CanvasRenderingContext2D,
+    sprite: LevelSprite,
+    destX: number,
+    destY: number,
+    destSize: number,
+    alpha: number = 1.0,
+    highlight: boolean = false
+  ) => {
+    const atlas = spriteAtlasRef.current;
+    if (!atlas) return;
+
+    // Calculate atlas position
+    const atlasRow = sprite.paletteOffset * 16 + Math.floor(sprite.spriteIndex / 16);
+    const atlasCol = sprite.spriteIndex % 16;
+    const srcX = atlasCol * TILE_SIZE;
+    const srcY = atlasRow * TILE_SIZE;
+
+    ctx.globalAlpha = alpha;
+
+    if (sprite.flipH || sprite.flipV) {
+      ctx.save();
+      ctx.translate(destX + destSize / 2, destY + destSize / 2);
+      ctx.scale(sprite.flipH ? -1 : 1, sprite.flipV ? -1 : 1);
+      ctx.drawImage(
+        atlas,
+        srcX, srcY, TILE_SIZE, TILE_SIZE,
+        -destSize / 2, -destSize / 2, destSize, destSize
+      );
+      ctx.restore();
+    } else {
+      ctx.drawImage(
+        atlas,
+        srcX, srcY, TILE_SIZE, TILE_SIZE,
+        destX, destY, destSize, destSize
+      );
+    }
+
+    ctx.globalAlpha = 1.0;
+
+    // Draw selection highlight
+    if (highlight) {
+      ctx.strokeStyle = 'rgba(100, 255, 100, 0.9)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(destX, destY, destSize, destSize);
+    }
   }, []);
 
   // Draw the main tilemap canvas (only visible tiles)
@@ -328,8 +493,8 @@ export function TilemapCanvas({
       y: row * tilePixelSize - scrollTop,
     });
 
-    // Draw hover preview for pen/eraser
-    if (hoverPos && !isDrawing && (selectedTool === 'pen' || selectedTool === 'eraser')) {
+    // Draw hover preview for pen/eraser (tile mode only)
+    if (editorMode === 'tile' && hoverPos && !isDrawing && (selectedTool === 'pen' || selectedTool === 'eraser')) {
       const { row, col } = hoverPos;
       if (row >= 0 && row < height && col >= 0 && col < width) {
         const { x, y } = tileToCanvas(row, col);
@@ -355,8 +520,8 @@ export function TilemapCanvas({
       }
     }
 
-    // Draw preview tiles (for line, rectangle tools while drawing)
-    if (previewTiles.length > 0 && isDrawing) {
+    // Draw preview tiles (for line, rectangle tools while drawing - tile mode only)
+    if (editorMode === 'tile' && previewTiles.length > 0 && isDrawing) {
       if (selectedTool === 'line' || selectedTool === 'rectangle') {
         for (const { row, col } of previewTiles) {
           if (row >= 0 && row < height && col >= 0 && col < width && tileAtlasRef.current) {
@@ -417,8 +582,8 @@ export function TilemapCanvas({
       ctx.setLineDash([]);
     }
 
-    // Draw selection rectangle
-    if (selection) {
+    // Draw selection rectangle (tile mode)
+    if (selection && editorMode === 'tile') {
       const minRow = Math.min(selection.startRow, selection.endRow);
       const maxRow = Math.max(selection.startRow, selection.endRow);
       const minCol = Math.min(selection.startCol, selection.endCol);
@@ -438,7 +603,45 @@ export function TilemapCanvas({
       ctx.fillStyle = 'rgba(100, 200, 255, 0.1)';
       ctx.fillRect(x, y, selWidth, selHeight);
     }
-  }, [width, height, tilePixelSize, hoverPos, isDrawing, selectedTool, selectedTileIndex, previewTiles, pastePreview, selection, spritePaletteConfigs, drawTileFromAtlas, scrollLeft, scrollTop, canvasWidth, canvasHeight]);
+
+    // ===== SPRITE RENDERING =====
+    const spriteSize = TILE_SIZE * zoom;
+
+    // Draw all sprites (dimmed in tile mode, full in sprite mode)
+    const spriteAlpha = editorMode === 'tile' ? 0.5 : 1.0;
+    for (const sprite of sprites) {
+      const destX = sprite.x * zoom - scrollLeft;
+      const destY = sprite.y * zoom - scrollTop;
+
+      // Skip if off-screen
+      if (destX + spriteSize < 0 || destY + spriteSize < 0 ||
+          destX > canvasWidth || destY > canvasHeight) {
+        continue;
+      }
+
+      const isSelected = selectedSpriteIds.has(sprite.id);
+      drawSpriteFromAtlas(ctx, sprite, destX, destY, spriteSize, spriteAlpha, isSelected && editorMode === 'sprite');
+    }
+
+    // Draw sprite placement preview (sprite mode, place tool)
+    if (editorMode === 'sprite' && spriteTool === 'place' && hoverPixelPos && spriteAtlasRef.current) {
+      const previewSprite: LevelSprite = {
+        id: -1,
+        x: hoverPixelPos.x,
+        y: hoverPixelPos.y,
+        spriteIndex: spriteToPlace,
+        flipH: false,
+        flipV: false,
+        priority: false,
+        paletteOffset: 0,
+        bankOffset: 0,
+        typeId: 0,
+      };
+      const destX = previewSprite.x * zoom - scrollLeft;
+      const destY = previewSprite.y * zoom - scrollTop;
+      drawSpriteFromAtlas(ctx, previewSprite, destX, destY, spriteSize, 0.6, false);
+    }
+  }, [width, height, tilePixelSize, hoverPos, isDrawing, selectedTool, selectedTileIndex, previewTiles, pastePreview, selection, spritePaletteConfigs, drawTileFromAtlas, scrollLeft, scrollTop, canvasWidth, canvasHeight, editorMode, sprites, selectedSpriteIds, spriteTool, spriteToPlace, hoverPixelPos, drawSpriteFromAtlas, zoom]);
 
   // Get tile position from mouse event (accounting for scroll)
   const getTilePos = useCallback((e: React.MouseEvent<HTMLCanvasElement>): { row: number; col: number } => {
@@ -454,6 +657,26 @@ export function TilemapCanvas({
 
     return { row, col };
   }, [tilePixelSize, scrollLeft, scrollTop]);
+
+  // Get pixel position from mouse event (for sprite placement)
+  const getPixelPos = useCallback((e: React.MouseEvent<HTMLCanvasElement>): { x: number; y: number } => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: -1, y: -1 };
+
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left + scrollLeft) / zoom);
+    const y = Math.floor((e.clientY - rect.top + scrollTop) / zoom);
+
+    return { x, y };
+  }, [zoom, scrollLeft, scrollTop]);
+
+  // Snap pixel position to tile grid (16px alignment)
+  const snapToTileGrid = useCallback((pos: { x: number; y: number }): { x: number; y: number } => {
+    return {
+      x: Math.floor(pos.x / TILE_SIZE) * TILE_SIZE,
+      y: Math.floor(pos.y / TILE_SIZE) * TILE_SIZE,
+    };
+  }, []);
 
   // Check if point is inside paste preview
   const isInsidePastePreview = useCallback((row: number, col: number): boolean => {
@@ -571,6 +794,42 @@ export function TilemapCanvas({
   // Handle mouse down
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const { row, col } = getTilePos(e);
+    const pixelPos = getPixelPos(e);
+
+    // ===== SPRITE MODE =====
+    if (editorMode === 'sprite') {
+      if (spriteTool === 'place') {
+        // Place sprite at pixel position (snapped to grid if enabled)
+        const placePos = snapToGrid ? snapToTileGrid(pixelPos) : pixelPos;
+        onPlaceSprite?.(placePos.x, placePos.y);
+      } else if (spriteTool === 'select') {
+        // Check if clicking on a sprite
+        const clickedSprite = findSpriteAt(sprites, pixelPos.x, pixelPos.y);
+        if (clickedSprite) {
+          const addToSelection = e.shiftKey;
+          onSelectSprite?.(clickedSprite.id, addToSelection);
+          // Start dragging if sprite is selected
+          if (selectedSpriteIds.has(clickedSprite.id) || !addToSelection) {
+            setIsDraggingSprite(true);
+            setSpriteDragStart(pixelPos);
+          }
+        } else {
+          // Click on empty space - clear selection
+          onClearSpriteSelection?.();
+        }
+      } else if (spriteTool === 'delete') {
+        // Delete sprite at click position
+        const clickedSprite = findSpriteAt(sprites, pixelPos.x, pixelPos.y);
+        if (clickedSprite) {
+          onSelectSprite?.(clickedSprite.id, false);
+          // The delete will be handled by the parent via keyboard or attribute editor
+          onDeleteSpriteAt?.(pixelPos.x, pixelPos.y);
+        }
+      }
+      return;
+    }
+
+    // ===== TILE MODE =====
     if (row < 0 || row >= height || col < 0 || col >= width) return;
 
     // Check if clicking inside paste preview to start dragging
@@ -620,11 +879,12 @@ export function TilemapCanvas({
         col: col - minCol,
       });
     }
-  }, [getTilePos, height, width, pastePreview, isInsidePastePreview, onCommitPaste, selectedTool, selectedTileIndex, onTileChange, tiles, getFloodFillTiles, onTilesChange, onOperationEnd, onSelectionChange, selection, isInsideSelection, onStartMove]);
+  }, [getTilePos, getPixelPos, height, width, pastePreview, isInsidePastePreview, onCommitPaste, selectedTool, selectedTileIndex, onTileChange, tiles, getFloodFillTiles, onTilesChange, onOperationEnd, onSelectionChange, selection, isInsideSelection, onStartMove, editorMode, spriteTool, sprites, selectedSpriteIds, onPlaceSprite, onSelectSprite, onClearSpriteSelection, onDeleteSpriteAt, snapToGrid, snapToTileGrid]);
 
   // Handle mouse move
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const { row, col } = getTilePos(e);
+    const pixelPos = getPixelPos(e);
 
     // Always update hover position for preview
     if (row >= 0 && row < height && col >= 0 && col < width) {
@@ -633,6 +893,37 @@ export function TilemapCanvas({
     } else {
       setHoverPos(null);
       onCursorChange(null);
+    }
+
+    // Update pixel position for sprite placement preview
+    if (editorMode === 'sprite') {
+      // Snap hover position for preview if enabled
+      const hoverPos = snapToGrid ? snapToTileGrid(pixelPos) : pixelPos;
+      setHoverPixelPos(hoverPos);
+
+      // Handle sprite dragging
+      if (isDraggingSprite && spriteDragStart) {
+        if (snapToGrid) {
+          // When snapping, calculate delta from snapped positions
+          const snappedCurrent = snapToTileGrid(pixelPos);
+          const snappedStart = snapToTileGrid(spriteDragStart);
+          const dx = snappedCurrent.x - snappedStart.x;
+          const dy = snappedCurrent.y - snappedStart.y;
+          if (dx !== 0 || dy !== 0) {
+            onMoveSprites?.(dx, dy);
+            setSpriteDragStart(pixelPos); // Keep raw position for next delta
+          }
+        } else {
+          // Free movement
+          const dx = pixelPos.x - spriteDragStart.x;
+          const dy = pixelPos.y - spriteDragStart.y;
+          if (dx !== 0 || dy !== 0) {
+            onMoveSprites?.(dx, dy);
+            setSpriteDragStart(pixelPos);
+          }
+        }
+      }
+      return;
     }
 
     if (row < 0 || row >= height || col < 0 || col >= width) {
@@ -667,10 +958,18 @@ export function TilemapCanvas({
     } else if ((selectedTool === 'select' || selectedTool === 'pointer') && startPos) {
       onSelectionChange({ startRow: startPos.row, startCol: startPos.col, endRow: row, endCol: col });
     }
-  }, [getTilePos, height, width, isDraggingPaste, pastePreview, pasteDragOffset, onPastePreviewChange, isDrawing, selectedTool, selectedTileIndex, onTileChange, startPos, getLineTiles, getRectangleTiles, onSelectionChange, onCursorChange]);
+  }, [getTilePos, getPixelPos, height, width, isDraggingPaste, pastePreview, pasteDragOffset, onPastePreviewChange, isDrawing, selectedTool, selectedTileIndex, onTileChange, startPos, getLineTiles, getRectangleTiles, onSelectionChange, onCursorChange, editorMode, isDraggingSprite, spriteDragStart, onMoveSprites, snapToGrid, snapToTileGrid]);
 
   // Handle mouse up
   const handleMouseUp = useCallback(() => {
+    // Handle sprite drag end
+    if (isDraggingSprite) {
+      setIsDraggingSprite(false);
+      setSpriteDragStart(null);
+      onCommitSpriteMove?.();
+      return;
+    }
+
     if (isDraggingPaste) {
       setIsDraggingPaste(false);
       setPasteDragOffset(null);
@@ -695,18 +994,19 @@ export function TilemapCanvas({
     setIsDrawing(false);
     setStartPos(null);
     setPreviewTiles([]);
-  }, [isDraggingPaste, isDrawing, startPos, previewTiles, selectedTool, selectedTileIndex, onTilesChange, onOperationEnd]);
+  }, [isDraggingPaste, isDraggingSprite, isDrawing, startPos, previewTiles, selectedTool, selectedTileIndex, onTilesChange, onOperationEnd, onCommitSpriteMove]);
 
   // Handle mouse leave
   const handleMouseLeave = useCallback(() => {
     setHoverPos(null);
+    setHoverPixelPos(null);
     setPreviewTiles([]);
     onCursorChange(null);
   }, [onCursorChange]);
 
   // Global mouse listeners for dragging outside canvas
   useEffect(() => {
-    if (!isDrawing && !isDraggingPaste) return;
+    if (!isDrawing && !isDraggingPaste && !isDraggingSprite) return;
 
     const handleGlobalMouseUp = () => {
       handleMouseUp();
@@ -714,7 +1014,7 @@ export function TilemapCanvas({
 
     document.addEventListener('mouseup', handleGlobalMouseUp);
     return () => document.removeEventListener('mouseup', handleGlobalMouseUp);
-  }, [isDrawing, isDraggingPaste, handleMouseUp]);
+  }, [isDrawing, isDraggingPaste, isDraggingSprite, handleMouseUp]);
 
   // Determine if we need to center (tilemap smaller than viewport)
   const needsCenteringH = fullWidth < viewportWidth;

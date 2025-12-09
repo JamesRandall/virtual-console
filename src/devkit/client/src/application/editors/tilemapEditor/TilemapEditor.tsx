@@ -4,11 +4,31 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faUndo, faRedo } from '@fortawesome/free-solid-svg-icons';
 import { TilemapCanvas } from './TilemapCanvas';
 import { TilePicker } from './TilePicker';
+import { SpritePicker } from './SpritePicker';
 import { TilemapToolPalette, type TilemapTool } from './TilemapToolPalette';
+import { SpriteToolPalette } from './SpriteToolPalette';
 import { AttributeEditor } from './AttributeEditor';
+import { SpriteAttributeEditor } from './SpriteAttributeEditor';
 import { ResizeDropdown } from './ResizeDropdown';
+import { EditorModeToggle } from './EditorModeToggle';
 import { useDevkitStore, type SpritePaletteConfig, type TilemapEditorFileConfig } from '../../../stores/devkitStore';
-import { readBinaryFile } from '../../../services/fileSystemService';
+import { readBinaryFile, writeBinaryFile } from '../../../services/fileSystemService';
+import {
+  type LevelSprite,
+  type EditorMode,
+  type SpriteTool,
+  parseSbin,
+  serializeSbin,
+  createEmptySbin,
+  getSbinPath,
+  generateSpriteId,
+  createSprite,
+  findSpriteAt,
+  findSpritesInRect,
+  cloneSpritesForClipboard,
+  pasteSprites,
+  type SpriteClipboard,
+} from './spriteUtils';
 
 // Extract tbin name from path (e.g., "tilemaps/level1.tbin" -> "level1")
 function getTbinName(filePath: string): string {
@@ -52,11 +72,12 @@ export interface PastePreview {
   data: TileEntry[][];
 }
 
-// Undo state (includes dimensions for resize support)
+// Undo state (includes dimensions for resize support and sprites)
 interface UndoState {
   width: number;
   height: number;
   tiles: TileEntry[][];
+  sprites: LevelSprite[];
 }
 
 interface TilemapEditorProps {
@@ -109,6 +130,7 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
   const projectConfig = useDevkitStore((state) => state.projectConfig);
   const updateFileContent = useDevkitStore((state) => state.updateFileContent);
   const markFileDirty = useDevkitStore((state) => state.markFileDirty);
+  const refreshProjectTree = useDevkitStore((state) => state.refreshProjectTree);
 
   // Track whether we've initialized from content to avoid re-parsing on our own saves
   const initialContentRef = useRef<string | null>(null);
@@ -130,13 +152,20 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
     return rows;
   });
 
-  // Graphics and palette selection
+  // Graphics and palette selection (for tiles)
   const [selectedGbin, setSelectedGbin] = useState<string | null>(null);
   const [selectedPbin, setSelectedPbin] = useState<string | null>(null);
   const [gbinData, setGbinData] = useState<Uint8Array | null>(null);
   const [pbinData, setPbinData] = useState<Uint8Array | null>(null);
   const [availableGbins, setAvailableGbins] = useState<string[]>([]);
   const [availablePbins, setAvailablePbins] = useState<string[]>([]);
+
+  // Graphics and palette selection (for sprites - separate from tiles)
+  const [selectedSpriteGbin, setSelectedSpriteGbin] = useState<string | null>(null);
+  const [selectedSpritePbin, setSelectedSpritePbin] = useState<string | null>(null);
+  const [spriteGbinData, setSpriteGbinData] = useState<Uint8Array | null>(null);
+  const [spritePbinData, setSpritePbinData] = useState<Uint8Array | null>(null);
+  const [selectedSpritePaletteBlock, setSelectedSpritePaletteBlock] = useState(0);
 
   // Track file config (gbin/pbin selections that will be saved to config.json)
   const [fileConfig, setFileConfig] = useState<TilemapEditorFileConfig | null>(null);
@@ -175,12 +204,48 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
   // Cursor position (reported from canvas)
   const [cursorPos, setCursorPos] = useState<{ row: number; col: number } | null>(null);
 
-  // Get sprite palette configs from project config
+  // ===== SPRITE PLACEMENT STATE =====
+  const [editorMode, setEditorMode] = useState<EditorMode>('tile');
+  const [sprites, setSprites] = useState<LevelSprite[]>([]);
+  const [selectedSpriteIds, setSelectedSpriteIds] = useState<Set<number>>(new Set());
+  const [spriteTool, setSpriteTool] = useState<SpriteTool>('select');
+  const [spriteToPlace, setSpriteToPlace] = useState<number>(0);
+  const [spriteClipboard, setSpriteClipboard] = useState<SpriteClipboard | null>(null);
+  const [nextSpriteId, setNextSpriteId] = useState<number>(1);
+  const initialSbinContentRef = useRef<string | null>(null);
+  const [sbinLoaded, setSbinLoaded] = useState(false);
+
+  // Default attributes for new sprites
+  const [defaultSpriteAttrs, setDefaultSpriteAttrs] = useState({
+    flipH: false,
+    flipV: false,
+    priority: false,
+    paletteOffset: 0,
+    bankOffset: 0,
+    typeId: 0,
+  });
+
+  // Snap sprites to tile grid (16px alignment)
+  const [snapToGrid, setSnapToGrid] = useState(true);
+
+  // Get selected sprites as array
+  const selectedSprites = useMemo(() => {
+    return sprites.filter(s => selectedSpriteIds.has(s.id));
+  }, [sprites, selectedSpriteIds]);
+
+  // Get sprite palette configs from project config (for tile graphics)
   const spritePaletteConfigs = useMemo((): SpritePaletteConfig[] | undefined => {
     if (!projectConfig || !selectedGbin) return undefined;
     const gbinName = selectedGbin.split('/').pop()?.replace('.gbin', '') || '';
     return projectConfig['sprite-editor']?.[gbinName];
   }, [projectConfig, selectedGbin]);
+
+  // Get sprite palette configs for sprite graphics (separate from tiles)
+  const spriteGbinPaletteConfigs = useMemo((): SpritePaletteConfig[] | undefined => {
+    if (!projectConfig || !selectedSpriteGbin) return undefined;
+    const gbinName = selectedSpriteGbin.split('/').pop()?.replace('.gbin', '') || '';
+    return projectConfig['sprite-editor']?.[gbinName];
+  }, [projectConfig, selectedSpriteGbin]);
 
   // Get the default palette for a tile index (from config, clamped to 0-3)
   const getDefaultPaletteForTile = useCallback((tileIndex: number): number => {
@@ -205,6 +270,9 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
       setFileConfig(config);
       setSelectedGbin(config.gbin || null);
       setSelectedPbin(config.pbin || null);
+      // Load sprite gbin/pbin if configured, otherwise default to same as tiles
+      setSelectedSpriteGbin((config as { spriteGbin?: string }).spriteGbin || config.gbin || null);
+      setSelectedSpritePbin((config as { spritePbin?: string }).spritePbin || config.pbin || null);
     }
     setConfigLoaded(true);
   }, [projectConfig, tbinName, configLoaded]);
@@ -257,10 +325,17 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
       if (pbins.length > 0 && !selectedPbin && configLoaded) {
         setSelectedPbin(pbins[0]);
       }
+      // Set sprite defaults too
+      if (gbins.length > 0 && !selectedSpriteGbin && configLoaded) {
+        setSelectedSpriteGbin(gbins[0]);
+      }
+      if (pbins.length > 0 && !selectedSpritePbin && configLoaded) {
+        setSelectedSpritePbin(pbins[0]);
+      }
     }
 
     loadAvailableFiles();
-  }, [currentProjectHandle, selectedGbin, selectedPbin, configLoaded]);
+  }, [currentProjectHandle, selectedGbin, selectedPbin, selectedSpriteGbin, selectedSpritePbin, configLoaded]);
 
   // Load gbin data when selection changes
   useEffect(() => {
@@ -301,6 +376,95 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
 
     loadPbin();
   }, [currentProjectHandle, selectedPbin]);
+
+  // Load sprite gbin data when selection changes
+  useEffect(() => {
+    async function loadSpriteGbin() {
+      if (!currentProjectHandle || !selectedSpriteGbin) {
+        setSpriteGbinData(null);
+        return;
+      }
+
+      try {
+        const data = await readBinaryFile(currentProjectHandle, selectedSpriteGbin);
+        setSpriteGbinData(data);
+      } catch (error) {
+        console.error('Error loading sprite gbin:', error);
+        setSpriteGbinData(null);
+      }
+    }
+
+    loadSpriteGbin();
+  }, [currentProjectHandle, selectedSpriteGbin]);
+
+  // Load sprite pbin data when selection changes
+  useEffect(() => {
+    async function loadSpritePbin() {
+      if (!currentProjectHandle || !selectedSpritePbin) {
+        setSpritePbinData(null);
+        return;
+      }
+
+      try {
+        const data = await readBinaryFile(currentProjectHandle, selectedSpritePbin);
+        setSpritePbinData(data);
+      } catch (error) {
+        console.error('Error loading sprite pbin:', error);
+        setSpritePbinData(null);
+      }
+    }
+
+    loadSpritePbin();
+  }, [currentProjectHandle, selectedSpritePbin]);
+
+  // Load sbin (sprite placement) data
+  useEffect(() => {
+    async function loadSbin() {
+      if (!currentProjectHandle || sbinLoaded) return;
+
+      const sbinPath = getSbinPath(filePath);
+
+      try {
+        const data = await readBinaryFile(currentProjectHandle, sbinPath);
+        const loadedSprites = parseSbin(data);
+        setSprites(loadedSprites);
+
+        // Update nextSpriteId based on loaded sprites
+        if (loadedSprites.length > 0) {
+          setNextSpriteId(Math.max(...loadedSprites.map(s => s.id)) + 1);
+        }
+
+        // Store initial content for dirty tracking
+        let binary = '';
+        for (let i = 0; i < data.length; i++) {
+          binary += String.fromCharCode(data[i]);
+        }
+        initialSbinContentRef.current = btoa(binary);
+        setSbinLoaded(true);
+      } catch (error) {
+        // sbin doesn't exist yet - create an empty one
+        const emptySbin = createEmptySbin();
+        try {
+          await writeBinaryFile(currentProjectHandle, sbinPath, emptySbin);
+          console.log('Created empty sbin file:', sbinPath);
+          refreshProjectTree(); // Refresh to show the new file
+        } catch (writeError) {
+          console.error('Failed to create sbin file:', writeError);
+        }
+        setSprites([]);
+
+        // Store initial content for dirty tracking
+        let binary = '';
+        for (let i = 0; i < emptySbin.length; i++) {
+          binary += String.fromCharCode(emptySbin[i]);
+        }
+        initialSbinContentRef.current = btoa(binary);
+        setSbinLoaded(true);
+      }
+    }
+
+    loadSbin();
+  }, [currentProjectHandle, filePath, sbinLoaded, refreshProjectTree]);
 
   // Parse content on initial mount only
   // We track the initial content and only re-parse if the content changes externally
@@ -381,25 +545,64 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
     return bytes;
   }, [width, height, tiles]);
 
-  // Save tilemap to store
+  // Serialize sprites to binary
+  const serializeSprites = useCallback((): Uint8Array => {
+    return serializeSbin(sprites);
+  }, [sprites]);
+
+  // Save tilemap and sprites to store
   const saveToStore = useCallback(() => {
-    const bytes = serializeTilemap();
-    // Convert to base64
-    let binaryString = '';
-    for (let i = 0; i < bytes.length; i++) {
-      binaryString += String.fromCharCode(bytes[i]);
+    // Save tbin
+    const tbinBytes = serializeTilemap();
+    let tbinBinaryString = '';
+    for (let i = 0; i < tbinBytes.length; i++) {
+      tbinBinaryString += String.fromCharCode(tbinBytes[i]);
     }
-    const base64 = btoa(binaryString);
-    // Update the ref so we don't re-parse our own save
-    initialContentRef.current = base64;
-    updateFileContent(filePath, base64);
+    const tbinBase64 = btoa(tbinBinaryString);
+    initialContentRef.current = tbinBase64;
+    updateFileContent(filePath, tbinBase64);
+
+    // Save sbin (sprite placements)
+    const sbinPath = getSbinPath(filePath);
+    const sbinBytes = serializeSprites();
+    let sbinBinaryString = '';
+    for (let i = 0; i < sbinBytes.length; i++) {
+      sbinBinaryString += String.fromCharCode(sbinBytes[i]);
+    }
+    const sbinBase64 = btoa(sbinBinaryString);
+    initialSbinContentRef.current = sbinBase64;
+    updateFileContent(sbinPath, sbinBase64);
+
+    // Mark both files as dirty
     markFileDirty(filePath, true);
-  }, [serializeTilemap, updateFileContent, markFileDirty, filePath]);
+    markFileDirty(sbinPath, true);
+  }, [serializeTilemap, serializeSprites, updateFileContent, markFileDirty, filePath]);
+
+  // Auto-sync sprites to store when they change
+  // This ensures the sbin content is always up-to-date in the store
+  useEffect(() => {
+    if (!sbinLoaded) return; // Don't save until initial load is complete
+
+    const sbinPath = getSbinPath(filePath);
+    const sbinBytes = serializeSbin(sprites);
+    let sbinBinaryString = '';
+    for (let i = 0; i < sbinBytes.length; i++) {
+      sbinBinaryString += String.fromCharCode(sbinBytes[i]);
+    }
+    const sbinBase64 = btoa(sbinBinaryString);
+
+    // Only update if content actually changed
+    if (sbinBase64 !== initialSbinContentRef.current) {
+      updateFileContent(sbinPath, sbinBase64);
+      markFileDirty(sbinPath, true);
+    }
+  }, [sprites, sbinLoaded, filePath, updateFileContent, markFileDirty]);
 
   // Push current state to undo stack
   const pushUndoState = useCallback(() => {
     const clonedTiles = tiles.map(row => row.map(tile => cloneTile(tile)));
-    const state: UndoState = { width, height, tiles: clonedTiles };
+    const clonedSprites = sprites.map(s => ({ ...s }));
+    const state: UndoState = { width, height, tiles: clonedTiles, sprites: clonedSprites };
     setUndoStack(prev => {
       const newStack = [...prev, state];
       if (newStack.length > MAX_UNDO) {
@@ -408,7 +611,7 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
       return newStack;
     });
     setRedoStack([]);
-  }, [tiles, width, height]);
+  }, [tiles, sprites, width, height]);
 
   // Undo
   const handleUndo = useCallback(() => {
@@ -419,6 +622,7 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
       width,
       height,
       tiles: tiles.map(row => row.map(tile => cloneTile(tile))),
+      sprites: sprites.map(s => ({ ...s })),
     };
 
     setRedoStack(prev => [...prev, currentState]);
@@ -426,8 +630,10 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
     setWidth(previousState.width);
     setHeight(previousState.height);
     setTiles(previousState.tiles);
+    setSprites(previousState.sprites);
+    setSelectedSpriteIds(new Set()); // Clear sprite selection on undo
     saveToStore();
-  }, [undoStack, tiles, width, height, saveToStore]);
+  }, [undoStack, tiles, sprites, width, height, saveToStore]);
 
   // Redo
   const handleRedo = useCallback(() => {
@@ -438,6 +644,7 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
       width,
       height,
       tiles: tiles.map(row => row.map(tile => cloneTile(tile))),
+      sprites: sprites.map(s => ({ ...s })),
     };
 
     setUndoStack(prev => [...prev, currentState]);
@@ -445,8 +652,10 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
     setWidth(nextState.width);
     setHeight(nextState.height);
     setTiles(nextState.tiles);
+    setSprites(nextState.sprites);
+    setSelectedSpriteIds(new Set()); // Clear sprite selection on redo
     saveToStore();
-  }, [redoStack, tiles, width, height, saveToStore]);
+  }, [redoStack, tiles, sprites, width, height, saveToStore]);
 
   // Handle single tile change
   const handleTileChange = useCallback((row: number, col: number, tileIndex: number) => {
@@ -729,6 +938,7 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
   const handleGbinChange = useCallback((gbin: string | null) => {
     setSelectedGbin(gbin);
     setFileConfig(prev => ({
+      ...prev,
       gbin: gbin || '',
       pbin: prev?.pbin || selectedPbin || '',
     }));
@@ -739,11 +949,153 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
   const handlePbinChange = useCallback((pbin: string | null) => {
     setSelectedPbin(pbin);
     setFileConfig(prev => ({
+      ...prev,
       gbin: prev?.gbin || selectedGbin || '',
       pbin: pbin || '',
     }));
     markFileDirty(filePath, true);
   }, [selectedGbin, filePath, markFileDirty]);
+
+  // Handle sprite gbin selection change - update config and mark dirty
+  const handleSpriteGbinChange = useCallback((gbin: string | null) => {
+    setSelectedSpriteGbin(gbin);
+    setFileConfig(prev => ({
+      ...prev,
+      gbin: prev?.gbin || selectedGbin || '',
+      pbin: prev?.pbin || selectedPbin || '',
+      spriteGbin: gbin || '',
+    } as TilemapEditorFileConfig));
+    markFileDirty(filePath, true);
+  }, [selectedGbin, selectedPbin, filePath, markFileDirty]);
+
+  // Handle sprite pbin selection change - update config and mark dirty
+  const handleSpritePbinChange = useCallback((pbin: string | null) => {
+    setSelectedSpritePbin(pbin);
+    setFileConfig(prev => ({
+      ...prev,
+      gbin: prev?.gbin || selectedGbin || '',
+      pbin: prev?.pbin || selectedPbin || '',
+      spritePbin: pbin || '',
+    } as TilemapEditorFileConfig));
+    markFileDirty(filePath, true);
+  }, [selectedGbin, selectedPbin, filePath, markFileDirty]);
+
+  // ===== SPRITE MANIPULATION HANDLERS =====
+
+  // Place a sprite at given position
+  const handlePlaceSprite = useCallback((x: number, y: number) => {
+    pushUndoState();
+    const newSprite = createSprite(nextSpriteId, x, y, spriteToPlace, defaultSpriteAttrs);
+    setSprites(prev => [...prev, newSprite]);
+    setSelectedSpriteIds(new Set([nextSpriteId])); // Select the newly placed sprite
+    setNextSpriteId(prev => prev + 1);
+    saveToStore();
+  }, [nextSpriteId, spriteToPlace, defaultSpriteAttrs, pushUndoState, saveToStore]);
+
+  // Select a sprite by clicking
+  const handleSelectSprite = useCallback((spriteId: number, addToSelection: boolean) => {
+    if (addToSelection) {
+      setSelectedSpriteIds(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(spriteId)) {
+          newSet.delete(spriteId);
+        } else {
+          newSet.add(spriteId);
+        }
+        return newSet;
+      });
+    } else {
+      setSelectedSpriteIds(new Set([spriteId]));
+    }
+  }, []);
+
+  // Clear sprite selection
+  const handleClearSpriteSelection = useCallback(() => {
+    setSelectedSpriteIds(new Set());
+  }, []);
+
+  // Delete selected sprites
+  const handleDeleteSprites = useCallback(() => {
+    if (selectedSpriteIds.size === 0) return;
+    pushUndoState();
+    setSprites(prev => prev.filter(s => !selectedSpriteIds.has(s.id)));
+    setSelectedSpriteIds(new Set());
+    saveToStore();
+  }, [selectedSpriteIds, pushUndoState, saveToStore]);
+
+  // Move selected sprites
+  const handleMoveSprites = useCallback((dx: number, dy: number) => {
+    if (selectedSpriteIds.size === 0) return;
+    setSprites(prev => prev.map(s => {
+      if (selectedSpriteIds.has(s.id)) {
+        return { ...s, x: Math.max(0, s.x + dx), y: Math.max(0, s.y + dy) };
+      }
+      return s;
+    }));
+  }, [selectedSpriteIds]);
+
+  // Commit sprite move (for undo)
+  const handleCommitSpriteMove = useCallback(() => {
+    pushUndoState();
+    saveToStore();
+  }, [pushUndoState, saveToStore]);
+
+  // Update sprite attributes
+  const handleSpriteAttributeChange = useCallback((updates: Partial<LevelSprite>) => {
+    if (selectedSpriteIds.size === 0) return;
+    pushUndoState();
+    setSprites(prev => prev.map(s => {
+      if (selectedSpriteIds.has(s.id)) {
+        return { ...s, ...updates };
+      }
+      return s;
+    }));
+    saveToStore();
+  }, [selectedSpriteIds, pushUndoState, saveToStore]);
+
+  // Update single sprite position
+  const handleSpritePositionChange = useCallback((id: number, x: number, y: number) => {
+    pushUndoState();
+    setSprites(prev => prev.map(s => {
+      if (s.id === id) {
+        return { ...s, x, y };
+      }
+      return s;
+    }));
+    saveToStore();
+  }, [pushUndoState, saveToStore]);
+
+  // Copy selected sprites
+  const handleCopySprites = useCallback(() => {
+    const clip = cloneSpritesForClipboard(selectedSprites);
+    if (clip) {
+      setSpriteClipboard(clip);
+    }
+  }, [selectedSprites]);
+
+  // Paste sprites
+  const handlePasteSprites = useCallback((x: number, y: number) => {
+    if (!spriteClipboard) return;
+    pushUndoState();
+    const newSprites = pasteSprites(spriteClipboard, x, y, sprites);
+    setSprites(prev => [...prev, ...newSprites]);
+    setNextSpriteId(prev => prev + newSprites.length);
+    setSelectedSpriteIds(new Set(newSprites.map(s => s.id)));
+    saveToStore();
+  }, [spriteClipboard, sprites, pushUndoState, saveToStore]);
+
+  // Handle mode change
+  const handleModeChange = useCallback((mode: EditorMode) => {
+    setEditorMode(mode);
+    // Clear selections when switching modes
+    if (mode === 'tile') {
+      setSelectedSpriteIds(new Set());
+    } else {
+      setSelection(null);
+      setPastePreview(null);
+      setSpriteTool('place'); // Default to placement mode when entering sprite mode
+    }
+  }, []);
 
   // Expose the file config for saving (will be used by EditorContainer)
   // Store it on the window object so EditorContainer can access it
@@ -763,79 +1115,206 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const modKey = isMac ? e.metaKey : e.ctrlKey;
 
+      // Global shortcuts
       if (modKey && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         handleUndo();
+        return;
       } else if (modKey && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault();
         handleRedo();
-      } else if (modKey && e.key === 'c') {
+        return;
+      }
+
+      // Mode switching
+      if (e.key === 't' || e.key === 'T') {
         e.preventDefault();
-        handleCopy();
-      } else if (modKey && e.key === 'x') {
+        handleModeChange('tile');
+        return;
+      } else if (e.key === 's' && !modKey) {
         e.preventDefault();
-        handleCut();
-      } else if (modKey && e.key === 'v') {
-        e.preventDefault();
-        handlePaste();
-      } else if (e.key === 'Escape') {
-        setPastePreview(null);
-        setSelection(null);
+        handleModeChange('sprite');
+        return;
+      }
+
+      // Mode-specific shortcuts
+      if (editorMode === 'tile') {
+        // Tile mode shortcuts
+        if (modKey && e.key === 'c') {
+          e.preventDefault();
+          handleCopy();
+        } else if (modKey && e.key === 'x') {
+          e.preventDefault();
+          handleCut();
+        } else if (modKey && e.key === 'v') {
+          e.preventDefault();
+          handlePaste();
+        } else if (e.key === 'Escape') {
+          setPastePreview(null);
+          setSelection(null);
+        }
+      } else {
+        // Sprite mode shortcuts
+        if (modKey && e.key === 'c') {
+          e.preventDefault();
+          handleCopySprites();
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          handleDeleteSprites();
+        } else if (e.key === 'Escape') {
+          handleClearSpriteSelection();
+        } else if (e.key === 'p' || e.key === 'P') {
+          e.preventDefault();
+          setSpriteTool('place');
+        } else if (e.key === 'm' || e.key === 'M') {
+          e.preventDefault();
+          setSpriteTool('select');
+        } else if (e.key === 'd' || e.key === 'D') {
+          e.preventDefault();
+          setSpriteTool('delete');
+        } else if (e.key === 'h' || e.key === 'H') {
+          // Flip selected sprites horizontal
+          e.preventDefault();
+          handleSpriteAttributeChange({ flipH: !selectedSprites[0]?.flipH });
+        } else if (e.key === 'v' && !modKey) {
+          // Flip selected sprites vertical (v without ctrl)
+          e.preventDefault();
+          handleSpriteAttributeChange({ flipV: !selectedSprites[0]?.flipV });
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          handleMoveSprites(0, e.shiftKey ? -8 : -1);
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          handleMoveSprites(0, e.shiftKey ? 8 : 1);
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          handleMoveSprites(e.shiftKey ? -8 : -1, 0);
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          handleMoveSprites(e.shiftKey ? 8 : 1, 0);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo, handleCopy, handleCut, handlePaste]);
+  }, [
+    handleUndo, handleRedo, handleCopy, handleCut, handlePaste,
+    handleCopySprites, handleDeleteSprites, handleClearSpriteSelection,
+    handleSpriteAttributeChange, handleMoveSprites, handleModeChange,
+    editorMode, selectedSprites
+  ]);
 
   return (
     <div className="flex flex-col h-full bg-zinc-800">
       {/* Top toolbar */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-700 flex-shrink-0">
         <div className="flex items-center gap-4">
-          {/* Gbin selector */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-zinc-400">Graphics:</label>
-            <select
-              value={selectedGbin || ''}
-              onChange={(e) => handleGbinChange(e.target.value || null)}
-              className="dk-input text-xs py-1 px-2 min-w-32"
-            >
-              <option value="">Select gbin...</option>
-              {availableGbins.map(gbin => (
-                <option key={gbin} value={gbin}>{gbin}</option>
-              ))}
-            </select>
-          </div>
+          {/* Mode-specific gbin/pbin selectors */}
+          {editorMode === 'tile' ? (
+            <>
+              {/* Tile Gbin selector */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-zinc-400">Tile Graphics:</label>
+                <select
+                  value={selectedGbin || ''}
+                  onChange={(e) => handleGbinChange(e.target.value || null)}
+                  className="dk-input text-xs py-1 px-2 min-w-32"
+                >
+                  <option value="">Select gbin...</option>
+                  {availableGbins.map(gbin => (
+                    <option key={gbin} value={gbin}>{gbin}</option>
+                  ))}
+                </select>
+              </div>
 
-          {/* Pbin selector */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-zinc-400">Palette:</label>
-            <select
-              value={selectedPbin || ''}
-              onChange={(e) => handlePbinChange(e.target.value || null)}
-              className="dk-input text-xs py-1 px-2 min-w-32"
-            >
-              <option value="">Select pbin...</option>
-              {availablePbins.map(pbin => (
-                <option key={pbin} value={pbin}>{pbin}</option>
-              ))}
-            </select>
-          </div>
+              {/* Tile Pbin selector */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-zinc-400">Palette:</label>
+                <select
+                  value={selectedPbin || ''}
+                  onChange={(e) => handlePbinChange(e.target.value || null)}
+                  className="dk-input text-xs py-1 px-2 min-w-32"
+                >
+                  <option value="">Select pbin...</option>
+                  {availablePbins.map(pbin => (
+                    <option key={pbin} value={pbin}>{pbin}</option>
+                  ))}
+                </select>
+              </div>
 
-          {/* Palette block selector */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-zinc-400">Block:</label>
-            <select
-              value={selectedPaletteBlock}
-              onChange={(e) => setSelectedPaletteBlock(Number(e.target.value))}
-              className="dk-input text-xs py-1 px-2"
-            >
-              {[...Array(64)].map((_, i) => (
-                <option key={i} value={i}>{i}</option>
-              ))}
-            </select>
-          </div>
+              {/* Tile Palette block selector */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-zinc-400">Block:</label>
+                <select
+                  value={selectedPaletteBlock}
+                  onChange={(e) => setSelectedPaletteBlock(Number(e.target.value))}
+                  className="dk-input text-xs py-1 px-2"
+                >
+                  {[...Array(64)].map((_, i) => (
+                    <option key={i} value={i}>{i}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Sprite Gbin selector */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-green-400">Sprite Graphics:</label>
+                <select
+                  value={selectedSpriteGbin || ''}
+                  onChange={(e) => handleSpriteGbinChange(e.target.value || null)}
+                  className="dk-input text-xs py-1 px-2 min-w-32"
+                >
+                  <option value="">Select gbin...</option>
+                  {availableGbins.map(gbin => (
+                    <option key={gbin} value={gbin}>{gbin}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Sprite Pbin selector */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-green-400">Palette:</label>
+                <select
+                  value={selectedSpritePbin || ''}
+                  onChange={(e) => handleSpritePbinChange(e.target.value || null)}
+                  className="dk-input text-xs py-1 px-2 min-w-32"
+                >
+                  <option value="">Select pbin...</option>
+                  {availablePbins.map(pbin => (
+                    <option key={pbin} value={pbin}>{pbin}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Sprite Palette block selector */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-green-400">Block:</label>
+                <select
+                  value={selectedSpritePaletteBlock}
+                  onChange={(e) => setSelectedSpritePaletteBlock(Number(e.target.value))}
+                  className="dk-input text-xs py-1 px-2"
+                >
+                  {[...Array(64)].map((_, i) => (
+                    <option key={i} value={i}>{i}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Snap to grid toggle */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={snapToGrid}
+                  onChange={(e) => setSnapToGrid(e.target.checked)}
+                  className="cursor-pointer"
+                />
+                <span className="text-xs text-green-400">Snap to grid</span>
+              </label>
+            </>
+          )}
 
           {/* Dimensions / Resize dropdown */}
           <ResizeDropdown
@@ -865,41 +1344,62 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
           </span>
         </div>
 
-        {/* Right side: undo/redo */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleUndo}
-            disabled={undoStack.length === 0}
-            className="dk-btn-icon dk-btn-disabled"
-            title="Undo (Ctrl+Z)"
-          >
-            <FontAwesomeIcon icon={faUndo} />
-          </button>
-          <button
-            onClick={handleRedo}
-            disabled={redoStack.length === 0}
-            className="dk-btn-icon dk-btn-disabled"
-            title="Redo (Ctrl+Y)"
-          >
-            <FontAwesomeIcon icon={faRedo} />
-          </button>
+        {/* Right side: mode toggle, sprite count, undo/redo */}
+        <div className="flex items-center gap-4">
+          {/* Mode toggle */}
+          <EditorModeToggle mode={editorMode} onChange={handleModeChange} />
+
+          {/* Sprite count indicator */}
+          <span className="text-xs text-zinc-500">
+            Sprites: {sprites.length}
+            {selectedSpriteIds.size > 0 && ` (${selectedSpriteIds.size} selected)`}
+          </span>
+
+          {/* Undo/redo */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleUndo}
+              disabled={undoStack.length === 0}
+              className="dk-btn-icon dk-btn-disabled"
+              title="Undo (Ctrl+Z)"
+            >
+              <FontAwesomeIcon icon={faUndo} />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={redoStack.length === 0}
+              className="dk-btn-icon dk-btn-disabled"
+              title="Redo (Ctrl+Y)"
+            >
+              <FontAwesomeIcon icon={faRedo} />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Main content area */}
       <div className="flex-1 min-h-0">
         <Allotment>
-          {/* Left: Tool palette */}
+          {/* Left: Tool palette - switches based on mode */}
           <Allotment.Pane minSize={48} maxSize={48}>
-            <TilemapToolPalette
-              selectedTool={selectedTool}
-              onToolChange={setSelectedTool}
-              hasSelection={selection !== null}
-              hasClipboard={clipboard !== null}
-              onCopy={handleCopy}
-              onCut={handleCut}
-              onPaste={handlePaste}
-            />
+            {editorMode === 'tile' ? (
+              <TilemapToolPalette
+                selectedTool={selectedTool}
+                onToolChange={setSelectedTool}
+                hasSelection={selection !== null}
+                hasClipboard={clipboard !== null}
+                onCopy={handleCopy}
+                onCut={handleCut}
+                onPaste={handlePaste}
+              />
+            ) : (
+              <SpriteToolPalette
+                selectedTool={spriteTool}
+                onToolChange={setSpriteTool}
+                hasSelection={selectedSpriteIds.size > 0}
+                onDelete={handleDeleteSprites}
+              />
+            )}
           </Allotment.Pane>
 
           {/* Center: Canvas */}
@@ -926,39 +1426,76 @@ export function TilemapEditor({ filePath, content }: TilemapEditorProps) {
                 onOperationEnd={handleOperationEnd}
                 onStartMove={handleStartMove}
                 onCursorChange={setCursorPos}
+                // Sprite props
+                editorMode={editorMode}
+                sprites={sprites}
+                selectedSpriteIds={selectedSpriteIds}
+                spriteTool={spriteTool}
+                spriteToPlace={spriteToPlace}
+                // Sprite graphics (separate from tile graphics)
+                spriteGbinData={spriteGbinData}
+                spritePbinData={spritePbinData}
+                selectedSpritePaletteBlock={selectedSpritePaletteBlock}
+                spriteGbinPaletteConfigs={spriteGbinPaletteConfigs}
+                snapToGrid={snapToGrid}
+                onPlaceSprite={handlePlaceSprite}
+                onSelectSprite={handleSelectSprite}
+                onClearSpriteSelection={handleClearSpriteSelection}
+                onMoveSprites={handleMoveSprites}
+                onCommitSpriteMove={handleCommitSpriteMove}
               />
             </div>
           </Allotment.Pane>
 
-          {/* Right: Attribute editor and tile picker */}
+          {/* Right: Attribute editor and tile/sprite picker */}
           <Allotment.Pane minSize={200} preferredSize={280}>
             <div className="h-full border-l border-zinc-700 bg-zinc-800">
               <Allotment vertical>
-                {/* Attribute editor */}
+                {/* Attribute editor - switches based on mode */}
                 <Allotment.Pane minSize={120} preferredSize={200}>
                   <div className="h-full overflow-auto">
-                    <AttributeEditor
-                      attributes={selectedTilesAttributes}
-                      onAttributeChange={handleAttributeChange}
-                    />
+                    {editorMode === 'tile' ? (
+                      <AttributeEditor
+                        attributes={selectedTilesAttributes}
+                        onAttributeChange={handleAttributeChange}
+                      />
+                    ) : (
+                      <SpriteAttributeEditor
+                        sprites={selectedSprites}
+                        onChange={handleSpriteAttributeChange}
+                        onPositionChange={handleSpritePositionChange}
+                        onDelete={handleDeleteSprites}
+                      />
+                    )}
                   </div>
                 </Allotment.Pane>
 
-                {/* Tile picker */}
+                {/* Tile/Sprite picker - switches based on mode */}
                 <Allotment.Pane minSize={150}>
                   <div className="h-full border-t border-zinc-700 p-3 overflow-auto">
-                    <TilePicker
-                      gbinData={gbinData}
-                      pbinData={pbinData}
-                      paletteBlockIndex={selectedPaletteBlock}
-                      spritePaletteConfigs={spritePaletteConfigs}
-                      selectedIndex={selectedTileIndex}
-                      onSelect={setSelectedTileIndex}
-                      showOnlyNonEmpty={showOnlyNonEmpty}
-                      onShowOnlyNonEmptyChange={setShowOnlyNonEmpty}
-                      showOnlyInPaletteRange={showOnlyInPaletteRange}
-                      onShowOnlyInPaletteRangeChange={setShowOnlyInPaletteRange}
-                    />
+                    {editorMode === 'tile' ? (
+                      <TilePicker
+                        gbinData={gbinData}
+                        pbinData={pbinData}
+                        paletteBlockIndex={selectedPaletteBlock}
+                        spritePaletteConfigs={spritePaletteConfigs}
+                        selectedIndex={selectedTileIndex}
+                        onSelect={setSelectedTileIndex}
+                        showOnlyNonEmpty={showOnlyNonEmpty}
+                        onShowOnlyNonEmptyChange={setShowOnlyNonEmpty}
+                        showOnlyInPaletteRange={showOnlyInPaletteRange}
+                        onShowOnlyInPaletteRangeChange={setShowOnlyInPaletteRange}
+                      />
+                    ) : (
+                      <SpritePicker
+                        gbinData={spriteGbinData}
+                        pbinData={spritePbinData}
+                        paletteBlockIndex={selectedSpritePaletteBlock}
+                        spritePaletteConfigs={spriteGbinPaletteConfigs}
+                        selectedIndex={spriteToPlace}
+                        onSelect={setSpriteToPlace}
+                      />
+                    )}
                   </div>
                 </Allotment.Pane>
               </Allotment>

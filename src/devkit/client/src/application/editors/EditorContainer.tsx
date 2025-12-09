@@ -26,6 +26,11 @@ function getTbinName(filePath: string): string {
     return fileName.replace('.tbin', '');
 }
 
+// Get the sbin path for a given tbin path (e.g., "tilemaps/level1.tbin" -> "tilemaps/level1.sbin")
+function getSbinPath(tbinPath: string): string {
+    return tbinPath.replace(/\.tbin$/, '.sbin');
+}
+
 export function EditorContainer() {
     // Zustand store hooks
     const sourceMap = useDevkitStore((state) => state.sourceMap);
@@ -138,6 +143,24 @@ export function EditorContainer() {
                             // Don't fail the save if config update fails
                         }
                     }
+
+                    // Also save the associated sbin file (sprite placements)
+                    const sbinPath = getSbinPath(activeFilePath);
+                    const sbinFile = openFiles.find(f => f.path === sbinPath);
+                    if (sbinFile) {
+                        try {
+                            const binaryString = atob(sbinFile.content);
+                            const bytes = new Uint8Array(binaryString.length);
+                            for (let i = 0; i < binaryString.length; i++) {
+                                bytes[i] = binaryString.charCodeAt(i);
+                            }
+                            await writeBinaryFile(currentProjectHandle, sbinPath, bytes);
+                            markFileDirty(sbinPath, false);
+                        } catch (error) {
+                            console.error('Error saving sbin file:', error);
+                            // Don't fail the tbin save if sbin save fails
+                        }
+                    }
                 }
             } else {
                 await writeFile(currentProjectHandle, activeFilePath, activeFile.content);
@@ -149,7 +172,7 @@ export function EditorContainer() {
         } finally {
             setIsSaving(false);
         }
-    }, [activeFile, currentProjectHandle, activeFilePath, isBinaryFile, isGbinFile, isTbinFile, markFileDirty, setProjectConfig]);
+    }, [activeFile, currentProjectHandle, activeFilePath, isBinaryFile, isGbinFile, isTbinFile, markFileDirty, setProjectConfig, openFiles]);
 
     const handleContentChange = useCallback((content: string) => {
         if (!activeFilePath) {

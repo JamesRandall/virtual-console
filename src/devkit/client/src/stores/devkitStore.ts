@@ -356,11 +356,22 @@ export const useDevkitStore = create<DevkitState>((set) => ({
 
   setActiveFile: (path: string | null) => set({ activeFilePath: path }),
 
-  updateFileContent: (path: string, content: string) => set((state) => ({
-    openFiles: state.openFiles.map(f =>
-      f.path === path ? { ...f, content } : f
-    ),
-  })),
+  updateFileContent: (path: string, content: string) => set((state) => {
+    const existingFile = state.openFiles.find(f => f.path === path);
+    if (existingFile) {
+      // Update existing file
+      return {
+        openFiles: state.openFiles.map(f =>
+          f.path === path ? { ...f, content } : f
+        ),
+      };
+    } else {
+      // Add new file entry (for associated files like .sbin that aren't explicitly opened)
+      return {
+        openFiles: [...state.openFiles, { path, content, isDirty: false }],
+      };
+    }
+  }),
 
   markFileDirty: (path: string, isDirty: boolean) => set((state) => ({
     openFiles: state.openFiles.map(f =>

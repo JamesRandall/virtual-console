@@ -57,7 +57,8 @@
   "tilemap-editor": {
     "level01": {
       "gbin": "sprites/sprites.gbin",
-      "pbin": "palettes/default.pbin"
+      "pbin": "palettes/default.pbin",
+      "spriteGbin": "sprites/objects.gbin"
     }
   }
 }
