@@ -5,6 +5,7 @@
     "sprites/sprites.gbin",
     "palettes/default.pbin",
     "maps/level01.tbin",
-    "sprites/objects.gbin"
+    "sprites/objects.gbin",
+    "maps/level01.sbin"
   ]
 }

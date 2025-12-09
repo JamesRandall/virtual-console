@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faImage, faPalette, faMap, faCheck } from '@fortawesome/free-solid-svg-icons';
+import { faImage, faPalette, faMap, faCheck, faLocationDot } from '@fortawesome/free-solid-svg-icons';
 import { useDevkitStore } from '../../../stores/devkitStore';
 
 interface AssetPaletteProps {
@@ -11,7 +11,7 @@ interface AssetPaletteProps {
 interface AssetItem {
   path: string;
   name: string;
-  type: 'gbin' | 'pbin' | 'tbin';
+  type: 'gbin' | 'pbin' | 'tbin' | 'sbin';
 }
 
 // Get icon for asset type
@@ -23,6 +23,8 @@ function getAssetIcon(type: AssetItem['type']) {
       return faPalette;
     case 'tbin':
       return faMap;
+    case 'sbin':
+      return faLocationDot;
   }
 }
 
@@ -41,7 +43,7 @@ async function findAssetsInDirectory(
       await findAssetsInDirectory(subDirHandle, entryPath, assets);
     } else if (entry.kind === 'file') {
       const ext = entry.name.split('.').pop()?.toLowerCase();
-      if (ext === 'gbin' || ext === 'pbin' || ext === 'tbin') {
+      if (ext === 'gbin' || ext === 'pbin' || ext === 'tbin' || ext === 'sbin') {
         assets.push({
           path: entryPath,
           name: entry.name,
@@ -134,7 +136,7 @@ export function AssetPalette({ onAssetClick, existingBanks }: AssetPaletteProps)
     return (
       <div className="dk-padding-standard dk-text-secondary text-center">
         <p className="text-sm mb-2">No assets found.</p>
-        <p className="text-xs">Create .gbin, .pbin, or .tbin files in your project.</p>
+        <p className="text-xs">Create .gbin, .pbin, .tbin, or .sbin files in your project.</p>
       </div>
     );
   }
@@ -143,9 +145,10 @@ export function AssetPalette({ onAssetClick, existingBanks }: AssetPaletteProps)
     gbin: 'Graphics (sprites/tiles)',
     pbin: 'Palettes',
     tbin: 'Tilemaps',
+    sbin: 'Sprite Placements',
   };
 
-  const typeOrder: AssetItem['type'][] = ['gbin', 'pbin', 'tbin'];
+  const typeOrder: AssetItem['type'][] = ['gbin', 'pbin', 'tbin', 'sbin'];
 
   return (
     <div className="flex flex-col">

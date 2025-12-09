@@ -10,6 +10,7 @@ import {
   faTrash,
   faPlus,
   faLock,
+  faLocationDot,
 } from '@fortawesome/free-solid-svg-icons';
 import { useDevkitStore } from '../../../stores/devkitStore';
 import { AssetPalette } from './AssetPalette';
@@ -28,7 +29,7 @@ interface BankItem {
   id: string;
   path: string;
   isFixed: boolean;
-  type: 'metadata' | 'code' | 'gbin' | 'pbin' | 'tbin';
+  type: 'metadata' | 'code' | 'gbin' | 'pbin' | 'tbin' | 'sbin';
 }
 
 // Get icon for bank type
@@ -44,6 +45,8 @@ function getBankIcon(type: BankItem['type']) {
       return faPalette;
     case 'tbin':
       return faMap;
+    case 'sbin':
+      return faLocationDot;
     default:
       return faBox;
   }
@@ -56,6 +59,7 @@ function getTypeFromPath(path: string): BankItem['type'] {
   if (path.endsWith('.gbin')) return 'gbin';
   if (path.endsWith('.pbin')) return 'pbin';
   if (path.endsWith('.tbin')) return 'tbin';
+  if (path.endsWith('.sbin')) return 'sbin';
   return 'gbin';
 }
 
