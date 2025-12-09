@@ -1,0 +1,449 @@
+/**
+ * GPU Compositor for Virtual Console
+ *
+ * Handles all WebGPU rendering including:
+ * - WebGPU device/context initialization
+ * - Shader compilation
+ * - GPU buffer management
+ * - Layer compositing (framebuffer + tilemap + sprites)
+ * - Frame capture
+ */
+
+import { generateWGSLPaletteArray } from '../../../../console/src/systemPalette';
+import { SpriteRenderer } from './spriteRenderer';
+import { TilemapRenderer } from './tilemapRenderer';
+
+// Memory layout constants for Mode 0
+const FRAMEBUFFER_START = 0xB000;
+const FRAMEBUFFER_SIZE = 0x5000; // 20,480 bytes
+const PALETTE_RAM_START = 0x0200;
+const PALETTE_RAM_SIZE = 0x0400; // 1024 bytes
+const SCANLINE_MAP_START = 0x0600;
+const SCANLINE_MAP_SIZE = 0x0100; // 256 bytes
+
+// Screen dimensions for Mode 0
+const SCREEN_WIDTH = 256;
+const SCREEN_HEIGHT = 160;
+
+// Hardware registers
+const SPRITE_ENABLE = 0x0104;
+const TILEMAP_ENABLE = 0x013d;
+
+/**
+ * GPU Compositor Interface
+ */
+export interface GPUCompositor {
+  /**
+   * Render a frame to the canvas
+   */
+  render(memory: Uint8Array): void;
+
+  /**
+   * Capture the current frame as a PNG data URL
+   */
+  captureFrame(): Promise<string>;
+
+  /**
+   * Clean up GPU resources
+   */
+  destroy(): void;
+}
+
+/**
+ * Create a GPU compositor for the virtual console framebuffer
+ */
+export async function createGPUCompositor(
+  canvas: HTMLCanvasElement,
+  sharedMemory: SharedArrayBuffer,
+  spriteRenderer: SpriteRenderer | null,
+  tilemapRenderer: TilemapRenderer | null
+): Promise<GPUCompositor> {
+  // Check WebGPU support
+  if (!('gpu' in navigator)) {
+    throw new Error('WebGPU is not supported in this browser');
+  }
+
+  const gpu = (navigator as Navigator & { gpu: GPU }).gpu;
+
+  // Get GPU adapter and device
+  const adapter = await gpu.requestAdapter();
+  if (!adapter) {
+    throw new Error('Failed to get GPU adapter');
+  }
+
+  const device = await adapter.requestDevice();
+
+  // Handle device lost
+  device.lost.then((info) => {
+    console.error('WebGPU device was lost:', info.message);
+    console.error('Reason:', info.reason);
+  });
+
+  // Configure canvas context
+  const context = canvas.getContext('webgpu');
+  if (!context) {
+    throw new Error('Failed to get WebGPU context');
+  }
+
+  const presentationFormat = gpu.getPreferredCanvasFormat();
+  context.configure({
+    device,
+    format: presentationFormat,
+    alphaMode: 'opaque',
+  });
+
+  // Create memory view
+  const memory = new Uint8Array(sharedMemory);
+
+  // Sprite overlay buffer (written by sprite renderer, read by GPU)
+  const spriteOverlayBuffer = device.createBuffer({
+    size: FRAMEBUFFER_SIZE,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  // Sprite mask buffer (1 byte per pixel - indicates if sprite pixel is present)
+  const spriteMaskBuffer = device.createBuffer({
+    size: SCREEN_WIDTH * SCREEN_HEIGHT,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  // CPU-side buffers for sprite compositing
+  const spriteOverlayData = new Uint8Array(FRAMEBUFFER_SIZE);
+  const spriteMaskData = new Uint8Array(SCREEN_WIDTH * SCREEN_HEIGHT);
+
+  // Initialize sprite GPU buffers to zero
+  device.queue.writeBuffer(spriteOverlayBuffer, 0, spriteOverlayData);
+  device.queue.writeBuffer(spriteMaskBuffer, 0, spriteMaskData);
+
+  // Tilemap overlay buffer (master palette indices directly)
+  const tilemapOverlayBuffer = device.createBuffer({
+    size: SCREEN_WIDTH * SCREEN_HEIGHT,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  // Tilemap mask buffer
+  const tilemapMaskBuffer = device.createBuffer({
+    size: SCREEN_WIDTH * SCREEN_HEIGHT,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  // CPU-side buffers for tilemap compositing
+  const tilemapOverlayData = new Uint8Array(SCREEN_WIDTH * SCREEN_HEIGHT);
+  const tilemapMaskData = new Uint8Array(SCREEN_WIDTH * SCREEN_HEIGHT);
+
+  // Initialize tilemap GPU buffers to zero
+  device.queue.writeBuffer(tilemapOverlayBuffer, 0, tilemapOverlayData);
+  device.queue.writeBuffer(tilemapMaskBuffer, 0, tilemapMaskData);
+
+  // Create GPU buffers for framebuffer, palette, and scanline map
+  const framebufferBuffer = device.createBuffer({
+    size: FRAMEBUFFER_SIZE,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  const paletteBuffer = device.createBuffer({
+    size: PALETTE_RAM_SIZE,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  const scanlineMapBuffer = device.createBuffer({
+    size: SCANLINE_MAP_SIZE,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  // Build shader code dynamically with system palette
+  const paletteArrayCode = generateWGSLPaletteArray();
+  const shaderCode = `
+// Tailwind 256-color palette (RGB values 0-255) - Generated from systemPalette.ts
+${paletteArrayCode}
+
+struct VertexOutput {
+  @builtin(position) position: vec4f,
+  @location(0) texCoord: vec2f,
+}
+
+@vertex
+fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+  // Fullscreen quad
+  var pos = array<vec2f, 6>(
+    vec2f(-1.0, -1.0),
+    vec2f(1.0, -1.0),
+    vec2f(-1.0, 1.0),
+    vec2f(-1.0, 1.0),
+    vec2f(1.0, -1.0),
+    vec2f(1.0, 1.0)
+  );
+
+  var texCoord = array<vec2f, 6>(
+    vec2f(0.0, 1.0),
+    vec2f(1.0, 1.0),
+    vec2f(0.0, 0.0),
+    vec2f(0.0, 0.0),
+    vec2f(1.0, 1.0),
+    vec2f(1.0, 0.0)
+  );
+
+  var output: VertexOutput;
+  output.position = vec4f(pos[vertexIndex], 0.0, 1.0);
+  output.texCoord = texCoord[vertexIndex];
+  return output;
+}
+
+@group(0) @binding(0) var<storage, read> framebuffer: array<u32>;
+@group(0) @binding(1) var<storage, read> paletteRam: array<u32>;
+@group(0) @binding(2) var<storage, read> scanlineMap: array<u32>;
+@group(0) @binding(3) var<storage, read> spriteOverlay: array<u32>;
+@group(0) @binding(4) var<storage, read> spriteMask: array<u32>;
+@group(0) @binding(5) var<storage, read> tilemapOverlay: array<u32>;
+@group(0) @binding(6) var<storage, read> tilemapMask: array<u32>;
+
+// Helper function to read a byte from a u32 array
+fn readByte(buffer: ptr<storage, array<u32>, read>, byteIndex: u32) -> u32 {
+  let wordIndex = byteIndex / 4u;
+  let byteOffset = byteIndex % 4u;
+  let word = buffer[wordIndex];
+  return (word >> (byteOffset * 8u)) & 0xFFu;
+}
+
+@fragment
+fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
+  // Calculate pixel coordinates
+  let x = u32(texCoord.x * 256.0);
+  let y = u32(texCoord.y * 160.0);
+
+  // Bounds check
+  if (x >= 256u || y >= 160u) {
+    return vec4f(0.0, 0.0, 0.0, 1.0);
+  }
+
+  // Calculate pixel index for this position
+  let pixelIndex = y * 256u + x;
+  let byteIndex = pixelIndex / 2u;
+
+  // Check layer presence
+  let hasSpritePixel = readByte(&spriteMask, pixelIndex) != 0u;
+  let hasTilemapPixel = readByte(&tilemapMask, pixelIndex) != 0u;
+
+  var masterPaletteIndex: u32;
+
+  // Layer priority (front to back): sprites > tilemap > framebuffer
+  if (hasSpritePixel) {
+    // Sprite: read color index and apply scanline palette map
+    let spriteByte = readByte(&spriteOverlay, byteIndex);
+    var colorIndex: u32;
+    if ((pixelIndex & 1u) == 0u) {
+      colorIndex = (spriteByte >> 4u) & 0xFu; // High nibble (even pixel)
+    } else {
+      colorIndex = spriteByte & 0xFu; // Low nibble (odd pixel)
+    }
+    let paletteSelector = readByte(&scanlineMap, y);
+    let paletteIndex = paletteSelector * 16u + colorIndex;
+    masterPaletteIndex = readByte(&paletteRam, paletteIndex);
+  } else if (hasTilemapPixel) {
+    // Tilemap: palette already resolved by TilemapEngine
+    masterPaletteIndex = readByte(&tilemapOverlay, pixelIndex);
+  } else {
+    // Framebuffer: read color index and apply scanline palette map
+    let byte = readByte(&framebuffer, byteIndex);
+    var colorIndex: u32;
+    if ((pixelIndex & 1u) == 0u) {
+      colorIndex = (byte >> 4u) & 0xFu; // High nibble (even pixel)
+    } else {
+      colorIndex = byte & 0xFu; // Low nibble (odd pixel)
+    }
+    let paletteSelector = readByte(&scanlineMap, y);
+    let paletteIndex = paletteSelector * 16u + colorIndex;
+    masterPaletteIndex = readByte(&paletteRam, paletteIndex);
+  }
+
+  // Look up final RGB color from master palette
+  let rgb = PALETTE[masterPaletteIndex];
+
+  // Convert from 0-255 to 0.0-1.0
+  return vec4f(rgb / 255.0, 1.0);
+}
+`;
+
+  // Create shader module
+  const shaderModule = device.createShaderModule({
+    label: 'Virtual Console Framebuffer Shader',
+    code: shaderCode,
+  });
+
+  // Create bind group layout
+  const bindGroupLayout = device.createBindGroupLayout({
+    label: 'Framebuffer Bind Group Layout',
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+      { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+      { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+      { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+      { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+      { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+      { binding: 6, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+    ],
+  });
+
+  // Create bind group
+  const bindGroup = device.createBindGroup({
+    label: 'Framebuffer Bind Group',
+    layout: bindGroupLayout,
+    entries: [
+      { binding: 0, resource: { buffer: framebufferBuffer } },
+      { binding: 1, resource: { buffer: paletteBuffer } },
+      { binding: 2, resource: { buffer: scanlineMapBuffer } },
+      { binding: 3, resource: { buffer: spriteOverlayBuffer } },
+      { binding: 4, resource: { buffer: spriteMaskBuffer } },
+      { binding: 5, resource: { buffer: tilemapOverlayBuffer } },
+      { binding: 6, resource: { buffer: tilemapMaskBuffer } },
+    ],
+  });
+
+  // Create pipeline
+  const pipeline = device.createRenderPipeline({
+    label: 'Virtual Console Render Pipeline',
+    layout: device.createPipelineLayout({
+      bindGroupLayouts: [bindGroupLayout],
+    }),
+    vertex: {
+      module: shaderModule,
+      entryPoint: 'vertexMain',
+    },
+    fragment: {
+      module: shaderModule,
+      entryPoint: 'fragmentMain',
+      targets: [{ format: presentationFormat }],
+    },
+    primitive: {
+      topology: 'triangle-list',
+    },
+  });
+
+  return {
+    render(memoryView: Uint8Array): void {
+      // Clear tilemap buffers
+      tilemapMaskData.fill(0);
+
+      // Render tilemap if enabled
+      if (tilemapRenderer && (memoryView[TILEMAP_ENABLE] & 0x01) !== 0) {
+        tilemapOverlayData.fill(0);
+
+        for (let y = 0; y < SCREEN_HEIGHT; y++) {
+          const scanlineBuffer = tilemapRenderer.renderScanline(y, SCREEN_WIDTH);
+
+          for (let x = 0; x < SCREEN_WIDTH; x++) {
+            const masterPaletteIndex = scanlineBuffer[x];
+            if (masterPaletteIndex !== 0) {
+              const pixelIndex = y * SCREEN_WIDTH + x;
+              tilemapMaskData[pixelIndex] = 1;
+              tilemapOverlayData[pixelIndex] = masterPaletteIndex;
+            }
+          }
+        }
+      }
+
+      // Upload tilemap buffers
+      device.queue.writeBuffer(tilemapOverlayBuffer, 0, tilemapOverlayData);
+      device.queue.writeBuffer(tilemapMaskBuffer, 0, tilemapMaskData);
+
+      // Clear sprite buffers
+      spriteMaskData.fill(0);
+
+      // Render sprites if enabled
+      if (spriteRenderer && (memoryView[SPRITE_ENABLE] & 0x01) !== 0) {
+        spriteOverlayData.fill(0);
+        spriteRenderer.resetFrame();
+
+        for (let y = 0; y < SCREEN_HEIGHT; y++) {
+          const scanlineBuffer = spriteRenderer.renderScanline(y, SCREEN_WIDTH);
+
+          for (let x = 0; x < SCREEN_WIDTH; x++) {
+            const colorIndex = scanlineBuffer[x];
+            if (colorIndex !== 0) {
+              spriteMaskData[y * SCREEN_WIDTH + x] = 1;
+
+              const pixelIndex = y * SCREEN_WIDTH + x;
+              const byteIndex = Math.floor(pixelIndex / 2);
+              if (pixelIndex % 2 === 0) {
+                spriteOverlayData[byteIndex] = (spriteOverlayData[byteIndex] & 0x0f) | ((colorIndex & 0x0f) << 4);
+              } else {
+                spriteOverlayData[byteIndex] = (spriteOverlayData[byteIndex] & 0xf0) | (colorIndex & 0x0f);
+              }
+            }
+          }
+        }
+
+        spriteRenderer.finalizeFrame();
+      }
+
+      // Upload sprite buffers
+      device.queue.writeBuffer(spriteOverlayBuffer, 0, spriteOverlayData);
+      device.queue.writeBuffer(spriteMaskBuffer, 0, spriteMaskData);
+
+      // Write framebuffer data from shared memory
+      device.queue.writeBuffer(framebufferBuffer, 0, memoryView as unknown as BufferSource, FRAMEBUFFER_START, FRAMEBUFFER_SIZE);
+      device.queue.writeBuffer(paletteBuffer, 0, memoryView as unknown as BufferSource, PALETTE_RAM_START, PALETTE_RAM_SIZE);
+      device.queue.writeBuffer(scanlineMapBuffer, 0, memoryView as unknown as BufferSource, SCANLINE_MAP_START, SCANLINE_MAP_SIZE);
+
+      // Create command encoder
+      const commandEncoder = device.createCommandEncoder();
+
+      // Get current texture to render to
+      const textureView = context.getCurrentTexture().createView();
+
+      // Create render pass
+      const renderPass = commandEncoder.beginRenderPass({
+        colorAttachments: [
+          {
+            view: textureView,
+            clearValue: { r: 0, g: 0, b: 0, a: 1 },
+            loadOp: 'clear',
+            storeOp: 'store',
+          },
+        ],
+      });
+
+      renderPass.setPipeline(pipeline);
+      renderPass.setBindGroup(0, bindGroup);
+      renderPass.draw(6);
+      renderPass.end();
+
+      // Submit commands
+      device.queue.submit([commandEncoder.finish()]);
+    },
+
+    async captureFrame(): Promise<string> {
+      console.log('📸 Capturing frame from WebGPU canvas...');
+
+      await device.queue.onSubmittedWorkDone();
+      console.log('📸 GPU work completed');
+
+      return new Promise((resolve, reject) => {
+        requestAnimationFrame(() => {
+          try {
+            console.log('📸 Capturing after frame presentation...');
+            const dataURL = canvas.toDataURL('image/png');
+            console.log('📸 Captured PNG data URL, length:', dataURL.length);
+            resolve(dataURL);
+          } catch (error) {
+            console.error('📸 Error capturing canvas:', error);
+            reject(error);
+          }
+        });
+      });
+    },
+
+    destroy(): void {
+      framebufferBuffer.destroy();
+      paletteBuffer.destroy();
+      scanlineMapBuffer.destroy();
+      spriteOverlayBuffer.destroy();
+      spriteMaskBuffer.destroy();
+      tilemapOverlayBuffer.destroy();
+      tilemapMaskBuffer.destroy();
+      if (context) {
+        context.unconfigure();
+      }
+    },
+  };
+}
