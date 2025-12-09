@@ -27,14 +27,14 @@
 .endif
 
 .ifndef SPRITE_MGR_VARS
-.define SPRITE_MGR_VARS         $2200   ; 16 bytes for sprite manager variables
+.define SPRITE_MGR_VARS         $2280   ; 16 bytes for sprite manager variables
 .endif
 
 ; =============================================================================
 ; Constants
 ; =============================================================================
 
-.define WORLD_SPRITE_SIZE       8
+.define WORLD_SPRITE_SIZE       10      ; Extended to include typeId and direction
 
 .define SM_SCREEN_WIDTH         256
 .define SM_SCREEN_HEIGHT        160
@@ -63,6 +63,8 @@
 .define WSP_FLAGS               5
 .define WSP_BANK                6
 .define WSP_ACTIVE              7
+.define WSP_TYPE_ID             8       ; Game-specific type (from SBIN)
+.define WSP_DIRECTION           9       ; Movement direction (0=left, 1=right)
 
 ; =============================================================================
 ; Sprite Manager Variables
@@ -106,13 +108,16 @@ sprite_table_init:
     PUSH R1
     PUSH R2
     PUSH R3
+    PUSH R4
 
-    ; Clear all world sprite entries (512 bytes = 2 pages)
+    ; Clear all world sprite entries (640 bytes = 64 sprites × 10 bytes)
+    ; 640 = 256 + 256 + 128 = 2 full pages + 128 bytes
     LD R2, #(WORLD_SPRITE_TABLE >> 8)
     LD R3, #(WORLD_SPRITE_TABLE & $FF)
     LD R0, #0
-    LD R1, #0
+    LD R1, #0                       ; Page counter
 
+    ; Clear 2 full pages (512 bytes)
 .sti_clear_loop:
     ST R0, [R2:R3]
     INC R3
@@ -121,6 +126,14 @@ sprite_table_init:
     INC R1
     CMP R1, #2
     BRNZ .sti_clear_loop
+
+    ; Clear remaining 128 bytes
+    LD R4, #128
+.sti_clear_rest:
+    ST R0, [R2:R3]
+    INC R3
+    DEC R4
+    BRNZ .sti_clear_rest
 
     ; Initialize scroll to 0
     LD R0, #0
@@ -134,6 +147,7 @@ sprite_table_init:
     LD R0, #1
     ST R0, [SM_SPRITE_ENABLE]
 
+    POP R4
     POP R3
     POP R2
     POP R1
@@ -192,12 +206,16 @@ load_level_sprites:
     ST R1, [SM_SRC_HI]
     ST R0, [SM_SRC_LO]
 
-    ; Calculate dest: WORLD_SPRITE_TABLE + ((R5 + 1) * 8)
+    ; Calculate dest: WORLD_SPRITE_TABLE + ((R5 + 1) * 10)
+    ; x * 10 = (x << 3) + (x << 1)
     MOV R0, R5
-    INC R0
+    INC R0                          ; R0 = R5 + 1
+    MOV R1, R0                      ; R1 = R5 + 1 (save copy)
     SHL R0
     SHL R0
-    SHL R0
+    SHL R0                          ; R0 = (R5 + 1) * 8
+    SHL R1                          ; R1 = (R5 + 1) * 2
+    ADD R0, R1                      ; R0 = (R5 + 1) * 10
     LD R1, #(WORLD_SPRITE_TABLE & $FF)
     ADD R1, R0
     LD R0, #(WORLD_SPRITE_TABLE >> 8)
@@ -285,6 +303,23 @@ load_level_sprites:
     LD R0, #1
     ST R0, [R2:R3]
 
+    ; Byte 8: typeId (from SBIN offset 7)
+    LD R2, [SM_SRC_HI]
+    LD R3, [SM_SRC_LO]
+    ADD R3, #7
+    LD R0, [R2:R3]
+    LD R2, [SM_DST_HI]
+    LD R3, [SM_DST_LO]
+    ADD R3, #WSP_TYPE_ID
+    ST R0, [R2:R3]
+
+    ; Byte 9: direction = 0 (start moving left)
+    LD R2, [SM_DST_HI]
+    LD R3, [SM_DST_LO]
+    ADD R3, #WSP_DIRECTION
+    LD R0, #0
+    ST R0, [R2:R3]
+
     ; Next sprite
     INC R5
     CMP R5, R4
@@ -325,11 +360,15 @@ render_world_sprites:
     JMP .rws_done
 
 .rws_process:
-    ; Calculate world sprite address
+    ; Calculate world sprite address: R4 * 10
+    ; x * 10 = (x << 3) + (x << 1)
     MOV R0, R4
+    MOV R1, R4
     SHL R0
     SHL R0
-    SHL R0
+    SHL R0                          ; R0 = R4 * 8
+    SHL R1                          ; R1 = R4 * 2
+    ADD R0, R1                      ; R0 = R4 * 10
     LD R1, #(WORLD_SPRITE_TABLE & $FF)
     ADD R1, R0
     LD R0, #(WORLD_SPRITE_TABLE >> 8)
@@ -601,15 +640,20 @@ render_world_sprites:
 
 ; =============================================================================
 ; activate_world_sprite
+; Input: R0 = sprite slot index
 ; =============================================================================
 activate_world_sprite:
     PUSH R0
     PUSH R1
     PUSH R2
 
+    ; Calculate offset: R0 * 10 = (R0 << 3) + (R0 << 1)
+    MOV R1, R0
     SHL R0
     SHL R0
-    SHL R0
+    SHL R0                          ; R0 = slot * 8
+    SHL R1                          ; R1 = slot * 2
+    ADD R0, R1                      ; R0 = slot * 10
     ADD R0, #WSP_ACTIVE
     LD R1, #(WORLD_SPRITE_TABLE & $FF)
     ADD R1, R0
@@ -627,15 +671,20 @@ activate_world_sprite:
 
 ; =============================================================================
 ; deactivate_world_sprite
+; Input: R0 = sprite slot index
 ; =============================================================================
 deactivate_world_sprite:
     PUSH R0
     PUSH R1
     PUSH R2
 
+    ; Calculate offset: R0 * 10 = (R0 << 3) + (R0 << 1)
+    MOV R1, R0
     SHL R0
     SHL R0
-    SHL R0
+    SHL R0                          ; R0 = slot * 8
+    SHL R1                          ; R1 = slot * 2
+    ADD R0, R1                      ; R0 = slot * 10
     ADD R0, #WSP_ACTIVE
     LD R1, #(WORLD_SPRITE_TABLE & $FF)
     ADD R1, R0

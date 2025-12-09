@@ -96,48 +96,52 @@
 .define MOVE_FRICTION       6       ; Horizontal friction
 
 ; =============================================================================
-; Game Variables (sprite manager uses $2000-$220F)
+; Game Variables
+; Memory layout:
+;   $2000-$227F: World sprite table (64 sprites × 10 bytes = 640 bytes)
+;   $2280-$228F: Sprite manager variables (16 bytes)
+;   $2290+:      Game variables
 ; =============================================================================
 
 ; Player physics state
-.define PLAYER_VEL_X        $2210   ; Horizontal velocity (signed)
-.define PLAYER_VEL_Y        $2211   ; Vertical velocity (signed)
-.define PLAYER_SUB_X        $2212   ; X sub-pixel accumulator
-.define PLAYER_SUB_Y        $2213   ; Y sub-pixel accumulator
-.define PLAYER_ON_GROUND    $2214   ; 1 if on ground
-.define PLAYER_JUMP_HELD    $2215   ; 1 if jump button held
+.define PLAYER_VEL_X        $2290   ; Horizontal velocity (signed)
+.define PLAYER_VEL_Y        $2291   ; Vertical velocity (signed)
+.define PLAYER_SUB_X        $2292   ; X sub-pixel accumulator
+.define PLAYER_SUB_Y        $2293   ; Y sub-pixel accumulator
+.define PLAYER_ON_GROUND    $2294   ; 1 if on ground
+.define PLAYER_JUMP_HELD    $2295   ; 1 if jump button held
 
 ; Player animation state
-.define PLAYER_FACING       $2216   ; 0=right, 1=left
-.define PLAYER_ANIM_TIMER   $2217   ; Animation frame timer
-.define PLAYER_ANIM_FRAME   $2218   ; Current animation frame
+.define PLAYER_FACING       $2296   ; 0=right, 1=left
+.define PLAYER_ANIM_TIMER   $2297   ; Animation frame timer
+.define PLAYER_ANIM_FRAME   $2298   ; Current animation frame
 
 ; Map data
-.define MAP_WIDTH           $221A   ; Tilemap width in tiles
-.define MAP_HEIGHT          $221B   ; Tilemap height in tiles
-.define MAP_PIXEL_WIDTH_LO  $221C   ; Map width in pixels (low)
-.define MAP_PIXEL_WIDTH_HI  $221D   ; Map width in pixels (high)
-.define MAX_SCROLL_X_LO     $221E   ; Max scroll X (low)
-.define MAX_SCROLL_X_HI     $221F   ; Max scroll X (high)
+.define MAP_WIDTH           $229A   ; Tilemap width in tiles
+.define MAP_HEIGHT          $229B   ; Tilemap height in tiles
+.define MAP_PIXEL_WIDTH_LO  $229C   ; Map width in pixels (low)
+.define MAP_PIXEL_WIDTH_HI  $229D   ; Map width in pixels (high)
+.define MAX_SCROLL_X_LO     $229E   ; Max scroll X (low)
+.define MAX_SCROLL_X_HI     $229F   ; Max scroll X (high)
 
 ; Temporary variables for collision
-.define TEMP_X_LO           $2220
-.define TEMP_X_HI           $2221
-.define TEMP_Y_LO           $2222
-.define TEMP_Y_HI           $2223
+.define TEMP_X_LO           $22A0
+.define TEMP_X_HI           $22A1
+.define TEMP_Y_LO           $22A2
+.define TEMP_Y_HI           $22A3
 
 ; Controller state (cached for main loop)
-.define CTRL_STATE          $2224
+.define CTRL_STATE          $22A4
 
 ; Frame sync flag
-.define VBLANK_FLAG         $2225   ; Set by VBlank, cleared by main loop
+.define VBLANK_FLAG         $22A5   ; Set by VBlank, cleared by main loop
 
 ; Animation constants
 .define ANIM_SPEED          8
 
 ; Starfield variables
-.define STAR_X_RAM          $2230   ; 96 bytes for star X positions
-.define STAR_FRAME          $2290   ; Frame counter
+.define STAR_X_RAM          $22B0   ; 96 bytes for star X positions ($22B0-$230F)
+.define STAR_FRAME          $2310   ; Frame counter
 
 ; Starfield constants
 .define STAR_COUNT          96
@@ -252,6 +256,9 @@ main_loop:
 
     ; Update player animation (modifies world sprite slot 0)
     CALL update_player_animation
+
+    ; Update enemy sprites (patrol AI for typeId=1)
+    CALL update_enemy_sprites
 
     ; Loop back
     JMP main_loop
@@ -1597,6 +1604,261 @@ star_y_coords:
     .byte 36, 120, 93, 154, 66, 104, 137, 47
     .byte 81, 125, 58, 96, 140, 69, 113, 150
 
+
+; =============================================================================
+; Enemy AI Constants
+; =============================================================================
+
+.define ENEMY_TYPE_PATROL       1       ; TypeId for patrolling enemies
+.define ENEMY_MOVE_SPEED        1       ; Pixels per frame
+
+; Temporary variables for enemy update
+.define ENEMY_SLOT              $22A6   ; Current enemy slot being processed
+.define ENEMY_BASE_LO           $22A7   ; Base address of current enemy entry (lo)
+.define ENEMY_BASE_HI           $22A8   ; Base address of current enemy entry (hi)
+
+; =============================================================================
+; update_enemy_sprites
+; Animates world sprites with typeId=1 (patrol enemies)
+; They move left until reaching edge or would fall, then reverse
+; =============================================================================
+
+update_enemy_sprites:
+    PUSH R0
+    PUSH R1
+    PUSH R2
+    PUSH R3
+    PUSH R4
+    PUSH R5
+
+    ; Start at slot 1 (slot 0 is player)
+    ; Initialize pointer to slot 1: WORLD_SPRITE_TABLE + 10
+    LD R4, #((WORLD_SPRITE_TABLE + 10) >> 8)    ; High byte
+    LD R5, #((WORLD_SPRITE_TABLE + 10) & $FF)   ; Low byte
+    LD R0, #1                       ; Slot counter
+    ST R0, [ENEMY_SLOT]
+
+.ues_loop:
+    ; Check if we've processed all possible sprites
+    LD R0, [ENEMY_SLOT]
+    CMP R0, #WORLD_SPRITE_MAX
+    BRZ .ues_done
+
+    ; Store current pointer as base address
+    ST R4, [ENEMY_BASE_HI]
+    ST R5, [ENEMY_BASE_LO]
+
+    ; Check if active (offset 7 from base)
+    MOV R2, R4
+    MOV R3, R5
+    ADD R3, #WSP_ACTIVE
+    BRNC .ues_active_ok
+    INC R2
+.ues_active_ok:
+    LD R0, [R2:R3]
+    CMP R0, #0
+    BRZ .ues_next
+
+    ; Check typeId (offset 8 from base)
+    MOV R2, R4
+    MOV R3, R5
+    ADD R3, #WSP_TYPE_ID
+    BRNC .ues_type_ok
+    INC R2
+.ues_type_ok:
+    LD R0, [R2:R3]
+    CMP R0, #ENEMY_TYPE_PATROL
+    BRNZ .ues_next
+
+    ; This is a patrol enemy - process it
+    CALL update_patrol_enemy
+
+.ues_next:
+    ; Advance pointer by 10 bytes (WORLD_SPRITE_SIZE)
+    ADD R5, #WORLD_SPRITE_SIZE
+    BRNC .ues_no_carry
+    INC R4
+.ues_no_carry:
+    ; Increment slot counter
+    LD R0, [ENEMY_SLOT]
+    INC R0
+    ST R0, [ENEMY_SLOT]
+    JMP .ues_loop
+
+.ues_done:
+    POP R5
+    POP R4
+    POP R3
+    POP R2
+    POP R1
+    POP R0
+    RET
+
+; =============================================================================
+; update_patrol_enemy
+; Updates a single patrol enemy (uses ENEMY_BASE_HI/LO for entry address)
+; =============================================================================
+
+update_patrol_enemy:
+    PUSH R0
+    PUSH R1
+    PUSH R2
+    PUSH R3
+    PUSH R4
+    PUSH R5
+
+    ; Read current position
+    LD R2, [ENEMY_BASE_HI]
+    LD R3, [ENEMY_BASE_LO]
+    LD R0, [R2:R3]                  ; x_lo
+    ST R0, [TEMP_X_LO]
+    INC R3
+    LD R0, [R2:R3]                  ; x_hi
+    ST R0, [TEMP_X_HI]
+    INC R3
+    LD R0, [R2:R3]                  ; y_lo
+    ST R0, [TEMP_Y_LO]
+    INC R3
+    LD R0, [R2:R3]                  ; y_hi
+    ST R0, [TEMP_Y_HI]
+
+    ; Read current direction
+    LD R2, [ENEMY_BASE_HI]
+    LD R3, [ENEMY_BASE_LO]
+    ADD R3, #WSP_DIRECTION
+    BRNC .upe_dir_ok
+    INC R2
+.upe_dir_ok:
+    LD R5, [R2:R3]                  ; R5 = direction (0=left, 1=right)
+
+    ; Check if we need to reverse direction
+    CMP R5, #0
+    BRNZ .upe_check_right
+
+    ; Moving left - check if at left edge or would fall
+.upe_check_left:
+    ; Check left edge (x == 0)
+    LD R0, [TEMP_X_LO]
+    LD R1, [TEMP_X_HI]
+    CMP R1, #0
+    BRNZ .upe_check_left_fall
+    CMP R0, #0
+    BRZ .upe_reverse
+
+.upe_check_left_fall:
+    ; Check if tile below-left is empty (would fall if we move left)
+    ; Check tile at (x - 1, y + 16)
+    LD R0, [TEMP_X_LO]
+    LD R1, [TEMP_X_HI]
+    ; Subtract 1 from x
+    CMP R0, #0
+    BRNZ .upe_left_no_borrow
+    DEC R1
+.upe_left_no_borrow:
+    DEC R0
+    ; R0:R1 = x - 1
+    LD R2, [TEMP_Y_LO]
+    ADD R2, #16                     ; Y + sprite height
+    CALL get_tile_at_pixel
+    CMP R0, #0                      ; Is tile empty?
+    BRZ .upe_reverse                ; Yes, reverse direction
+    JMP .upe_do_move
+
+.upe_check_right:
+    ; Moving right - check if at right edge or would fall
+    ; Check right edge (x + 16 >= map_pixel_width)
+    LD R0, [TEMP_X_LO]
+    LD R1, [TEMP_X_HI]
+    ADD R0, #16
+    BRNC .upe_right_no_carry
+    INC R1
+.upe_right_no_carry:
+    ; Compare with map width (16-bit comparison)
+    LD R2, [MAP_PIXEL_WIDTH_HI]
+    CMP R1, R2                      ; x+16_hi - map_hi
+    BRNC .upe_check_right_fall      ; Carry clear = x+16_hi < map_hi, safe
+    BRZ .upe_check_right_low        ; Zero set = x+16_hi == map_hi, check low
+    JMP .upe_reverse                ; x+16_hi > map_hi, at edge
+
+.upe_check_right_low:
+    ; High bytes equal, compare low bytes
+    LD R2, [MAP_PIXEL_WIDTH_LO]
+    CMP R0, R2                      ; x+16_lo - map_lo
+    BRC .upe_reverse                ; x+16_lo >= map_lo, at edge
+
+.upe_check_right_fall:
+    ; Check if tile below-right is empty (would fall if we move right)
+    ; Check tile at (x + 16, y + 16)
+    LD R0, [TEMP_X_LO]
+    LD R1, [TEMP_X_HI]
+    ADD R0, #16
+    BRNC .upe_right2_no_carry
+    INC R1
+.upe_right2_no_carry:
+    LD R2, [TEMP_Y_LO]
+    ADD R2, #16                     ; Y + sprite height
+    CALL get_tile_at_pixel
+    CMP R0, #0                      ; Is tile empty?
+    BRZ .upe_reverse                ; Yes, reverse direction
+    JMP .upe_do_move
+
+.upe_reverse:
+    ; Reverse direction
+    LD R2, [ENEMY_BASE_HI]
+    LD R3, [ENEMY_BASE_LO]
+    ADD R3, #WSP_DIRECTION
+    BRNC .upe_rev_no_carry
+    INC R2
+.upe_rev_no_carry:
+    LD R0, [R2:R3]
+    XOR R0, #1                      ; Toggle direction
+    ST R0, [R2:R3]
+
+    ; NOTE: Horizontal flip disabled due to rendering bug
+    ; TODO: Investigate sprite flip rendering issue in spriteEngine.ts
+
+    ; Skip movement on the frame we reverse
+    JMP .upe_done
+
+.upe_do_move:
+    ; Move enemy in current direction
+    CMP R5, #0
+    BRNZ .upe_move_right
+
+    ; Move left
+    LD R0, [TEMP_X_LO]
+    LD R1, [TEMP_X_HI]
+    SUB R0, #ENEMY_MOVE_SPEED
+    BRNC .upe_left_dec_hi           ; Branch if carry clear (borrow occurred)
+    JMP .upe_store_pos
+.upe_left_dec_hi:
+    DEC R1
+    JMP .upe_store_pos
+
+.upe_move_right:
+    ; Move right
+    LD R0, [TEMP_X_LO]
+    LD R1, [TEMP_X_HI]
+    ADD R0, #ENEMY_MOVE_SPEED
+    BRNC .upe_store_pos
+    INC R1
+
+.upe_store_pos:
+    ; Store new position
+    LD R2, [ENEMY_BASE_HI]
+    LD R3, [ENEMY_BASE_LO]
+    ST R0, [R2:R3]                  ; x_lo
+    INC R3
+    ST R1, [R2:R3]                  ; x_hi
+
+.upe_done:
+    POP R5
+    POP R4
+    POP R3
+    POP R2
+    POP R1
+    POP R0
+    RET
 
 ; =============================================================================
 ; Include Runtime Libraries
