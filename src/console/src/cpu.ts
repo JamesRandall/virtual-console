@@ -395,7 +395,7 @@ export class CPU {
         break;
       }
       default:
-        throw new Error(`Invalid mode for LD: ${mode}`);
+        throw new Error(`Invalid mode for LD: ${mode}, PC: 0x${this.pc.toString(16)}`);
     }
 
     this.r[dest] = value & 0xFF;
@@ -424,7 +424,7 @@ export class CPU {
         this.cycles += 2;
         break;
       default:
-        throw new Error(`Invalid mode for ST: ${mode}`);
+        throw new Error(`Invalid mode for ST: ${mode}, PC: 0x${this.pc.toString(16)}`);
     }
 
     this.bus.write8(addr, this.r[dest]);
